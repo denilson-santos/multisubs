@@ -1,0 +1,11 @@
+[project]
+name = "multisubs"
+version = "0.1.0"
+description = "A tool to generate and embed subtitles into videos."
+dependencies = [
+    "openai-whisper",
+    "ffmpeg-python",
+]
+
+[project.scripts]
+multisubs = "multisubs.cli:main"
