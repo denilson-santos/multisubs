@@ -1,9 +1,0 @@
-version: '3.8'
-
-services:
-  app_python:
-    build: ./.docker/python
-    image: multisubs/python:3.11
-    container_name: multisubs-app-python
-    volumes:
-      - ./data:/usr/app/data
