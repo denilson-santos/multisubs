@@ -12,11 +12,11 @@ def embed_subtitles(input_path, ass_path, output_dir, lang='en'):
       ass_path (str): Path to the ass subtitle file.
       output_dir (str): Directory to save the subtitled video.
   """
-  file_name = os.path.splitext(os.path.basename(input_path))[0]
-  print(f"Adicionando legendas ao vídeo '{file_name}' e salvando na pasta '{output_dir}'...\n")
+  file_name, file_ext = os.path.splitext(os.path.basename(input_path))
+  print(f"Adicionando legendas ao vídeo '{file_name+file_ext}' e salvando na pasta '{output_dir}'...\n")
   
   os.makedirs(output_dir, exist_ok=True)
-  output_path = get_unique_path(os.path.join(output_dir, f"{file_name}-{lang}.mp4"))
+  output_path = get_unique_path(os.path.join(output_dir, f"{file_name}-{lang}{file_ext}"))
 
   input_stream = ffmpeg.input(input_path)
   ( 
