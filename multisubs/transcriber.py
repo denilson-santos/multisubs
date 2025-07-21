@@ -15,8 +15,8 @@ def generate_transcriptions(input_path, output_dir, style_options=None, lang='en
       lang (str, optional): Language for transcription. Defaults to 'en'.
       task (str, optional): Transcribe or translate task. Defaults to 'transcribe'.
   """
-  file_name = os.path.splitext(os.path.basename(input_path))[0]
-  print(f"Generating video transcripts '{file_name}' for folder '{output_dir}'...\n")
+  file_name, file_ext = os.path.splitext(os.path.basename(input_path))
+  print(f"Generating video transcripts '{file_name+file_ext}' for folder '{output_dir}'...\n")
   os.makedirs(output_dir, exist_ok=True)
 
   model = whisper.load_model('turbo')

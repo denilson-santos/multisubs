@@ -92,6 +92,10 @@ def main():
     if not os.path.exists(video_path):
         print(f"Error: Video file not found at '{video_path}'")
         return
+    
+    if os.path.isfile(output_dir):
+        print(f"Error: Output path '{output_dir}' is a file, please provide a directory.")
+        return
 
     if output_dir == '.':
         output_dir = os.getcwd()
