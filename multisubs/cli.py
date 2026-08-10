@@ -2,7 +2,7 @@
 import argparse
 import os
 from . import __version__
-from .transcriber import generate_transcriptions
+from .transcriber import WHISPER_MODELS, generate_transcriptions
 from .subtitler import embed_subtitles
 from .config import DEFAULT_STYLE
 from .utils import get_unique_dir_path
@@ -53,7 +53,7 @@ def main():
         type=str,
         default='en',
         choices=['af', 'am', 'ar', 'as', 'az', 'ba', 'be', 'bg', 'bn', 'bo', 'br', 'bs', 'ca', 'cs', 'cy', 'da', 'de', 'el', 'en', 'es', 'et', 'eu', 'fa', 'fi', 'fo', 'fr', 'gl', 'gu', 'ha', 'haw', 'he', 'hi', 'hr', 'ht', 'hu', 'hy', 'id', 'is', 'it', 'ja', 'jw', 'ka', 'kk', 'km', 'kn', 'ko', 'la', 'lb', 'ln', 'lo', 'lt', 'lv', 'mg', 'mi', 'mk', 'ml', 'mn', 'mr', 'ms', 'mt', 'my', 'ne', 'nl', 'nn', 'no', 'oc', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru', 'sa', 'sd', 'si', 'sk', 'sl', 'sn', 'so', 'sq', 'sr', 'su', 'sv', 'sw', 'ta', 'te', 'tg', 'th', 'tk', 'tl', 'tr', 'tt', 'uk', 'ur', 'uz', 'vi', 'yi', 'yo', 'yue', 'zh'],
-        help='Language for transcription. Default: "en"',
+        help='Source language. Translation output is always English. Default: "en"',
         metavar=''
     )
 
@@ -63,7 +63,16 @@ def main():
         type=str,
         default='transcribe',
         choices=['transcribe', 'translate'],
-        help='Transcribe or translate task. Default: "transcribe"',
+        help='Transcribe, or translate speech to English. Turbo models cannot translate. Default: "transcribe"',
+        metavar=''
+    )
+
+    parser.add_argument(
+        '-m',
+        '--model',
+        default='turbo',
+        choices=WHISPER_MODELS,
+        help='Whisper model. For translation, use a multilingual non-Turbo model (e.g. medium or large). Default: "turbo"',
         metavar=''
     )
 
@@ -85,6 +94,19 @@ def main():
         )
 
     args = parser.parse_args()
+
+    if args.task == 'translate' and args.model == 'turbo':
+        parser.error(
+            f'Model "{args.model}" does not support translation. '
+            'Use a multilingual non-Turbo model, such as "medium" or "large". '
+            'Whisper translations are always generated in English.'
+        )
+    if args.task == 'translate' and args.model.endswith('.en'):
+        parser.error(
+            f'Model "{args.model}" is English-only and cannot translate. '
+            'Use a multilingual non-Turbo model, such as "medium" or "large". '
+            'Whisper translations are always generated in English.'
+        )
 
     video_path = args.input_path
     output_dir = args.output_dir
@@ -114,13 +136,17 @@ def main():
         subtitles_dir = os.path.join(final_output_dir, 'subtitles')
         os.makedirs(subtitles_dir, exist_ok=True)
 
-        ass_path = generate_transcriptions(video_path, subtitles_dir, style_options, args.lang, args.task)
+        json_path, srt_path, ass_path = generate_transcriptions(
+            video_path, subtitles_dir, style_options, args.lang, args.task, args.model
+        )
         output_path = embed_subtitles(video_path, ass_path, final_output_dir, args.lang)
         
         print(f'Files saved in: {final_output_dir}')
 
     else:
-        ass_path = generate_transcriptions(video_path, output_dir, style_options, args.lang, args.task)
+        json_path, srt_path, ass_path = generate_transcriptions(
+            video_path, output_dir, style_options, args.lang, args.task, args.model
+        )
         output_path = embed_subtitles(video_path, ass_path, output_dir, args.lang)
         
         srt_path = ass_path.replace('.ass', '.srt')
