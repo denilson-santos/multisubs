@@ -37,7 +37,7 @@ flowchart LR
 | multisubs/cli.py | Defines the console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | main() |
 | multisubs/transcriber.py | Loads WhisperX, transcribes audio, aligns words, builds readable cues, and writes JSON/SRT/ASS artifacts. | generate_transcriptions() |
 | multisubs/subtitler.py | Invokes FFmpeg to burn the generated ASS file into a copy of the input video. | embed_subtitles() |
-| multisubs/config.py | Defines the default ASS style dictionary used by the CLI and ASS writer. | DEFAULT_STYLE |
+| multisubs/config.py | Defines supported language and model choices plus the default ASS style dictionary. | SUPPORTED_LANGUAGES, MODELS, DEFAULT_STYLE |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
 | multisubs/models.py | Defines typed internal request and artifact value objects. | RunRequest, RunArtifacts, TranscriptionPaths |
@@ -46,7 +46,7 @@ flowchart LR
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and verifies that the input exists, the output path is not an existing file, and all style values are valid.
+2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, and all style values are valid.
 3. For a translation task, the CLI rejects turbo and English-only model names before model loading.
 4. The CLI validates FFmpeg's executable and subtitles filter, then creates a private temporary work directory inside the output directory.
 5. generate_transcriptions() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
@@ -122,7 +122,7 @@ get_unique_path() and get_unique_dir_path() append (1), (2), and so on when a ta
 
 ### WhisperX and PyTorch
 
-The transcriber owns all model interaction. It chooses the compute device, calls the transcription API, then requests an alignment model for the detected or requested language. Silero VAD is explicitly selected to avoid the default Pyannote VAD dependency path and its compatibility constraints. Because the installed WhisperX release eagerly imports Pyannote's optional speaker-embedding support, Silero model setup temporarily blocks that unused ONNX Runtime import; this avoids a benign DRM discovery warning without changing PyTorch/CUDA inference.
+The transcriber owns all model interaction. It chooses the compute device, calls the transcription API, then requests an alignment model for the detected or requested language. The public CLI limits source-language choices to codes with a default alignment model in the installed WhisperX release. Silero VAD is explicitly selected to avoid the default Pyannote VAD dependency path and its compatibility constraints. Because the installed WhisperX release eagerly imports Pyannote's optional speaker-embedding support, Silero model setup temporarily blocks that unused ONNX Runtime import; this avoids a benign DRM discovery warning without changing PyTorch/CUDA inference.
 
 ### FFmpeg
 
@@ -136,6 +136,7 @@ RenderingError with a bounded diagnostic while preserving the original cause.
 - The pipeline is synchronous and processes one video at a time.
 - Subtitle rendering is a hard-subtitle operation, not muxing a selectable subtitle track.
 - Translation has an English-only target and requires a multilingual non-Turbo Whisper model.
+- Supported source languages must have a default word-alignment model in the installed WhisperX release.
 - Artifact cleanup happens only after subtitle rendering returns successfully.
 - File collision avoidance is a required safety property, not merely a convenience.
 - Final media is published only after FFmpeg succeeds; temporary output is never presented as a completed video.

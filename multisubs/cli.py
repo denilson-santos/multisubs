@@ -12,8 +12,8 @@ from pathlib import Path
 from . import __version__
 from .config import (
     DEFAULT_STYLE,
+    MODELS,
     SUPPORTED_LANGUAGES,
-    WHISPER_MODELS,
     parse_style_option,
     validate_style_options,
 )
@@ -80,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-m",
         "--model",
         default="turbo",
-        choices=WHISPER_MODELS,
+        choices=MODELS,
         metavar="MODEL",
         help="Whisper model; translation requires a multilingual non-Turbo model.",
     )

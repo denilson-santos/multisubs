@@ -41,6 +41,16 @@ def test_missing_input_is_argparse_error(tmp_path: Path):
     assert error.value.code == 2
 
 
+def test_language_without_default_alignment_model_is_rejected(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(["-i", str(input_path), "--lang", "af"])
+
+    assert error.value.code == 2
+
+
 def test_translation_restriction_is_rejected_before_processing(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")

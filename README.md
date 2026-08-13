@@ -90,7 +90,7 @@ multisubs \
 | --- | --- | --- |
 | -i, --input-path PATH | required | Path to one input video file. |
 | -o, --output-dir DIR | current directory | Directory for generated files. |
-| -l, --lang CODE | en | Source-language code accepted by Whisper. |
+| -l, --lang CODE | en | Source-language code with a default WhisperX alignment model. |
 | -t, --task TASK | transcribe | Either transcribe or translate. Translation output is always English. |
 | -m, --model MODEL | turbo | Whisper model: tiny.en, tiny, base.en, base, small.en, small, medium.en, medium, large, or turbo. |
 | -k, --keep-transcriptions | off | Retain JSON, SRT, and ASS files in a structured output directory. |
@@ -98,6 +98,15 @@ multisubs \
 | -h, --help | — | Show every CLI option and accepted language code. |
 
 Translation cannot use turbo or an English-only model ending in .en. Use a multilingual model such as medium or large instead.
+
+Supported source-language codes are limited to languages with a default
+word-alignment model in the installed WhisperX release:
+
+~~~
+ar, ca, cs, da, de, el, en, es, eu, fa, fi, fr, gl, he, hi, hr, hu, id,
+it, ja, ka, ko, lv, ml, nl, nn, no, pl, pt, ro, ru, sk, sl, sv, te, tl,
+tr, uk, ur, vi, zh
+~~~
 
 ### Style options
 
