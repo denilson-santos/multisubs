@@ -51,6 +51,8 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-10 | With --keep-transcriptions, the tool must retain JSON, SRT, and ASS files in a subtitles subdirectory next to the rendered video. |
 | FR-11 | Without --keep-transcriptions, a successful run must retain the JSON transcript and remove the temporary SRT and ASS files after rendering. |
 | FR-12 | Generated files and output directories must receive a numeric suffix when a collision would otherwise occur. |
+| FR-13 | Invalid arguments and paths must exit with a non-zero status before model loading; processing and rendering failures must also exit non-zero with an actionable diagnostic. |
+| FR-14 | Transient connection failures while loading WhisperX model, VAD, or alignment assets must be retried automatically before the processing run is reported as failed. |
 
 ## Non-functional requirements
 
@@ -59,7 +61,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | Runtime | Run locally through a Python CLI. Use CUDA when available; otherwise support CPU inference. |
 | Compatibility | Require Python 3.10 or newer and a system FFmpeg installation with subtitle rendering support. |
 | Traceability | Include source path, selected language, task, model, creation time, duration, and segment count in the JSON output. |
-| Usability | Show progress for model loading, transcription, alignment, artifact generation, and subtitle rendering. |
+| Usability | Show progress for model loading, transcription, alignment, artifact generation, subtitle rendering, and model-load retries. |
 | Safety | Do not overwrite existing output files or directories. |
 | Caption readability | Aim for at most two subtitle lines, with a preferred line length of 42 characters and timing-aware cue splitting. |
 
@@ -81,11 +83,13 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 5. A translation request using turbo or an English-only model is rejected before transcription begins.
 6. The JSON output contains metadata and timed subtitle segments.
 7. A user can change an exposed style option and see it reflected in the generated ASS style definition and rendered video.
+8. Invalid input exits non-zero without loading a model, and a failed render does not publish a partial final video.
+9. A transient model or alignment connection failure is retried automatically, while a deterministic loading failure is surfaced without unnecessary retries.
 
 ## Constraints and risks
 
 - Model quality, alignment quality, and processing time depend on source audio, selected language, selected model, and available hardware.
-- Initial use may require model downloads.
+- Initial use may require model downloads; temporary connection failures during those downloads are retried, but a stable network connection is still required when assets are not cached.
 - FFmpeg builds without the required subtitle rendering support, or hosts without the requested font, can prevent expected rendering.
 - Generated hard subtitles cannot be turned off after the video is created.
 

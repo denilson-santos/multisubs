@@ -23,6 +23,12 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ~~~
 
+To install the development and verification tools as well, use:
+
+~~~
+python -m pip install -e '.[dev]'
+~~~
+
 Confirm that FFmpeg and the CLI are available:
 
 ~~~
@@ -30,7 +36,17 @@ ffmpeg -version
 multisubs --help
 ~~~
 
-The first transcription can download model assets required by WhisperX.
+The first transcription can download model assets required by WhisperX. If a
+model, VAD, or alignment download is interrupted by a temporary connection
+failure, multisubs retries that load up to three times with a short
+exponential backoff. A stable network connection is still required when the
+assets are not already cached.
+
+The default Silero VAD path does not require ONNX Runtime. WhisperX currently
+imports an optional Pyannote speaker-embedding module during model setup; this
+project isolates that unused import so hosts without a complete Linux DRM
+sysfs tree do not show ONNX Runtime's harmless GPU-discovery warning. CUDA
+selection remains controlled by PyTorch and is unaffected by this isolation.
 
 ## Quick start
 
@@ -100,6 +116,11 @@ Color values are passed through to ASS. Quote values containing shell-significan
 --style-primary-color '&H00FFFFFF'
 ~~~
 
+Style values are validated before model loading. Colors must use ASS hexadecimal
+notation (`&H` followed by 6 or 8 hexadecimal digits), numeric values must be
+finite and in their supported ranges, and font names cannot contain commas or
+line breaks.
+
 ## Generated files
 
 For an input named video.mp4 and language pt:
@@ -109,9 +130,34 @@ For an input named video.mp4 and language pt:
 
 If a target file or directory already exists, multisubs adds a numeric suffix such as (1) instead of overwriting it.
 
+Transcription and rendering first run in a private temporary directory inside
+the requested output directory. Completed artifacts are published only after
+FFmpeg succeeds. If processing fails, the temporary directory is retained so
+the generated artifacts and the original error context remain available for
+diagnosis.
+
 The rendered subtitle video contains hard subtitles: they are part of the image and cannot be toggled off in a player. The audio stream is copied during rendering.
 
 See [docs/prd.md](docs/prd.md) for product scope and [docs/architecture.md](docs/architecture.md) for implementation details.
+
+## Exit status and verification
+
+The command exits with status `0` after a successful render, `2` for invalid
+arguments or paths, and `1` for dependency, transcription, artifact, or FFmpeg
+failures. Normal progress is written to standard output; diagnostics are sent
+to standard error.
+
+The default development checks are:
+
+~~~
+python -m compileall multisubs
+ruff format --check .
+ruff check .
+pyright
+python -m pytest
+python -m build
+twine check dist/*
+~~~
 
 ## Current limitations
 

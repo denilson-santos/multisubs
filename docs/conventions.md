@@ -12,7 +12,9 @@ The terms below communicate the strength of a convention:
 - **Should**: the default choice; deviate only with a documented reason.
 - **May**: an optional practice that is useful in the stated circumstances.
 
-Some quality tools named here are recommended but are not yet project dependencies or CI checks. Do not assume they are installed until their configuration is added to pyproject.toml and the project automation.
+The repository's `dev` extra configures the recommended local quality tools.
+CI automation is still intentionally out of scope; do not assume an external CI
+service is present.
 
 ## Convention hierarchy
 
@@ -42,7 +44,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep runtime dependencies and the multisubs console-script entry point in pyproject.toml.
 - Must use PEP 621 project metadata rather than introducing a second packaging configuration unless there is a compelling limitation.
 - Should keep release metadata complete: description, README reference, license, classifiers, project URLs, and supported Python versions.
-- Should use one authoritative package version. The current version appears in both pyproject.toml and multisubs/__init__.py; before a release workflow is introduced, choose one source and derive the other rather than updating them independently.
+- Must use one authoritative package version. `multisubs.__version__` is the source of truth and `pyproject.toml` derives its version dynamically.
 - Should build and install a wheel from a clean environment before publishing a release.
 
 ### Dependency changes

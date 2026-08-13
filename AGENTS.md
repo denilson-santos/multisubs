@@ -20,7 +20,10 @@ Read the relevant project documentation before changing behavior:
 | multisubs/subtitler.py | FFmpeg invocation that burns an ASS file into the output video. |
 | multisubs/config.py | Default ASS style values. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
+| multisubs/errors.py | User-actionable error types at module boundaries. |
+| multisubs/models.py | Typed internal request and artifact contracts. |
 | pyproject.toml | Package metadata, dependencies, and the multisubs console-script entry point. |
+| tests/ | Hermetic unit tests plus opt-in integration tests for external boundaries. |
 | README.md | User documentation; consult it for public CLI and installation behavior. |
 | docs/prd.md | Product requirements and scope; consult it before changing user-facing behavior or priorities. |
 | docs/architecture.md | Technical design; consult it before changing the pipeline, data shape, output lifecycle, or external boundaries. |
@@ -36,6 +39,8 @@ source .venv/bin/activate
 python -m pip install -e .
 ~~~
 
+Install development checks with `python -m pip install -e '.[dev]'`.
+
 For code-only changes, run:
 
 ~~~
@@ -43,7 +48,7 @@ python -m compileall multisubs
 multisubs --help
 ~~~
 
-There is currently no committed automated test suite. Do not run a full transcription as a routine smoke test: model loading may download assets and use substantial CPU, GPU, memory, and time. Run it only when the change needs end-to-end validation and a small non-sensitive video is available.
+Run the hermetic suite with `python -m pytest`. Do not run a full transcription as a routine smoke test: model loading may download assets and use substantial CPU, GPU, memory, and time. Run it only when the change needs end-to-end validation and a small non-sensitive video is available.
 
 ## Change guidelines
 
