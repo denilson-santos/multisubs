@@ -66,45 +66,48 @@ def embed_subtitles(
     destination_dir = _normalise_output_dir(output_dir)
     final_path = _choose_output_path(source_path, destination_dir, lang, output_path)
     temporary_path = _temporary_media_path(final_path)
-    ffmpeg = _load_ffmpeg_python()
-
-    _report(progress, f"Rendering subtitles into '{final_path.name}'...")
     try:
-        output_stream = _build_output_stream(
-            ffmpeg, source_path, subtitle_path, temporary_path
-        )
-        output_stream.run(
-            overwrite_output=True, capture_stdout=True, capture_stderr=True
-        )
-    except ffmpeg.Error as exc:
-        raise RenderingError(
-            f"FFmpeg could not render subtitles into '{final_path}': "
-            f"{_short_output(_error_output(exc))}"
-        ) from exc
-    except OSError as exc:
-        raise RenderingError(f"FFmpeg could not render '{source_path}': {exc}") from exc
+        ffmpeg = _load_ffmpeg_python()
 
-    try:
-        if final_path.exists():
-            if output_path is not None:
-                raise ArtifactError(
-                    f"Refusing to overwrite existing output '{final_path}'"
-                )
-            final_path = Path(get_unique_path(final_path))
-        os.replace(temporary_path, final_path)
-    except OSError as exc:
-        raise ArtifactError(
-            f"Could not publish rendered video '{final_path}': {exc}"
-        ) from exc
+        _report(progress, f"Rendering subtitles into '{final_path.name}'...")
+        try:
+            output_stream = _build_output_stream(
+                ffmpeg, source_path, subtitle_path, temporary_path
+            )
+            output_stream.run(
+                overwrite_output=True, capture_stdout=True, capture_stderr=True
+            )
+        except ffmpeg.Error as exc:
+            raise RenderingError(
+                f"FFmpeg could not render subtitles into '{final_path}': "
+                f"{_short_output(_error_output(exc))}"
+            ) from exc
+        except OSError as exc:
+            raise RenderingError(
+                f"FFmpeg could not render '{source_path}': {exc}"
+            ) from exc
+
+        try:
+            if os.path.lexists(final_path):
+                if output_path is not None:
+                    raise ArtifactError(
+                        f"Refusing to overwrite existing output '{final_path}'"
+                    )
+                final_path = Path(get_unique_path(final_path))
+            os.replace(temporary_path, final_path)
+        except OSError as exc:
+            raise ArtifactError(
+                f"Could not publish rendered video '{final_path}': {exc}"
+            ) from exc
+
+        _report(progress, "Subtitle video rendered successfully.")
+        return str(final_path)
     finally:
         if temporary_path.exists():
             try:
                 temporary_path.unlink()
             except OSError:
                 pass
-
-    _report(progress, "Subtitle video rendered successfully.")
-    return str(final_path)
 
 
 def _require_file(path: str | Path, label: str) -> Path:
@@ -177,12 +180,11 @@ def _build_output_stream(
     ass_path: Path,
     output_path: Path,
 ) -> Any:
-    """Build a mapped graph using structured filter arguments for safe escaping."""
+    """Build a graph with safe paths and an optional audio stream mapping."""
     input_stream = ffmpeg.input(str(input_path))
     video_stream = input_stream.video.filter("subtitles", filename=str(ass_path))
-    return ffmpeg.output(
-        video_stream, input_stream.audio, str(output_path), acodec="copy"
-    )
+    audio_stream = input_stream["a?"]
+    return ffmpeg.output(video_stream, audio_stream, str(output_path), acodec="copy")
 
 
 def _error_output(error: Any) -> str:

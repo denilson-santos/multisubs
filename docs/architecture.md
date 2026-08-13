@@ -53,8 +53,8 @@ flowchart LR
 6. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
 7. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies duration and text-length limits as fallbacks.
 8. The transcriber validates external timestamps, writes UTF-8 JSON/SRT/ASS files atomically, and preserves only JSON-compatible aligned-word metadata.
-9. embed_subtitles() passes the input video and ASS path through structured ffmpeg-python filter arguments, copying the audio stream into a temporary rendered output.
-10. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain that directory for diagnosis.
+9. embed_subtitles() passes the input video and ASS path through structured ffmpeg-python filter arguments, copying available audio streams into a temporary rendered output when present.
+10. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain transcription artifacts in that directory for diagnosis, while the renderer removes its partial temporary media.
 
 ## Subtitle-cue construction
 
@@ -128,7 +128,7 @@ The transcriber owns all model interaction. It chooses the compute device, calls
 
 subtitler.py owns video rendering. It checks that the FFmpeg executable and
 subtitles filter are available, uses structured filter arguments for safe paths,
-and requests audio stream copying. FFmpeg failures are wrapped in a
+and requests copying of any available audio streams. FFmpeg failures are wrapped in a
 RenderingError with a bounded diagnostic while preserving the original cause.
 
 ## Design constraints
@@ -137,7 +137,7 @@ RenderingError with a bounded diagnostic while preserving the original cause.
 - Subtitle rendering is a hard-subtitle operation, not muxing a selectable subtitle track.
 - Translation has an English-only target and requires a multilingual non-Turbo Whisper model.
 - Supported source languages must have a default word-alignment model in the installed WhisperX release.
-- Artifact cleanup happens only after subtitle rendering returns successfully.
+- Completed transcription artifacts are cleaned only after subtitle rendering returns successfully; partial renderer media is cleaned on both success and failure.
 - File collision avoidance is a required safety property, not merely a convenience.
 - Final media is published only after FFmpeg succeeds; temporary output is never presented as a completed video.
 - CLI diagnostics use non-zero exit statuses for validation and processing failures.

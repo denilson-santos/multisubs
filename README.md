@@ -145,7 +145,7 @@ FFmpeg succeeds. If processing fails, the temporary directory is retained so
 the generated artifacts and the original error context remain available for
 diagnosis.
 
-The rendered subtitle video contains hard subtitles: they are part of the image and cannot be toggled off in a player. The audio stream is copied during rendering.
+The rendered subtitle video contains hard subtitles: they are part of the image and cannot be toggled off in a player. Available audio streams are copied during rendering; video-only inputs are supported.
 
 See [docs/prd.md](docs/prd.md) for product scope and [docs/architecture.md](docs/architecture.md) for implementation details.
 
