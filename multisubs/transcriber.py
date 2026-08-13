@@ -1,163 +1,476 @@
-import os
-import json
-from datetime import datetime
-import torch
-import whisperx
-from .config import DEFAULT_STYLE
-from .utils import get_unique_path
+"""WhisperX transcription, cue construction, and subtitle serialization."""
 
-WHISPER_MODELS = (
-    "tiny.en", "tiny", "base.en", "base", "small.en", "small",
-    "medium.en", "medium", "large", "turbo",
+from __future__ import annotations
+
+import json
+import math
+import sys
+import time
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from numbers import Real
+from pathlib import Path
+from typing import Any, cast
+
+from .config import (
+    ASS_STYLE_FIELDS,
+    validate_style_options,
 )
+from .config import (
+    DEFAULT_STYLE as _DEFAULT_STYLE,
+)
+from .config import (
+    WHISPER_MODELS as _WHISPER_MODELS,
+)
+from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
+from .models import TranscriptionPaths
+from .utils import atomic_write_text, find_unique_stem
 
 MAX_CHARS_PER_LINE = 42
-# Two lines are the hard cue limit.  The line limit itself is a target: a
-# small overflow is preferable to splitting a syntactic unit at an awkward
-# point.
 MAX_CHARS_PER_CUE = MAX_CHARS_PER_LINE * 2
 MAX_LINE_OVERFLOW = 6
 MIN_CHARS_PER_LINE = 15
 MAX_CUE_DURATION = 6.0
 PAUSE_BREAK_THRESHOLD = 0.45
+MODEL_LOAD_ATTEMPTS = 3
+MODEL_RETRY_BASE_DELAY_SECONDS = 1.0
+
+_RETRYABLE_MODEL_ERROR_MARKERS = (
+    "connection",
+    "connection reset",
+    "remote end closed",
+    "remote protocol",
+    "server disconnected",
+    "server error",
+    "temporarily unavailable",
+    "timed out",
+    "timeout",
+    "too many requests",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "http 429",
+    "http 500",
+    "http 502",
+    "http 503",
+    "http 504",
+)
+
+ProgressReporter = Callable[[str], None] | None
+_SKIP_JSON_VALUE = object()
+
+# Keep the constants available from their historical module location for
+# callers that imported them while the CLI now owns the canonical definitions.
+DEFAULT_STYLE = _DEFAULT_STYLE
+WHISPER_MODELS = _WHISPER_MODELS
 
 
 def generate_transcriptions(
-    input_path,
-    output_dir,
-    style_options=None,
-    lang='en',
-    task='transcribe',
-    model_name='turbo',
-):
+    input_path: str | Path,
+    output_dir: str | Path,
+    style_options: Mapping[str, str | int] | None = None,
+    lang: str = "en",
+    task: str = "transcribe",
+    model_name: str = "turbo",
+    *,
+    progress: ProgressReporter = None,
+) -> tuple[str, str, str]:
+    """Generate JSON, SRT, and ASS files for one local video.
+
+    The established tuple return value is preserved for programmatic callers.
+    Heavy runtime dependencies are loaded only after the input and output have
+    been validated.
     """
-    Generates transcriptions for a video file using WhisperX.
-    Creates JSON, SRT, and ASS files simultaneously.
+    source_path = _normalise_input_path(input_path)
+    destination_dir = _normalise_output_dir(output_dir)
+    style = validate_style_options(style_options)
 
-    Args:
-        input_path (str): Path to the video file.
-        output_dir (str): Directory to save the transcription files.
-        style_options (dict, optional): Options to customize the subtitle style. Defaults to None.
-        lang (str, optional): Language for transcription. Defaults to 'en'.
-        task (str, optional): Transcribe, or translate speech to English. Defaults to 'transcribe'.
-        model_name (str, optional): Whisper model name. Defaults to 'turbo'.
+    _report(progress, f"Generating transcripts for '{source_path.name}'...")
+    torch, whisperx = _load_runtime_dependencies()
+    device, compute_type = _select_compute_configuration(torch)
 
-    Returns:
-        tuple: (json_path, srt_path, ass_path)
-    """
-    file_name, file_ext = os.path.splitext(os.path.basename(input_path))
-    print(f"Generating video transcripts '{file_name+file_ext}' for folder '{output_dir}'...\n")
-    os.makedirs(output_dir, exist_ok=True)
+    _report(
+        progress,
+        f"Loading WhisperX model '{model_name}' on {device} ({compute_type})...",
+    )
+    try:
+        model = _load_model_with_retries(
+            lambda: _load_silero_whisperx_model(
+                whisperx,
+                model_name=model_name,
+                device=device,
+                compute_type=compute_type,
+                language=lang or None,
+                task=task,
+            ),
+            operation=f"Loading WhisperX model '{model_name}'",
+            progress=progress,
+        )
+    except Exception as exc:  # WhisperX has no stable public error hierarchy.
+        raise TranscriptionError(
+            f"Could not load WhisperX model '{model_name}' on {device}: {exc}"
+        ) from exc
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute_type = "float16" if device == "cuda" else "int8"
+    _report(progress, "Transcribing audio...")
+    try:
+        audio = whisperx.load_audio(str(source_path))
+        result = model.transcribe(audio)
+    except Exception as exc:  # Enrich the external boundary with source context.
+        raise TranscriptionError(
+            f"Could not transcribe '{source_path}': {exc}"
+        ) from exc
 
-    print(f"Loading WhisperX model '{model_name}' on {device} ({compute_type})...")
-    model = whisperx.load_model(
-        model_name,
-        device,
-        compute_type=compute_type,
-        language=lang or None,
+    result_mapping = _require_mapping(result, "WhisperX transcription result")
+    raw_segments = _require_sequence(
+        result_mapping.get("segments"), "transcription segments"
+    )
+    detected_language = _result_language(result_mapping, lang)
+
+    _report(progress, "Aligning words for subtitle timing...")
+    try:
+        align_model, align_metadata = _load_model_with_retries(
+            lambda: whisperx.load_align_model(
+                language_code=detected_language,
+                device=device,
+            ),
+            operation=f"Loading alignment model for '{detected_language}'",
+            progress=progress,
+        )
+        aligned_result = whisperx.align(
+            raw_segments,
+            align_model,
+            align_metadata,
+            audio,
+            device,
+            return_char_alignments=False,
+        )
+    except Exception as exc:  # WhisperX alignment errors are dependency-specific.
+        raise TranscriptionError(
+            f"Could not align transcript words for '{source_path}': {exc}"
+        ) from exc
+
+    aligned_mapping = _require_mapping(aligned_result, "WhisperX alignment result")
+    aligned_segments = _require_sequence(
+        aligned_mapping.get("segments"), "aligned segments"
+    )
+    segments = _build_subtitle_segments(aligned_segments)
+    _validate_subtitle_segments(segments)
+
+    full_text = _result_full_text(result_mapping, segments)
+    paths = _choose_transcription_paths(destination_dir, source_path.stem, lang)
+
+    _write_json(
+        paths.json_path,
+        full_text=full_text,
+        segments=segments,
+        file_name=source_path.stem,
+        lang=lang,
+        input_path=source_path,
         task=task,
-        # Avoid WhisperX's default Pyannote VAD, which requires a PyTorch/
-        # cuDNN build compatible with the installed Pyannote checkpoint.
-        vad_method="silero",
+        model_name=model_name,
     )
+    _report(progress, "Completed JSON transcript.")
 
-    print("Transcribing audio...")
-    audio = whisperx.load_audio(input_path)
-    result = model.transcribe(audio)
+    _write_srt(paths.srt_path, segments)
+    _report(progress, "Completed SRT transcript.")
 
-    print("Aligning words for subtitle timing...")
-    align_model, align_metadata = whisperx.load_align_model(
-        language_code=result.get('language', lang),
-        device=device,
-    )
-    aligned_result = whisperx.align(
-        result['segments'],
-        align_model,
-        align_metadata,
-        audio,
-        device,
-        return_char_alignments=False,
-    )
-    segments = _build_subtitle_segments(aligned_result['segments'])
-
-    full_text = result.get('text') or ' '.join(
-        segment['text'].strip() for segment in segments if segment['text'].strip()
-    )
-
-    # Generate all output files
-    json_path = _save_transcription_json(
-        full_text, segments, output_dir, file_name, lang, input_path, task, model_name
-    )
-    print("Completed JSON transcript!\n")
-
-    srt_path = _generate_srt_file(segments, output_dir, file_name, lang)
-    print("Completed SRT transcript!\n")
-
-    ass_path = _generate_ass_file(segments, output_dir, file_name, lang, style_options)
-    print("Completed ASS transcript!\n")
-
-    return json_path, srt_path, ass_path
+    _write_ass(paths.ass_path, segments, style)
+    _report(progress, "Completed ASS transcript.")
+    return paths.as_tuple()
 
 
-def _build_subtitle_segments(aligned_segments):
-    """Build readable subtitle cues from WhisperX word timestamps.
+def _normalise_input_path(input_path: str | Path) -> Path:
+    source_path = Path(input_path).expanduser().resolve(strict=False)
+    if not source_path.exists() or not source_path.is_file():
+        raise ValidationError(f"Video file not found at '{input_path}'")
+    return source_path
 
-    Words from consecutive WhisperX segments are considered together.  Cue
-    boundaries are preferred at sentence punctuation and meaningful pauses;
-    character and duration limits are used as fallbacks when no semantic
-    boundary is available.
+
+def _normalise_output_dir(output_dir: str | Path) -> Path:
+    destination_dir = Path(output_dir).expanduser().resolve(strict=False)
+    if destination_dir.exists() and not destination_dir.is_dir():
+        raise ValidationError(
+            f"Output path '{output_dir}' is a file; provide a directory instead"
+        )
+    try:
+        destination_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ArtifactError(
+            f"Could not create output directory '{destination_dir}': {exc}"
+        ) from exc
+    return destination_dir
+
+
+def _load_runtime_dependencies() -> tuple[Any, Any]:
+    try:
+        import torch
+    except ImportError as exc:
+        raise DependencyError("PyTorch is required to transcribe video") from exc
+
+    try:
+        import whisperx
+    except ImportError as exc:
+        raise DependencyError("WhisperX is required to transcribe video") from exc
+    return torch, whisperx
+
+
+def _load_silero_whisperx_model(
+    whisperx: Any,
+    *,
+    model_name: str,
+    device: str,
+    compute_type: str,
+    language: str | None,
+    task: str,
+) -> Any:
+    """Load WhisperX's Silero pipeline without an unused Pyannote ONNX probe.
+
+    WhisperX 3.8 imports Pyannote's optional speaker-embedding module while
+    importing its ASR implementation. That module imports ONNX Runtime even
+    though this application explicitly selects the TorchScript Silero VAD.
+    On hosts without a complete DRM sysfs tree, ONNX Runtime emits a harmless
+    GPU-discovery warning during that unused import. Temporarily blocking only
+    that optional import avoids the warning without changing PyTorch/CUDA
+    selection or the Silero VAD implementation.
     """
-    cues = []
-    pending_words = []
+    with _block_optional_onnxruntime_import():
+        return whisperx.load_model(
+            model_name,
+            device,
+            compute_type=compute_type,
+            language=language,
+            task=task,
+            vad_method="silero",
+        )
 
-    for segment in aligned_segments:
+
+@contextmanager
+def _block_optional_onnxruntime_import():
+    """Prevent an unused optional ONNX Runtime import during Silero setup."""
+    module_name = "onnxruntime"
+    if module_name in sys.modules:
+        yield
+        return
+
+    # An import entry set to None makes importlib raise ModuleNotFoundError,
+    # which Pyannote already handles as its optional ONNX dependency path.
+    sys.modules[module_name] = cast(Any, None)
+    try:
+        yield
+    finally:
+        sys.modules.pop(module_name, None)
+
+
+def _load_model_with_retries(
+    loader: Callable[[], Any],
+    *,
+    operation: str,
+    progress: ProgressReporter,
+    attempts: int = MODEL_LOAD_ATTEMPTS,
+    base_delay_seconds: float = MODEL_RETRY_BASE_DELAY_SECONDS,
+) -> Any:
+    """Retry transient model-download failures before giving up.
+
+    WhisperX may load several assets through Hugging Face and Torch Hub. A
+    connection can close after an asset has been partially cached, so a short
+    exponential backoff often lets a subsequent attempt resume successfully.
+    Deterministic failures are raised immediately and are never retried.
+    """
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return loader()
+        except Exception as exc:  # External model loaders have no shared error type.
+            last_error = exc
+            if attempt >= attempts or not _is_retryable_model_error(exc):
+                raise
+
+            delay = base_delay_seconds * (2 ** (attempt - 1))
+            _report(
+                progress,
+                f"{operation} encountered a temporary connection error; "
+                f"retrying ({attempt + 1}/{attempts}) in {delay:g}s...",
+            )
+            time.sleep(delay)
+
+    # The loop either returns or raises, but retaining this guard keeps the
+    # helper safe if its attempt count is changed to an invalid value later.
+    if last_error is not None:
+        raise last_error
+    raise ValueError("Model load attempts must be greater than zero")
+
+
+def _is_retryable_model_error(error: BaseException) -> bool:
+    """Identify connection-like errors without retrying local configuration errors."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (ConnectionError, TimeoutError)):
+            return True
+
+        exception_name = type(current).__name__.lower()
+        if any(marker in exception_name for marker in ("connection", "timeout")):
+            return True
+
+        message = str(current).lower()
+        if any(marker in message for marker in _RETRYABLE_MODEL_ERROR_MARKERS):
+            return True
+
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _select_compute_configuration(torch: Any) -> tuple[str, str]:
+    try:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception as exc:
+        raise DependencyError(
+            f"Could not determine the available compute device: {exc}"
+        ) from exc
+    return (device, "float16" if device == "cuda" else "int8")
+
+
+def _require_mapping(value: object, description: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TranscriptionError(f"WhisperX returned an invalid {description}")
+    return value
+
+
+def _require_sequence(value: object, description: str) -> Sequence[object]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TranscriptionError(f"WhisperX returned invalid {description}")
+    return value
+
+
+def _result_language(result: Mapping[str, Any], requested_language: str) -> str:
+    language = result.get("language")
+    return language if isinstance(language, str) and language else requested_language
+
+
+def _result_full_text(
+    result: Mapping[str, Any], segments: Sequence[Mapping[str, Any]]
+) -> str:
+    text = result.get("text")
+    if isinstance(text, str) and text.strip():
+        return _normalise_display_text(text)
+    return " ".join(segment["text"].replace("\n", " ") for segment in segments).strip()
+
+
+def _choose_transcription_paths(
+    output_dir: Path,
+    file_name: str,
+    lang: str,
+) -> TranscriptionPaths:
+    stem = find_unique_stem(
+        output_dir, f"{file_name}-{lang}", (".json", ".srt", ".ass")
+    )
+    return TranscriptionPaths(
+        json_path=output_dir / f"{stem}.json",
+        srt_path=output_dir / f"{stem}.srt",
+        ass_path=output_dir / f"{stem}.ass",
+    )
+
+
+def _build_subtitle_segments(
+    aligned_segments: Sequence[object],
+) -> list[dict[str, Any]]:
+    """Build readable cues from WhisperX word timestamps and coarse fallbacks."""
+    cues: list[dict[str, Any]] = []
+    pending_words: list[dict[str, Any]] = []
+
+    for raw_segment in aligned_segments:
+        segment = _require_mapping(raw_segment, "aligned segment")
         words = _timed_words(segment)
         if words:
-            # WhisperX may split one grammatical sentence into multiple ASR
-            # segments.  Keeping the words in one stream lets the subtitle
-            # logic choose a better boundary than the ASR segmentation.
+            _validate_word_order(pending_words, words)
             pending_words.extend(words)
             continue
 
-        # Alignment can occasionally return a segment without word-level
-        # timestamps.  Flush the aligned stream before using its coarse
-        # segment as a safe fallback.
         if pending_words:
             cues.extend(_build_cues_from_words(pending_words))
             pending_words = []
-        _append_cue(
-            cues,
-            segment.get('text', ''),
-            segment.get('start', 0.0),
-            segment.get('end', 0.0),
-            [],
-        )
+
+        start, end = _segment_times(segment)
+        _append_cue(cues, segment.get("text", ""), start, end, [])
 
     if pending_words:
         cues.extend(_build_cues_from_words(pending_words))
 
-    for idx, cue in enumerate(cues):
-        cue['id'] = idx
+    for index, cue in enumerate(cues):
+        cue["id"] = index
     return cues
 
 
-def _timed_words(segment):
-    """Return usable word timestamps from an aligned WhisperX segment."""
-    return [
-        word for word in segment.get('words', [])
-        if word.get('word', '').strip()
-        and word.get('start') is not None
-        and word.get('end') is not None
-    ]
+def _timed_words(segment: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw_words = segment.get("words", [])
+    if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
+        return []
+
+    words: list[dict[str, Any]] = []
+    for raw_word in raw_words:
+        if not isinstance(raw_word, Mapping):
+            continue
+        text = raw_word.get("word")
+        start = _finite_time(raw_word.get("start"))
+        end = _finite_time(raw_word.get("end"))
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or start is None
+            or end is None
+        ):
+            continue
+        if end < start:
+            continue
+
+        word = _json_safe_mapping(raw_word)
+        word["word"] = text
+        word["start"] = start
+        word["end"] = end
+        words.append(word)
+    return words
 
 
-def _build_cues_from_words(words):
-    """Create cues from one continuous, chronologically ordered word stream."""
-    cues = []
-    current_words = []
+def _validate_word_order(
+    previous_words: Sequence[Mapping[str, Any]],
+    next_words: Sequence[Mapping[str, Any]],
+) -> None:
+    words = [*previous_words, *next_words]
+    previous_start: float | None = None
+    for word in words:
+        start = _finite_time(word.get("start"))
+        end = _finite_time(word.get("end"))
+        if start is None or end is None or end < start:
+            raise TranscriptionError("WhisperX returned invalid word timestamps")
+        if previous_start is not None and start < previous_start:
+            raise TranscriptionError(
+                "WhisperX returned non-chronological word timestamps"
+            )
+        previous_start = start
+
+
+def _segment_times(segment: Mapping[str, Any]) -> tuple[float, float]:
+    start = _finite_time(segment.get("start"))
+    end = _finite_time(segment.get("end"))
+    if start is None or end is None or end < start:
+        raise TranscriptionError("WhisperX returned invalid segment timestamps")
+    return start, end
+
+
+def _finite_time(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    result = float(value)
+    if not math.isfinite(result) or result < 0:
+        return None
+    return result
+
+
+def _build_cues_from_words(words: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    cues: list[dict[str, Any]] = []
+    current_words: list[dict[str, Any]] = []
 
     for word in words:
         if current_words and _has_significant_pause(current_words[-1], word):
@@ -165,14 +478,8 @@ def _build_cues_from_words(words):
             current_words = []
 
         current_words.append(word)
-
-        # A long sentence can require more than one cue.  When that happens,
-        # split at the best available boundary and keep the remaining words
-        # in the next cue instead of cutting immediately before `word`.
         while current_words and _cue_exceeds_limits(current_words):
             if len(current_words) == 1:
-                # An unusually long word cannot be split without damaging the
-                # transcription.  Keep it intact as a last resort.
                 _append_words_cue(cues, current_words)
                 current_words = []
                 break
@@ -180,61 +487,54 @@ def _build_cues_from_words(words):
             break_at = _find_best_cue_break(current_words)
             if break_at <= 0 or break_at >= len(current_words):
                 break_at = len(current_words) - 1
-
             _append_words_cue(cues, current_words[:break_at])
             current_words = current_words[break_at:]
 
-        # Sentence punctuation is a stronger boundary than line balance.  A
-        # short sentence should not be forced to share a cue with the next
-        # sentence merely because it has fewer than 42 characters.
-        if current_words and _ends_sentence(current_words[-1].get('word', '')):
+        if current_words and _ends_sentence(str(current_words[-1].get("word", ""))):
             _append_words_cue(cues, current_words)
             current_words = []
 
     if current_words:
         _append_words_cue(cues, current_words)
-
     return cues
 
 
-def _append_words_cue(cues, words):
-    """Append a cue whose timing is derived from its first and last word."""
+def _append_words_cue(
+    cues: list[dict[str, Any]], words: Sequence[dict[str, Any]]
+) -> None:
     if not words:
         return
     _append_cue(
         cues,
         _words_to_text(words),
-        words[0]['start'],
-        words[-1]['end'],
-        words,
+        float(words[0]["start"]),
+        float(words[-1]["end"]),
+        list(words),
     )
 
 
-def _cue_exceeds_limits(words):
+def _cue_exceeds_limits(words: Sequence[Mapping[str, Any]]) -> bool:
     return (
         len(_words_to_text(words)) > MAX_CHARS_PER_CUE
         or _words_duration(words) > MAX_CUE_DURATION
     )
 
 
-def _words_duration(words):
-    return words[-1]['end'] - words[0]['start']
+def _words_duration(words: Sequence[Mapping[str, Any]]) -> float:
+    return float(words[-1]["end"]) - float(words[0]["start"])
 
 
-def _find_best_cue_break(words):
-    """Find the best word boundary before the cue's hard limits.
-
-    Semantic priority is the first criterion.  Distance from the character
-    and duration targets only decides between boundaries of equal quality.
-    """
+def _find_best_cue_break(words: Sequence[Mapping[str, Any]]) -> int:
+    """Select the best valid word boundary before a cue exceeds its limits."""
     candidates = [
-        index for index in range(1, len(words))
+        index
+        for index in range(1, len(words))
         if not _cue_exceeds_limits(words[:index])
     ]
     if not candidates:
         return 1
 
-    def key(index):
+    def key(index: int) -> tuple[int, float]:
         prefix = words[:index]
         character_distance = abs(MAX_CHARS_PER_CUE - len(_words_to_text(prefix)))
         duration_distance = abs(MAX_CUE_DURATION - _words_duration(prefix))
@@ -242,50 +542,64 @@ def _find_best_cue_break(words):
             character_distance / MAX_CHARS_PER_CUE
             + duration_distance / MAX_CUE_DURATION
         )
-        return _boundary_priority(words, index), -distance
+        return (_boundary_priority(words, index), -distance)
 
     return max(candidates, key=key)
 
 
-def _append_cue(cues, text, start, end, words):
-    text = text.strip()
-    if not text:
+def _append_cue(
+    cues: list[dict[str, Any]],
+    text: object,
+    start: float,
+    end: float,
+    words: Sequence[Mapping[str, Any]],
+) -> None:
+    if not isinstance(text, str):
         return
-    cues.append({
-        'id': len(cues),
-        'start': start,
-        'end': end,
-        'text': _wrap_subtitle_text(text, words),
-        'words': words,
-    })
+    normalised_text = _normalise_display_text(text)
+    if not normalised_text:
+        return
+    if end < start or start < 0:
+        raise TranscriptionError("Subtitle cue has invalid timestamps")
+    cues.append(
+        {
+            "id": len(cues),
+            "start": start,
+            "end": end,
+            "text": _wrap_subtitle_text(normalised_text, words),
+            "words": [dict(word) for word in words],
+        }
+    )
 
 
-def _words_to_text(words):
-    return ' '.join(word['word'].strip() for word in words).strip()
+def _words_to_text(words: Sequence[Mapping[str, Any]]) -> str:
+    return " ".join(str(word["word"]).strip() for word in words).strip()
 
 
-def _ends_sentence(word):
-    return word.rstrip().endswith(('.', '!', '?', '…'))
+def _ends_sentence(word: str) -> bool:
+    return word.rstrip().endswith((".", "!", "?", "…"))
 
 
-def _ends_clause(word):
-    return word.rstrip().endswith((',', ';', ':', '—', '–'))
+def _ends_clause(word: str) -> bool:
+    return word.rstrip().endswith((",", ";", ":", "—", "–"))
 
 
-def _has_significant_pause(previous_word, next_word):
-    previous_end = previous_word.get('end')
-    next_start = next_word.get('start')
-    if previous_end is None or next_start is None:
-        return False
-    return next_start - previous_end >= PAUSE_BREAK_THRESHOLD
+def _has_significant_pause(
+    previous_word: Mapping[str, Any], next_word: Mapping[str, Any]
+) -> bool:
+    previous_end = _finite_time(previous_word.get("end"))
+    next_start = _finite_time(next_word.get("start"))
+    return (
+        previous_end is not None
+        and next_start is not None
+        and next_start - previous_end >= PAUSE_BREAK_THRESHOLD
+    )
 
 
-def _boundary_priority(words, index):
-    """Return the language-independent priority of a word boundary."""
+def _boundary_priority(words: Sequence[Mapping[str, Any]], index: int) -> int:
     previous_word = words[index - 1]
     next_word = words[index]
-    previous_text = previous_word.get('word', '')
-
+    previous_text = str(previous_word.get("word", ""))
     if _ends_sentence(previous_text):
         return 3
     if _ends_clause(previous_text):
@@ -295,44 +609,35 @@ def _boundary_priority(words, index):
     return 0
 
 
-def _wrap_subtitle_text(text, words=None):
-    """Wrap a cue at a semantic word boundary, producing at most two lines.
+def _normalise_display_text(text: str) -> str:
+    return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
 
-    Forty-two characters is treated as the preferred line length.  A small
-    overflow is allowed when it preserves a punctuation-, pause-, or
-    phrase-friendly boundary.  When boundaries are equally suitable, the
-    first line is filled as much as possible without leaving a short second
-    line.
-    """
+
+def _wrap_subtitle_text(
+    text: str,
+    words: Sequence[Mapping[str, Any]] | None = None,
+) -> str:
+    """Wrap one cue to at most two visual lines at a semantic boundary."""
     if len(text) <= MAX_CHARS_PER_LINE:
         return text
 
     if words:
-        line_words = [word for word in words if word.get('word', '').strip()]
+        line_words = [word for word in words if str(word.get("word", "")).strip()]
     else:
-        line_words = [{'word': word} for word in text.split()]
-
+        line_words = [{"word": word} for word in text.split()]
     if len(line_words) < 2:
         return text
 
-    def key(index):
+    def key(index: int) -> tuple[int, int, int, int, int, int]:
         left = _words_to_text(line_words[:index])
         right = _words_to_text(line_words[index:])
         left_overflow = max(0, len(left) - MAX_CHARS_PER_LINE)
         right_overflow = max(0, len(right) - MAX_CHARS_PER_LINE)
-        hard_overflow = max(
-            0,
-            left_overflow - MAX_LINE_OVERFLOW,
-        ) + max(
-            0,
-            right_overflow - MAX_LINE_OVERFLOW,
+        hard_overflow = max(0, left_overflow - MAX_LINE_OVERFLOW) + max(
+            0, right_overflow - MAX_LINE_OVERFLOW
         )
         shortest_line = min(len(left), len(right))
         short_line_penalty = max(0, MIN_CHARS_PER_LINE - shortest_line) ** 2
-
-        # First protect the hard overflow and very short lines.  Then fill
-        # the first line as much as possible; punctuation and pauses resolve
-        # ties between equally well-sized candidates.
         return (
             hard_overflow,
             short_line_penalty,
@@ -343,144 +648,168 @@ def _wrap_subtitle_text(text, words=None):
         )
 
     break_at = min(range(1, len(line_words)), key=key)
-    left = _words_to_text(line_words[:break_at])
-    right = _words_to_text(line_words[break_at:])
-    return f"{left}\n{right}"
+    return (
+        f"{_words_to_text(line_words[:break_at])}\n"
+        f"{_words_to_text(line_words[break_at:])}"
+    )
 
 
-def _save_transcription_json(full_text, segments, output_dir, file_name, lang, input_path, task, model_name):
-    """
-    Saves the transcription result as a JSON file with metadata.
+def _validate_subtitle_segments(segments: Sequence[Mapping[str, Any]]) -> None:
+    previous_start: float | None = None
+    for segment in segments:
+        start = _finite_time(segment.get("start"))
+        end = _finite_time(segment.get("end"))
+        if start is None or end is None or end < start:
+            raise TranscriptionError(
+                "Subtitle cues must have valid, ordered timestamps"
+            )
+        if previous_start is not None and start < previous_start:
+            raise TranscriptionError("Subtitle cues must be in chronological order")
+        previous_start = start
 
-    Args:
-        full_text (str): Complete transcription text.
-        segments (list): List of transcription segments with timestamps.
-        output_dir (str): Directory to save the JSON file.
-        file_name (str): Base name of the video file.
-        lang (str): Language code.
-        input_path (str): Original video file path.
-        task (str): Task type (transcribe or translate).
-        model_name (str): Whisper model used for the transcription.
 
-    Returns:
-        str: Path to the saved JSON file.
-    """
+def _write_json(
+    path: Path,
+    *,
+    full_text: str,
+    segments: Sequence[Mapping[str, Any]],
+    file_name: str,
+    lang: str,
+    input_path: Path,
+    task: str,
+    model_name: str,
+) -> None:
     json_data = {
-        'metadata': {
-            'file_name': file_name,
-            'original_path': input_path,
-            'language': lang,
-            'task': task,
-            'created_at': datetime.now().isoformat(),
-            'model': model_name,
-            'duration': segments[-1]['end'] if segments else 0.0,
-            'num_segments': len(segments)
+        "metadata": {
+            "file_name": file_name,
+            "original_path": str(input_path),
+            "language": lang,
+            "task": task,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "model": model_name,
+            "duration": segments[-1]["end"] if segments else 0.0,
+            "num_segments": len(segments),
         },
-        'transcription': {
-            'text': full_text,
-            'segments': segments
-        }
+        "transcription": {"text": full_text, "segments": list(segments)},
     }
-
-    json_path = get_unique_path(os.path.join(output_dir, f"{file_name}-{lang}.json"))
-
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(json_data, f, ensure_ascii=False, indent=2)
-
-    return json_path
-
-
-def _generate_srt_file(segments, output_dir, file_name, lang):
-    """
-    Generates SRT file from transcription segments.
-
-    Args:
-        segments (list): List of transcription segments with timestamps.
-        output_dir (str): Directory to save the SRT file.
-        file_name (str): Base name of the video file.
-        lang (str): Language code.
-
-    Returns:
-        str: Path to the generated SRT file.
-    """
-    def format_time_srt(seconds):
-        """Format time for SRT format: HH:MM:SS,mmm"""
-        total_millis = round((seconds or 0.0) * 1000)
-        hours, remainder = divmod(total_millis, 3_600_000)
-        minutes, remainder = divmod(remainder, 60_000)
-        secs, millis = divmod(remainder, 1_000)
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
-    srt_path = get_unique_path(os.path.join(output_dir, f"{file_name}-{lang}.srt"))
-
-    with open(srt_path, 'w', encoding='utf-8') as f:
-        for idx, segment in enumerate(segments, start=1):
-            start_time = format_time_srt(segment['start'])
-            end_time = format_time_srt(segment['end'])
-            text = segment['text'].strip()
-
-            f.write(f"{idx}\n")
-            f.write(f"{start_time} --> {end_time}\n")
-            f.write(f"{text}\n\n")
-
-    return srt_path
+    try:
+        content = json.dumps(json_data, ensure_ascii=False, indent=2, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ArtifactError(
+            f"Could not serialize JSON transcript '{path}': {exc}"
+        ) from exc
+    atomic_write_text(path, f"{content}\n")
 
 
-def _generate_ass_file(segments, output_dir, file_name, lang, style_options=None):
-    """
-    Generates ASS file from transcription segments.
-
-    Args:
-        segments (list): List of transcription segments with timestamps.
-        output_dir (str): Directory to save the ASS file.
-        file_name (str): Base name of the video file.
-        lang (str): Language code.
-        style_options (dict, optional): Style customization options.
-
-    Returns:
-        str: Path to the generated ASS file.
-    """
-    def format_time_ass(seconds):
-        """Format time for ASS format: H:MM:SS.cc"""
-        if seconds is None:
-            seconds = 0.0
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = seconds % 60
-        return f"{hours}:{minutes:02d}:{secs:05.2f}"
-
-    style = DEFAULT_STYLE.copy()
-    if style_options:
-        style.update(style_options)
-
-    ass_path = get_unique_path(os.path.join(output_dir, f"{file_name}-{lang}.ass"))
-
-    with open(ass_path, 'w', encoding='utf-8') as f:
-        # Write header
-        f.write("[Script Info]\n")
-        f.write(f"Title: {file_name}\n")
-        f.write("ScriptType: v4.00+\n\n")
-
-        # Write styles
-        f.write("[V4+ Styles]\n")
-        f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-        f.write(
-            f"Style: Default,{style['font']},{style['font_size']},{style['primary_color']},"
-            f"{style['secondary_color']},{style['outline_color']},{style['back_color']},"
-            f"{style['bold']},{style['italic']},{style['underline']},{style['strikeout']},"
-            f"{style['scale_x']},{style['scale_y']},{style['spacing']},{style['angle']},"
-            f"{style['border_style']},{style['outline_weight']},{style['shadow_weight']},"
-            f"{style['alignment']},{style['margin_l']},{style['margin_r']},{style['margin_v']},1\n\n"
+def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
+    blocks: list[str] = []
+    for index, segment in enumerate(segments, start=1):
+        blocks.append(
+            "\n".join(
+                (
+                    str(index),
+                    f"{_format_srt_time(segment['start'])} --> "
+                    f"{_format_srt_time(segment['end'])}",
+                    str(segment["text"]).strip(),
+                )
+            )
         )
+    atomic_write_text(path, "\n\n".join(blocks) + ("\n\n" if blocks else ""))
 
-        # Write events
-        f.write("[Events]\n")
-        f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 
-        for segment in segments:
-            start = format_time_ass(segment['start'])
-            end = format_time_ass(segment['end'])
-            text = segment['text'].strip().replace('\n', '\\N')
-            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n")
+def _format_srt_time(seconds: object) -> str:
+    value = _finite_time(seconds)
+    if value is None:
+        raise ArtifactError("SRT timestamp must be a finite, non-negative number")
+    total_millis = round(value * 1000)
+    hours, remainder = divmod(total_millis, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    whole_seconds, millis = divmod(remainder, 1_000)
+    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d},{millis:03d}"
 
-    return ass_path
+
+def _write_ass(
+    path: Path,
+    segments: Sequence[Mapping[str, Any]],
+    style_options: Mapping[str, str | int],
+) -> None:
+    style = validate_style_options(style_options)
+    lines = [
+        "[Script Info]",
+        "Title: multisubs generated subtitles",
+        "ScriptType: v4.00+",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
+        "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, "
+        "MarginR, MarginV, Encoding",
+        "Style: Default,"
+        + ",".join(str(style[field]) for field in ASS_STYLE_FIELDS)
+        + ",1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
+        "Effect, Text",
+    ]
+    for segment in segments:
+        lines.append(
+            "Dialogue: 0,"
+            f"{_format_ass_time(segment['start'])},{_format_ass_time(segment['end'])},"
+            f"Default,,0,0,0,,{_escape_ass_text(str(segment['text']))}"
+        )
+    atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+def _format_ass_time(seconds: object) -> str:
+    value = _finite_time(seconds)
+    if value is None:
+        raise ArtifactError("ASS timestamp must be a finite, non-negative number")
+    total_centiseconds = round(value * 100)
+    hours, remainder = divmod(total_centiseconds, 360_000)
+    minutes, remainder = divmod(remainder, 6_000)
+    whole_seconds, centiseconds = divmod(remainder, 100)
+    return f"{hours}:{minutes:02d}:{whole_seconds:02d}.{centiseconds:02d}"
+
+
+def _escape_ass_text(text: str) -> str:
+    escaped = text.replace("\r\n", "\n").replace("\r", "\n")
+    escaped = escaped.replace("\\", "\\\\")
+    escaped = escaped.replace("{", "\\{").replace("}", "\\}")
+    return escaped.replace("\n", "\\N")
+
+
+def _json_safe_mapping(value: Mapping[object, object]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            continue
+        safe_item = _json_safe_value(item)
+        if safe_item is not _SKIP_JSON_VALUE:
+            result[key] = safe_item
+    return result
+
+
+def _json_safe_value(value: object) -> Any:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, Real):
+        number = float(value)
+        return number if math.isfinite(number) else _SKIP_JSON_VALUE
+    if isinstance(value, Mapping):
+        return _json_safe_mapping(value)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        safe_values = []
+        for item in value:
+            safe_item = _json_safe_value(item)
+            if safe_item is not _SKIP_JSON_VALUE:
+                safe_values.append(safe_item)
+        return safe_values
+    return _SKIP_JSON_VALUE
+
+
+def _report(progress: ProgressReporter, message: str) -> None:
+    if progress is not None:
+        progress(message)
