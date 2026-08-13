@@ -186,7 +186,11 @@ def _validate_style_value(key: str, value: str | int) -> str | int:
 
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValidationError(f"style-{key.replace('_', '-')} must be an integer")
-    if not math.isfinite(value):
+    try:
+        finite = math.isfinite(value)
+    except OverflowError as exc:
+        raise ValidationError(f"style-{key.replace('_', '-')} must be finite") from exc
+    if not finite:
         raise ValidationError(f"style-{key.replace('_', '-')} must be finite")
     if key in _BOOLEAN_FIELDS and value not in {0, 1}:
         raise ValidationError(f"style-{key.replace('_', '-')} must be 0 or 1")

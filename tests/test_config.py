@@ -90,6 +90,11 @@ def test_parse_style_option_accepts_ass_values(key, value):
     )
 
 
+def test_parse_style_option_rejects_oversized_integer():
+    with pytest.raises(ValidationError, match="must be finite"):
+        parse_style_option("font_size", str(10**400))
+
+
 @pytest.mark.parametrize(
     "options",
     [

@@ -22,6 +22,18 @@ def test_unique_path_and_stem_consider_all_related_artifacts(tmp_path: Path):
     )
 
 
+def test_unique_names_treat_dangling_symlinks_as_occupied(tmp_path: Path):
+    dangling_target = tmp_path / "missing.json"
+    dangling_path = tmp_path / "video-pt.json"
+    dangling_path.symlink_to(dangling_target)
+
+    assert get_unique_path(dangling_path).endswith("video-pt (1).json")
+    assert (
+        find_unique_stem(tmp_path, "video-pt", (".json", ".srt", ".ass"))
+        == "video-pt (1)"
+    )
+
+
 def test_create_unique_dir_is_collision_safe(tmp_path: Path):
     first = create_unique_dir(tmp_path / "video")
     second = create_unique_dir(tmp_path / "video")
