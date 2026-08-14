@@ -1,6 +1,6 @@
 # Subtitle positioning roadmap
 
-Status: planned
+Status: In progress
 
 This directory contains the implementation plans for redesigning subtitle
 appearance and deterministic positioning in multisubs. The work is intentionally
@@ -24,7 +24,7 @@ This table is the source of truth for the package. Status values follow the
 
 | Order | Plan | Status | Depends on | Pull request |
 | --- | --- | --- | --- | --- |
-| 0 | [Shared foundation](00-foundation.md) | Planned | — | — |
+| 0 | [Shared foundation](00-foundation.md) | In review | — | [#7](https://github.com/denilson-santos/multisubs/pull/7) |
 | 1 | [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md) | Planned | 0 | — |
 | 2 | [Named positions](02-named-positions.md) | Planned | 0, 1 | — |
 | 3 | [Relative units](03-relative-units.md) | Planned | 0, 1 | — |

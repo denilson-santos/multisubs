@@ -7,6 +7,7 @@ import re
 from collections.abc import Mapping
 
 from .errors import ValidationError
+from .models import SubtitleAppearance, SubtitleConfig, SubtitleLayout
 
 SUPPORTED_LANGUAGES = (
     "ar",
@@ -164,6 +165,82 @@ def validate_style_options(
     for key, value in style_options.items():
         style[key] = _validate_style_value(key, value)
     return style
+
+
+def validate_subtitle_config(
+    value: SubtitleConfig | Mapping[str, str | int] | None,
+) -> SubtitleConfig:
+    """Return typed subtitle configuration from typed or legacy style input."""
+    if isinstance(value, SubtitleConfig):
+        style = subtitle_config_to_style_options(value)
+    else:
+        style = validate_style_options(value)
+    return _subtitle_config_from_validated_style(style)
+
+
+def subtitle_config_to_style_options(
+    config: SubtitleConfig,
+) -> dict[str, str | int]:
+    """Convert typed configuration into the established ASS style mapping."""
+    appearance = config.appearance
+    layout = config.layout
+    return validate_style_options(
+        {
+            "font": appearance.font,
+            "font_size": appearance.font_size,
+            "primary_color": appearance.primary_color,
+            "secondary_color": appearance.secondary_color,
+            "outline_color": appearance.outline_color,
+            "back_color": appearance.back_color,
+            "bold": appearance.bold,
+            "italic": appearance.italic,
+            "underline": appearance.underline,
+            "strikeout": appearance.strikeout,
+            "scale_x": appearance.scale_x,
+            "scale_y": appearance.scale_y,
+            "spacing": appearance.spacing,
+            "angle": appearance.angle,
+            "border_style": appearance.border_style,
+            "outline_weight": appearance.outline_weight,
+            "shadow_weight": appearance.shadow_weight,
+            "alignment": layout.alignment,
+            "margin_l": layout.margin_l,
+            "margin_r": layout.margin_r,
+            "margin_v": layout.margin_v,
+        }
+    )
+
+
+def _subtitle_config_from_validated_style(
+    style: Mapping[str, str | int],
+) -> SubtitleConfig:
+    return SubtitleConfig(
+        appearance=SubtitleAppearance(
+            font=str(style["font"]),
+            font_size=int(style["font_size"]),
+            primary_color=str(style["primary_color"]),
+            secondary_color=str(style["secondary_color"]),
+            outline_color=str(style["outline_color"]),
+            back_color=str(style["back_color"]),
+            bold=int(style["bold"]),
+            italic=int(style["italic"]),
+            underline=int(style["underline"]),
+            strikeout=int(style["strikeout"]),
+            scale_x=int(style["scale_x"]),
+            scale_y=int(style["scale_y"]),
+            spacing=int(style["spacing"]),
+            angle=int(style["angle"]),
+            border_style=int(style["border_style"]),
+            outline_weight=int(style["outline_weight"]),
+            shadow_weight=int(style["shadow_weight"]),
+        ),
+        layout=SubtitleLayout(
+            alignment=int(style["alignment"]),
+            margin_l=int(style["margin_l"]),
+            margin_r=int(style["margin_r"]),
+            margin_v=int(style["margin_v"]),
+        ),
+    )
 
 
 def _validate_style_value(key: str, value: str | int) -> str | int:

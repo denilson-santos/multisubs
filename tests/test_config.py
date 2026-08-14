@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from multisubs.config import (
@@ -5,9 +7,12 @@ from multisubs.config import (
     MODELS,
     SUPPORTED_LANGUAGES,
     parse_style_option,
+    subtitle_config_to_style_options,
     validate_style_options,
+    validate_subtitle_config,
 )
 from multisubs.errors import ValidationError
+from multisubs.models import SubtitleConfig
 
 
 def test_public_choices_match_supported_models_and_alignment_languages():
@@ -74,6 +79,35 @@ def test_default_style_is_complete_and_copy_is_independent():
     assert style == DEFAULT_STYLE
     style["font_size"] = 22
     assert DEFAULT_STYLE["font_size"] == 14
+
+
+def test_legacy_style_options_round_trip_through_typed_config():
+    config = validate_subtitle_config(
+        {
+            "font_size": 22,
+            "alignment": 8,
+            "margin_v": 30,
+        }
+    )
+
+    assert isinstance(config, SubtitleConfig)
+    assert config.appearance.font_size == 22
+    assert config.layout.alignment == 8
+    assert config.layout.margin_v == 30
+    assert subtitle_config_to_style_options(config) == {
+        **DEFAULT_STYLE,
+        "font_size": 22,
+        "alignment": 8,
+        "margin_v": 30,
+    }
+
+
+def test_typed_subtitle_config_is_revalidated():
+    config = validate_subtitle_config(None)
+    config = replace(config, layout=replace(config.layout, alignment=0))
+
+    with pytest.raises(ValidationError, match="alignment"):
+        validate_subtitle_config(config)
 
 
 @pytest.mark.parametrize(

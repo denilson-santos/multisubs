@@ -15,7 +15,7 @@ from .config import (
     MODELS,
     SUPPORTED_LANGUAGES,
     parse_style_option,
-    validate_style_options,
+    validate_subtitle_config,
 )
 from .errors import ArtifactError, MultisubsError, ValidationError
 from .models import RunArtifacts, RunRequest, TranscriptionPaths
@@ -155,7 +155,7 @@ def _build_request(
 
     style_options = {key: getattr(args, f"style_{key}") for key in DEFAULT_STYLE}
     try:
-        validated_style = validate_style_options(style_options)
+        subtitle_config = validate_subtitle_config(style_options)
     except ValidationError as exc:
         parser.error(str(exc))
 
@@ -165,7 +165,7 @@ def _build_request(
         language=args.lang,
         task=args.task,
         model_name=args.model,
-        style_options=validated_style,
+        subtitle_config=subtitle_config,
         keep_transcriptions=args.keep_transcriptions,
     )
 
@@ -192,18 +192,22 @@ def _validate_translation_request(
 def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
     from .subtitler import embed_subtitles, validate_ffmpeg_support
-    from .transcriber import generate_transcriptions
+    from .transcriber import transcribe_video, write_transcription_artifacts
 
     validate_ffmpeg_support()
     work_dir = create_work_dir(request.output_dir)
     try:
-        json_path, srt_path, ass_path = generate_transcriptions(
+        document = transcribe_video(
             request.input_path,
-            work_dir,
-            request.style_options,
             request.language,
             request.task,
             request.model_name,
+            progress=progress,
+        )
+        json_path, srt_path, ass_path = write_transcription_artifacts(
+            document,
+            work_dir,
+            request.subtitle_config,
             progress=progress,
         )
         transcripts = TranscriptionPaths(

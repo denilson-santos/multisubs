@@ -1,6 +1,6 @@
 # Shared foundation for subtitle layout
 
-Status: planned
+Status: In review
 
 ## Objective
 
@@ -29,10 +29,13 @@ difficult to add safely.
 
 ## Target data model
 
-Add immutable value objects in multisubs/models.py or a focused layout model
-module:
+The foundation adds the typed objects needed immediately and reserves the
+remaining contracts for the feature that can validate them correctly. Do not add
+unused placeholder types merely to satisfy the roadmap.
 
 ### RelativeLength
+
+Added by Feature 3 after its syntax and resolution bases are implemented.
 
 - Numeric value.
 - Unit: percent or pixel.
@@ -40,6 +43,8 @@ module:
 - Original user representation retained for actionable diagnostics.
 
 ### VideoGeometry
+
+Added by Feature 1 together with the FFprobe boundary.
 
 - coded_width and coded_height.
 - render_width and render_height.
@@ -74,12 +79,18 @@ module:
 
 ### ResolvedSubtitleConfig
 
+Added incrementally as geometry and relative units become available.
+
 - Appearance converted into ASS-safe scalar values.
 - Layout converted into PlayRes coordinates and margins.
 - Original preset and explicit-override information for reproducibility.
 - No unresolved percentages.
 
 ### TranscriptDocument and SubtitleCue
+
+The foundation adds TranscriptDocument and separates semantic transcription from
+artifact writing. CuePlacement and the final visual cue type are added by the
+coordinate and wrapping features.
 
 - Transcript metadata and unwrapped semantic cue text.
 - Word timings retained separately.
@@ -182,6 +193,8 @@ pipeline directly.
 
 ### multisubs/layout.py
 
+Introduced by the first dependent feature that needs geometry or unit resolution.
+
 - RelativeLength parsing.
 - Preset merge and precedence.
 - Resolution-dependent validation.
@@ -202,6 +215,9 @@ untrusted text cannot become an override.
 
 ### multisubs/subtitler.py
 
+The foundation preserves its current behavior. Feature 1 adds probing and Feature
+7 adds preview rendering.
+
 - FFmpeg and FFprobe discovery.
 - Video probing.
 - Video rendering.
@@ -220,12 +236,15 @@ untrusted text cannot become an override.
 - Parsing and direct validation.
 - Pipeline orchestration.
 - Output publication and cleanup.
-- Early preview branch that does not import WhisperX.
+- A split transcription/artifact pipeline. Feature 7 adds the early preview
+  branch.
 
 ## JSON metadata
 
-Before adding reproducibility fields, introduce a documented schema_version.
-Add a rendering metadata object containing:
+Prepare the artifact writer to accept rendering metadata without changing the
+current JSON output in this behavior-preserving refactor. The geometry feature
+will introduce a documented schema_version before adding a rendering object
+containing:
 
 - source video geometry used for layout;
 - requested and resolved preset;
@@ -251,18 +270,20 @@ relevant video dimension.
 
 ## Implementation checklist
 
-- [ ] Add typed value objects.
-- [ ] Define explicit CLI argument groups.
-- [ ] Implement conventional color parsing and ASS conversion.
-- [ ] Replace RunRequest.style_options with subtitle_config.
-- [ ] Split transcription from artifact writing.
-- [ ] Move ASS serialization into a focused module.
-- [ ] Keep heavy imports behind runtime boundaries.
-- [ ] Preserve atomic artifact writes.
-- [ ] Preserve collision-safe stems and publication.
-- [ ] Preserve failed-run work directories.
-- [ ] Add schema_version and rendering metadata.
-- [ ] Mark obsolete --style-* documentation and tests for the package cutover.
+- [x] Add the typed SubtitleAppearance, SubtitleLayout, SubtitleConfig, and
+  TranscriptDocument value objects.
+- [x] Preserve the current CLI through a typed temporary adapter.
+- [x] Document explicit CLI groups and color conversion for the package cutover.
+- [x] Replace RunRequest.style_options with subtitle_config.
+- [x] Split transcription from artifact writing.
+- [x] Move ASS serialization into a focused module.
+- [x] Keep heavy imports behind runtime boundaries.
+- [x] Preserve atomic artifact writes.
+- [x] Preserve collision-safe stems and publication.
+- [x] Preserve failed-run work directories.
+- [x] Leave the JSON output unchanged until rendering metadata has a concrete
+  geometry contract.
+- [x] Mark obsolete --style-* documentation and tests for the package cutover.
 
 ## Tests
 
@@ -341,9 +362,11 @@ Before requesting review:
 
 ## Acceptance criteria
 
-- No public CLI option requires knowledge of an ASS field or numeric code.
+- The current public CLI continues to work through a documented temporary
+  adapter until the package cutover.
 - Invalid appearance/layout values fail before WhisperX loading.
-- The orchestration layer has video geometry before writing ASS.
+- The orchestration layer has a dedicated point between semantic transcription
+  and artifact writing where Feature 1 can resolve video geometry.
 - Programmatic transcription can produce semantic cues without writing files.
 - Generated ASS remains valid and safely escapes transcription text.
 - Existing collision, cleanup, translation, and artifact-retention behavior
