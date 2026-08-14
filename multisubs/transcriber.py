@@ -21,7 +21,7 @@ from .config import (
     DEFAULT_STYLE as _DEFAULT_STYLE,
 )
 from .config import (
-    WHISPER_MODELS as _WHISPER_MODELS,
+    MODELS as _MODELS,
 )
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
 from .models import TranscriptionPaths
@@ -60,10 +60,10 @@ _RETRYABLE_MODEL_ERROR_MARKERS = (
 ProgressReporter = Callable[[str], None] | None
 _SKIP_JSON_VALUE = object()
 
-# Keep the constants available from their historical module location for
-# callers that imported them while the CLI now owns the canonical definitions.
+# Keep shared configuration constants available from the transcriber while
+# their canonical definitions remain in config.py.
 DEFAULT_STYLE = _DEFAULT_STYLE
-WHISPER_MODELS = _WHISPER_MODELS
+MODELS = _MODELS
 
 
 def generate_transcriptions(

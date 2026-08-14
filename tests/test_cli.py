@@ -41,12 +41,39 @@ def test_missing_input_is_argparse_error(tmp_path: Path):
     assert error.value.code == 2
 
 
+def test_language_without_default_alignment_model_is_rejected(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(["-i", str(input_path), "--lang", "af"])
+
+    assert error.value.code == 2
+
+
 def test_translation_restriction_is_rejected_before_processing(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
 
     with pytest.raises(SystemExit) as error:
         cli.main(["-i", str(input_path), "-t", "translate", "-m", "turbo"])
+
+    assert error.value.code == 2
+
+
+def test_oversized_style_argument_is_argparse_error(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(
+            [
+                "-i",
+                str(input_path),
+                "--style-font-size",
+                str(10**400),
+            ]
+        )
 
     assert error.value.code == 2
 
@@ -64,6 +91,22 @@ def test_default_publication_keeps_json_and_video_only(tmp_path: Path):
     assert (output_dir / "video-pt.json").exists()
     assert not (output_dir / "video-pt.srt").exists()
     assert not (output_dir / "video-pt.ass").exists()
+
+
+def test_default_publication_suffixes_dangling_output_links(
+    tmp_path: Path,
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "video-pt.json").symlink_to(output_dir / "missing.json")
+    artifacts = _artifacts(tmp_path, input_path)
+
+    result = cli._publish_default_artifacts(artifacts, _request(input_path, output_dir))
+
+    assert result == output_dir / "video-pt (1).mp4"
+    assert (output_dir / "video-pt (1).json").exists()
 
 
 def test_retained_publication_uses_subtitles_directory_and_collision_suffix(

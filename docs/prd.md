@@ -41,7 +41,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | --- | --- |
 | FR-1 | The CLI must require one input video path and must reject a missing input file. |
 | FR-2 | The user must be able to choose an output directory; the current directory is the default. |
-| FR-3 | The user must be able to specify a supported source-language code. |
+| FR-3 | The user must be able to specify a source-language code for which the installed WhisperX release provides a default word-alignment model. |
 | FR-4 | The tool must support transcription and translation tasks. Translation output is English. |
 | FR-5 | The tool must reject translation with turbo and English-only Whisper models. |
 | FR-6 | The tool must generate a JSON transcript with metadata, an SRT subtitle file, and an ASS subtitle file before rendering. |
@@ -89,6 +89,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 ## Constraints and risks
 
 - Model quality, alignment quality, and processing time depend on source audio, selected language, selected model, and available hardware.
+- Source-language selection is limited to languages with a default WhisperX word-alignment model.
 - Initial use may require model downloads; temporary connection failures during those downloads are retried, but a stable network connection is still required when assets are not cached.
 - FFmpeg builds without the required subtitle rendering support, or hosts without the requested font, can prevent expected rendering.
 - Generated hard subtitles cannot be turned off after the video is created.

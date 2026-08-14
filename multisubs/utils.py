@@ -15,13 +15,13 @@ from .errors import ArtifactError
 def get_unique_path(path: str | os.PathLike[str]) -> str:
     """Return a non-existing filename by appending `` (n)`` when needed."""
     candidate = Path(path)
-    if not candidate.exists():
+    if not os.path.lexists(candidate):
         return str(candidate)
 
     index = 1
     while True:
         numbered = candidate.with_name(f"{candidate.stem} ({index}){candidate.suffix}")
-        if not numbered.exists():
+        if not os.path.lexists(numbered):
             return str(numbered)
         index += 1
 
@@ -29,13 +29,13 @@ def get_unique_path(path: str | os.PathLike[str]) -> str:
 def get_unique_dir_path(path: str | os.PathLike[str]) -> str:
     """Return a non-existing directory name by appending `` (n)`` when needed."""
     candidate = Path(path)
-    if not candidate.exists():
+    if not os.path.lexists(candidate):
         return str(candidate)
 
     index = 1
     while True:
         numbered = candidate.with_name(f"{candidate.name} ({index})")
-        if not numbered.exists():
+        if not os.path.lexists(numbered):
             return str(numbered)
         index += 1
 
@@ -76,7 +76,7 @@ def find_unique_stem(directory: Path, stem: str, suffixes: Iterable[str]) -> str
     while True:
         candidate = stem if index == 0 else f"{stem} ({index})"
         if not any(
-            (directory / f"{candidate}{suffix}").exists() for suffix in suffixes
+            os.path.lexists(directory / f"{candidate}{suffix}") for suffix in suffixes
         ):
             return candidate
         index += 1
