@@ -1,10 +1,18 @@
 import shutil
 import subprocess
+from dataclasses import replace
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
-from multisubs.subtitler import embed_subtitles, validate_ffmpeg_support
+from multisubs.ass import write_ass
+from multisubs.config import validate_subtitle_config
+from multisubs.subtitler import (
+    embed_subtitles,
+    probe_video_geometry,
+    validate_ffmpeg_support,
+)
 
 
 @pytest.mark.integration
@@ -131,3 +139,216 @@ def test_ffmpeg_libass_render_supports_video_without_audio(tmp_path: Path):
 
     assert output_path.exists()
     assert output_path.stat().st_size > 0
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("size", "sample_aspect_ratio", "expected_display_aspect_ratio"),
+    [
+        ("160x90", "1/1", Fraction(16, 9)),
+        ("90x160", "1/1", Fraction(9, 16)),
+        ("120x120", "1/1", Fraction(1, 1)),
+        ("120x90", "4/3", Fraction(16, 9)),
+    ],
+)
+def test_probe_generated_video_geometry(
+    tmp_path: Path,
+    size: str,
+    sample_aspect_ratio: str,
+    expected_display_aspect_ratio: Fraction,
+):
+    input_path = tmp_path / "geometry.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=black:s={size}:d=0.2",
+            "-vf",
+            f"setsar={sample_aspect_ratio}",
+            "-t",
+            "0.2",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+
+    geometry = probe_video_geometry(input_path)
+
+    width, height = (int(value) for value in size.split("x"))
+    assert (geometry.render_width, geometry.render_height) == (width, height)
+    assert geometry.display_aspect_ratio == expected_display_aspect_ratio
+
+
+@pytest.mark.integration
+def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
+    base_path = tmp_path / "base.mp4"
+    input_path = tmp_path / "rotated.mp4"
+    subtitle_path = tmp_path / "rotated.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=160x90:d=0.2",
+            "-t",
+            "0.2",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(base_path),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(base_path),
+            "-c",
+            "copy",
+            "-metadata:s:v:0",
+            "rotate=90",
+            str(input_path),
+        ],
+        check=True,
+    )
+
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(None)
+    config = replace(
+        config,
+        appearance=replace(config.appearance, font_size=16),
+        layout=replace(config.layout, margin_v=12),
+    )
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.2, "text": "Test"}],
+        config,
+        geometry,
+    )
+    output_path = Path(
+        embed_subtitles(
+            input_path,
+            subtitle_path,
+            tmp_path,
+            geometry=geometry,
+        )
+    )
+    rendered_geometry = probe_video_geometry(output_path)
+
+    assert geometry.rotation_degrees == 90
+    assert (geometry.render_width, geometry.render_height) == (90, 160)
+    assert (rendered_geometry.render_width, rendered_geometry.render_height) == (
+        geometry.render_width,
+        geometry.render_height,
+    )
+
+
+@pytest.mark.integration
+def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
+    normalized_bounds: list[tuple[float, float, float]] = []
+    cases = (
+        (320, 180, "1/1"),
+        (640, 360, "1/1"),
+        (180, 320, "1/1"),
+        (240, 240, "1/1"),
+        (240, 180, "4/3"),
+    )
+    for width, height, sample_aspect_ratio in cases:
+        input_path = tmp_path / f"input-{width}x{height}.mp4"
+        subtitle_path = tmp_path / f"subtitle-{width}x{height}.ass"
+        output_path = tmp_path / f"rendered-{width}x{height}.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"color=c=black:s={width}x{height}:d=0.2",
+                "-vf",
+                f"setsar={sample_aspect_ratio}",
+                "-t",
+                "0.2",
+                "-c:v",
+                "mpeg4",
+                "-an",
+                str(input_path),
+            ],
+            check=True,
+        )
+        geometry = probe_video_geometry(input_path)
+        config = validate_subtitle_config(None)
+        config = replace(
+            config,
+            appearance=replace(
+                config.appearance,
+                font_size=max(1, round(height * 0.10)),
+                outline_weight=0,
+                shadow_weight=0,
+            ),
+            layout=replace(config.layout, margin_v=max(1, round(height * 0.10))),
+        )
+        write_ass(
+            subtitle_path,
+            [{"start": 0.0, "end": 0.2, "text": "TEST"}],
+            config,
+            geometry,
+        )
+        embed_subtitles(
+            input_path,
+            subtitle_path,
+            tmp_path,
+            output_path=output_path,
+            geometry=geometry,
+        )
+
+        frame = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                "0.1",
+                "-i",
+                str(output_path),
+                "-frames:v",
+                "1",
+                "-pix_fmt",
+                "gray",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+        foreground = [index for index, value in enumerate(frame) if value > 80]
+        assert foreground
+        x_values = [index % width for index in foreground]
+        y_values = [index // width for index in foreground]
+        center_x = (min(x_values) + max(x_values)) / 2 / width
+        glyph_height = (max(y_values) - min(y_values) + 1) / height
+        bottom_gap = (height - 1 - max(y_values)) / height
+        normalized_bounds.append((center_x, glyph_height, bottom_gap))
+
+    for metric in zip(*normalized_bounds, strict=True):
+        assert max(metric) - min(metric) < 0.035
