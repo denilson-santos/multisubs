@@ -1,12 +1,25 @@
 import json
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from multisubs import transcriber
 from multisubs.errors import TranscriptionError
-from multisubs.models import TranscriptDocument
+from multisubs.models import TranscriptDocument, VideoGeometry
+
+GEOMETRY = VideoGeometry(
+    stream_index=0,
+    coded_width=1920,
+    coded_height=1080,
+    render_width=1920,
+    render_height=1080,
+    rotation_degrees=0,
+    sample_aspect_ratio=Fraction(1, 1),
+    display_aspect_ratio=Fraction(16, 9),
+    duration_seconds=12.5,
+)
 
 
 def _word(text: str, start: float, end: float, **extra):
@@ -205,6 +218,9 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
     monkeypatch.setattr(
         transcriber, "_load_runtime_dependencies", lambda: (FakeTorch, FakeWhisper)
     )
+    monkeypatch.setattr(
+        "multisubs.subtitler.probe_video_geometry", lambda path: GEOMETRY
+    )
     monkeypatch.setattr(transcriber.time, "sleep", lambda _: None)
     paths = transcriber.generate_transcriptions(input_path, output_dir)
 
@@ -212,7 +228,19 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
     assert load_calls["count"] == 2
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["metadata"]["language"] == "en"
+    assert payload["schema_version"] == 1
     assert payload["metadata"]["created_at"].endswith("+00:00")
+    assert payload["metadata"]["rendering"] == {
+        "video_stream_index": 0,
+        "coded_width": 1920,
+        "coded_height": 1080,
+        "render_width": 1920,
+        "render_height": 1080,
+        "rotation_degrees": 0,
+        "sample_aspect_ratio": "1:1",
+        "display_aspect_ratio": "16:9",
+        "container_duration": 12.5,
+    }
     assert srt_path.exists() and ass_path.exists()
 
 
@@ -243,6 +271,8 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
         lambda: pytest.fail("artifact writing must not load WhisperX or PyTorch"),
     )
 
-    paths = transcriber.write_transcription_artifacts(document, tmp_path / "output")
+    paths = transcriber.write_transcription_artifacts(
+        document, tmp_path / "output", geometry=GEOMETRY
+    )
 
     assert all(Path(path).exists() for path in paths)

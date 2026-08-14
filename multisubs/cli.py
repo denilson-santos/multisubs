@@ -191,10 +191,23 @@ def _validate_translation_request(
 
 def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
-    from .subtitler import embed_subtitles, validate_ffmpeg_support
+    from .subtitler import (
+        embed_subtitles,
+        probe_video_geometry,
+        validate_ffmpeg_support,
+    )
     from .transcriber import transcribe_video, write_transcription_artifacts
 
     validate_ffmpeg_support()
+    geometry = probe_video_geometry(request.input_path)
+    progress(
+        "Detected video layout: "
+        f"{geometry.render_width}x{geometry.render_height} "
+        f"(stream {geometry.stream_index}, rotation "
+        f"{geometry.rotation_degrees}°, SAR "
+        f"{geometry.sample_aspect_ratio.numerator}:"
+        f"{geometry.sample_aspect_ratio.denominator})."
+    )
     work_dir = create_work_dir(request.output_dir)
     try:
         document = transcribe_video(
@@ -208,6 +221,7 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
             document,
             work_dir,
             request.subtitle_config,
+            geometry=geometry,
             progress=progress,
         )
         transcripts = TranscriptionPaths(
@@ -224,6 +238,7 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
                 work_dir,
                 request.language,
                 output_path=video_path,
+                geometry=geometry,
                 progress=progress,
             )
         )

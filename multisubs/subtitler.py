@@ -2,27 +2,38 @@
 
 from __future__ import annotations
 
+import json
+import math
 import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 from .errors import ArtifactError, DependencyError, RenderingError, ValidationError
+from .models import VideoGeometry
 from .utils import get_unique_path
 
 ProgressReporter = Callable[[str], None] | None
+MAX_VIDEO_DIMENSION = 32_768
+MAX_ASPECT_RATIO_COMPONENT = 1_000_000
+FFPROBE_TIMEOUT_SECONDS = 30
 
 
 def validate_ffmpeg_support() -> None:
-    """Ensure FFmpeg and its ``subtitles`` filter are available before work starts."""
+    """Ensure FFmpeg, ffprobe, and the subtitles filter are available."""
     executable = shutil.which("ffmpeg")
     if executable is None:
         raise DependencyError(
             "FFmpeg is not available on PATH. Install FFmpeg with "
             "libass/subtitles support."
+        )
+    if shutil.which("ffprobe") is None:
+        raise DependencyError(
+            "ffprobe is not available on PATH. Install the complete FFmpeg toolset."
         )
 
     try:
@@ -47,6 +58,230 @@ def validate_ffmpeg_support() -> None:
         )
 
 
+def probe_video_geometry(input_path: str | Path) -> VideoGeometry:
+    """Probe and normalize the first renderable video stream.
+
+    FFmpeg autorotation is enabled by the render graph. Consequently, right-angle
+    rotation swaps the dimensions and pixel aspect ratio used to calculate the
+    displayed frame geometry.
+    """
+    source_path = _require_file(input_path, "Input video")
+    executable = shutil.which("ffprobe")
+    if executable is None:
+        raise DependencyError(
+            "ffprobe is not available on PATH. Install the complete FFmpeg toolset."
+        )
+
+    command = [
+        executable,
+        "-v",
+        "error",
+        "-print_format",
+        "json",
+        "-show_entries",
+        "stream=index,codec_type,width,height,sample_aspect_ratio:"
+        "stream_tags=rotate:stream_side_data_list:"
+        "stream_disposition=attached_pic:format=duration",
+        str(source_path),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=FFPROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RenderingError(
+            f"ffprobe timed out while inspecting '{source_path}'."
+        ) from exc
+    except OSError as exc:
+        raise DependencyError(
+            f"Could not run ffprobe at '{executable}': {exc}"
+        ) from exc
+
+    if completed.returncode != 0:
+        details = _short_output(completed.stderr or completed.stdout)
+        raise RenderingError(
+            f"ffprobe could not inspect video geometry for '{source_path}': {details}"
+        )
+    return _parse_probe_payload(completed.stdout)
+
+
+def _parse_probe_payload(payload: str) -> VideoGeometry:
+    """Validate the narrow subset of ffprobe JSON used by the render policy."""
+    try:
+        decoded = json.loads(payload)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValidationError("ffprobe returned invalid JSON video metadata") from exc
+    if not isinstance(decoded, Mapping):
+        raise ValidationError("ffprobe returned an invalid metadata object")
+
+    streams = decoded.get("streams")
+    if not isinstance(streams, Sequence) or isinstance(streams, (str, bytes)):
+        raise ValidationError("ffprobe metadata does not contain a stream list")
+
+    candidates: list[tuple[int, Mapping[str, Any]]] = []
+    for stream in streams:
+        if not isinstance(stream, Mapping) or stream.get("codec_type") != "video":
+            continue
+        disposition = stream.get("disposition")
+        if isinstance(disposition, Mapping) and disposition.get("attached_pic") == 1:
+            continue
+        index = _probe_integer(stream.get("index"), "video stream index", minimum=0)
+        candidates.append((index, stream))
+
+    if not candidates:
+        raise ValidationError("Input media does not contain a usable video stream")
+    candidates.sort(key=lambda item: item[0])
+    if len({index for index, _ in candidates}) != len(candidates):
+        raise ValidationError("ffprobe returned duplicate video stream indexes")
+
+    stream_index, stream = candidates[0]
+    coded_width = _probe_integer(
+        stream.get("width"),
+        "coded video width",
+        minimum=1,
+        maximum=MAX_VIDEO_DIMENSION,
+    )
+    coded_height = _probe_integer(
+        stream.get("height"),
+        "coded video height",
+        minimum=1,
+        maximum=MAX_VIDEO_DIMENSION,
+    )
+    rotation = _probe_rotation(stream)
+    sample_aspect_ratio = _probe_aspect_ratio(stream.get("sample_aspect_ratio"))
+
+    if rotation in (90, 270):
+        render_width, render_height = coded_height, coded_width
+        render_sample_aspect_ratio = Fraction(
+            sample_aspect_ratio.denominator,
+            sample_aspect_ratio.numerator,
+        )
+    else:
+        render_width, render_height = coded_width, coded_height
+        render_sample_aspect_ratio = sample_aspect_ratio
+
+    display_aspect_ratio = Fraction(render_width, render_height) * (
+        render_sample_aspect_ratio
+    )
+    return VideoGeometry(
+        stream_index=stream_index,
+        coded_width=coded_width,
+        coded_height=coded_height,
+        render_width=render_width,
+        render_height=render_height,
+        rotation_degrees=rotation,
+        sample_aspect_ratio=sample_aspect_ratio,
+        display_aspect_ratio=display_aspect_ratio,
+        duration_seconds=_probe_duration(decoded.get("format")),
+    )
+
+
+def _probe_integer(
+    value: object,
+    label: str,
+    *,
+    minimum: int,
+    maximum: int | None = None,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(f"ffprobe returned an invalid {label}")
+    if value < minimum or (maximum is not None and value > maximum):
+        raise ValidationError(f"ffprobe returned an invalid {label}: {value}")
+    return value
+
+
+def _probe_rotation(stream: Mapping[str, Any]) -> int:
+    rotations: set[int] = set()
+    tags = stream.get("tags")
+    if tags is not None and not isinstance(tags, Mapping):
+        raise ValidationError("ffprobe returned invalid video tags metadata")
+    if isinstance(tags, Mapping) and "rotate" in tags:
+        # The legacy rotate tag uses the opposite sign convention from the
+        # display-matrix rotation emitted by ffprobe.
+        rotations.add(_normalise_rotation(tags["rotate"], invert=True))
+    side_data = stream.get("side_data_list")
+    if side_data is not None and (
+        not isinstance(side_data, Sequence) or isinstance(side_data, (str, bytes))
+    ):
+        raise ValidationError("ffprobe returned invalid display-matrix metadata")
+    if isinstance(side_data, Sequence) and not isinstance(side_data, (str, bytes)):
+        for item in side_data:
+            if not isinstance(item, Mapping):
+                raise ValidationError(
+                    "ffprobe returned invalid display-matrix metadata"
+                )
+            if "rotation" in item:
+                rotations.add(_normalise_rotation(item["rotation"]))
+    if not rotations:
+        return 0
+    if len(rotations) != 1:
+        raise ValidationError("ffprobe returned contradictory rotation metadata")
+    return rotations.pop()
+
+
+def _normalise_rotation(value: object, *, invert: bool = False) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValidationError("ffprobe returned invalid rotation metadata")
+    try:
+        rotation = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("ffprobe returned invalid rotation metadata") from exc
+    if not math.isfinite(rotation) or not rotation.is_integer():
+        raise ValidationError("ffprobe returned invalid rotation metadata")
+    normalised = int(rotation) % 360
+    if normalised not in (0, 90, 180, 270):
+        raise ValidationError(
+            f"Unsupported video rotation {normalised} degrees; expected a right angle"
+        )
+    return (-normalised) % 360 if invert else normalised
+
+
+def _probe_aspect_ratio(value: object) -> Fraction:
+    if value in (None, "", "N/A"):
+        return Fraction(1, 1)
+    if not isinstance(value, str) or value.count(":") != 1:
+        raise ValidationError("ffprobe returned an invalid sample aspect ratio")
+    numerator_text, denominator_text = value.split(":", maxsplit=1)
+    try:
+        numerator = int(numerator_text)
+        denominator = int(denominator_text)
+    except ValueError as exc:
+        raise ValidationError(
+            "ffprobe returned an invalid sample aspect ratio"
+        ) from exc
+    if (
+        numerator <= 0
+        or denominator <= 0
+        or numerator > MAX_ASPECT_RATIO_COMPONENT
+        or denominator > MAX_ASPECT_RATIO_COMPONENT
+    ):
+        raise ValidationError("ffprobe returned an invalid sample aspect ratio")
+    return Fraction(numerator, denominator)
+
+
+def _probe_duration(format_value: object) -> float | None:
+    if format_value is None:
+        return None
+    if not isinstance(format_value, Mapping):
+        raise ValidationError("ffprobe returned invalid container metadata")
+    raw_duration = format_value.get("duration")
+    if raw_duration in (None, "", "N/A"):
+        return None
+    if isinstance(raw_duration, bool):
+        raise ValidationError("ffprobe returned an invalid container duration")
+    try:
+        duration = float(raw_duration)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("ffprobe returned an invalid container duration") from exc
+    if not math.isfinite(duration) or duration < 0:
+        raise ValidationError("ffprobe returned an invalid container duration")
+    return duration
+
+
 def embed_subtitles(
     input_path: str | Path,
     ass_path: str | Path,
@@ -54,6 +289,7 @@ def embed_subtitles(
     lang: str = "en",
     *,
     output_path: str | Path | None = None,
+    geometry: VideoGeometry | None = None,
     progress: ProgressReporter = None,
 ) -> str:
     """Render an ASS subtitle file into a copied video and return its path.
@@ -63,6 +299,7 @@ def embed_subtitles(
     """
     source_path = _require_file(input_path, "Input video")
     subtitle_path = _require_file(ass_path, "ASS subtitle file")
+    resolved_geometry = geometry or probe_video_geometry(source_path)
     destination_dir = _normalise_output_dir(output_dir)
     final_path = _choose_output_path(source_path, destination_dir, lang, output_path)
     temporary_path = _temporary_media_path(final_path)
@@ -72,7 +309,11 @@ def embed_subtitles(
         _report(progress, f"Rendering subtitles into '{final_path.name}'...")
         try:
             output_stream = _build_output_stream(
-                ffmpeg, source_path, subtitle_path, temporary_path
+                ffmpeg,
+                source_path,
+                subtitle_path,
+                temporary_path,
+                resolved_geometry,
             )
             output_stream.run(
                 overwrite_output=True, capture_stdout=True, capture_stderr=True
@@ -179,10 +420,15 @@ def _build_output_stream(
     input_path: Path,
     ass_path: Path,
     output_path: Path,
+    geometry: VideoGeometry,
 ) -> Any:
-    """Build a graph with safe paths and an optional audio stream mapping."""
-    input_stream = ffmpeg.input(str(input_path))
-    video_stream = input_stream.video.filter("subtitles", filename=str(ass_path))
+    """Build an autorotated graph using the stream and canvas selected by probe."""
+    input_stream = ffmpeg.input(str(input_path), autorotate=1)
+    video_stream = input_stream[str(geometry.stream_index)].filter(
+        "subtitles",
+        filename=str(ass_path),
+        original_size=geometry.original_size,
+    )
     audio_stream = input_stream["a?"]
     return ffmpeg.output(video_stream, audio_stream, str(output_path), acodec="copy")
 
@@ -198,7 +444,16 @@ def _error_output(error: Any) -> str:
 
 def _short_output(output: str, limit: int = 1_000) -> str:
     compact = " ".join(output.split())
-    return compact[:limit] if compact else "no diagnostic output"
+    if not compact:
+        return "no diagnostic output"
+    if len(compact) <= limit:
+        return compact
+    separator = " ... "
+    if limit <= len(separator):
+        return compact[:limit]
+    head_length = (limit - len(separator)) // 2
+    tail_length = limit - len(separator) - head_length
+    return f"{compact[:head_length]}{separator}{compact[-tail_length:]}"
 
 
 def _report(progress: ProgressReporter, message: str) -> None:
