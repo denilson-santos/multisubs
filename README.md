@@ -7,7 +7,7 @@ It uses WhisperX for transcription and word alignment, then produces JSON, SRT, 
 ## Requirements
 
 - Python 3.10 or newer
-- FFmpeg available on your PATH. Its build must support the subtitles filter; builds with libass support are recommended.
+- FFmpeg and ffprobe available on your PATH. The FFmpeg build must support the subtitles filter; builds with libass support are recommended. Both executables normally come from the same FFmpeg installation.
 - Enough CPU or GPU memory for the selected Whisper model
 
 CUDA is used automatically when PyTorch reports that it is available. CPU runs use int8 inference and can take substantially longer.
@@ -33,6 +33,7 @@ Confirm that FFmpeg and the CLI are available:
 
 ~~~
 ffmpeg -version
+ffprobe -version
 multisubs --help
 ~~~
 
@@ -147,6 +148,14 @@ diagnosis.
 
 The rendered subtitle video contains hard subtitles: they are part of the image and cannot be toggled off in a player. Available audio streams are copied during rendering; video-only inputs are supported.
 
+Before loading WhisperX, multisubs uses ffprobe to select the first usable video
+stream and determine the frame dimensions used by FFmpeg's autorotated render
+graph. Generated ASS files declare those displayed dimensions as PlayResX and
+PlayResY. Right-angle rotation swaps the canvas axes, while sample aspect ratio
+is retained when calculating the displayed aspect ratio. The selected stream,
+coded and render dimensions, rotation, aspect ratios, and container duration are
+recorded under `metadata.rendering` in the versioned JSON transcript.
+
 See [docs/prd.md](docs/prd.md) for product scope and [docs/architecture.md](docs/architecture.md) for implementation details.
 
 ## Exit status and verification
@@ -173,4 +182,4 @@ twine check dist/*
 - The CLI processes one local input video per invocation.
 - Translation has a fixed English target.
 - There is no interactive subtitle editor or graphical interface.
-- FFmpeg, a compatible font, and the selected model must be available on the host system.
+- FFmpeg, ffprobe, a compatible font, and the selected model must be available on the host system.

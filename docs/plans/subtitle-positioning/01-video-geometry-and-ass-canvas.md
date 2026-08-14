@@ -1,6 +1,6 @@
 # Feature 1: video geometry and ASS canvas
 
-Status: planned
+Status: In progress
 
 Depends on: [shared foundation](00-foundation.md)
 
@@ -93,16 +93,16 @@ Do not expose the complete ffprobe payload or unbounded stderr in diagnostics.
 
 ## Implementation tasks
 
-- [ ] Extend FFmpeg dependency validation to ffprobe.
-- [ ] Add VideoGeometry.
-- [ ] Add a narrow JSON probe parser.
-- [ ] Resolve autorotation and aspect-ratio policy.
-- [ ] Pass geometry through RunRequest execution.
-- [ ] Add PlayResX and PlayResY to ASS.
-- [ ] Add ScaledBorderAndShadow and WrapStyle.
-- [ ] Supply original_size where the render policy requires it.
-- [ ] Record resolved geometry in JSON rendering metadata.
-- [ ] Report detected layout dimensions in progress output.
+- [x] Extend FFmpeg dependency validation to ffprobe.
+- [x] Add VideoGeometry.
+- [x] Add a narrow JSON probe parser.
+- [x] Resolve autorotation and aspect-ratio policy.
+- [x] Pass geometry through RunRequest execution.
+- [x] Add PlayResX and PlayResY to ASS.
+- [x] Add ScaledBorderAndShadow and WrapStyle.
+- [x] Supply original_size where the render policy requires it.
+- [x] Record resolved geometry in JSON rendering metadata.
+- [x] Report detected layout dimensions in progress output.
 
 ## Unit tests
 

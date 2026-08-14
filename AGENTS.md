@@ -18,7 +18,7 @@ Read the relevant project documentation before changing behavior:
 | multisubs/cli.py | Argument parsing, user-facing validation, output-directory selection, and artifact cleanup. |
 | multisubs/transcriber.py | WhisperX loading, transcription, word alignment, subtitle-cue construction, and JSON/SRT/ASS generation. |
 | multisubs/ass.py | ASS header, style, timestamp, dialogue escaping, and serialization. |
-| multisubs/subtitler.py | FFmpeg invocation that burns an ASS file into the output video. |
+| multisubs/subtitler.py | ffprobe geometry detection and FFmpeg invocation that burns an ASS file into the output video. |
 | multisubs/config.py | Default ASS style values. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
 | multisubs/errors.py | User-actionable error types at module boundaries. |
@@ -80,4 +80,4 @@ Documentation is part of the definition of done for behavior changes. Use this m
 
 ## External dependencies
 
-WhisperX depends on PyTorch and can use CUDA when available. FFmpeg must be installed as a system executable, and its subtitles filter needs appropriate ASS/libass support. Treat these integrations as runtime dependencies even though only their Python packages appear in pyproject.toml. See [external boundaries](docs/architecture.md#external-boundaries) for ownership and behavior, [README requirements](README.md#requirements) for the user-facing prerequisites, and [the dependency conventions](docs/conventions.md#supported-environment-and-dependencies) before changing them.
+WhisperX depends on PyTorch and can use CUDA when available. FFmpeg and ffprobe must be installed as system executables, and FFmpeg's subtitles filter needs appropriate ASS/libass support. Treat these integrations as runtime dependencies even though only their Python packages appear in pyproject.toml. See [external boundaries](docs/architecture.md#external-boundaries) for ownership and behavior, [README requirements](README.md#requirements) for the user-facing prerequisites, and [the dependency conventions](docs/conventions.md#supported-environment-and-dependencies) before changing them.
