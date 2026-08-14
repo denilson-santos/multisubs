@@ -1,6 +1,6 @@
 # Shared foundation for subtitle layout
 
-Status: In progress
+Status: In review
 
 ## Objective
 
