@@ -1,6 +1,6 @@
 # Feature 1: video geometry and ASS canvas
 
-Status: In progress
+Status: In review
 
 Depends on: [shared foundation](00-foundation.md)
 
