@@ -3,8 +3,14 @@ from pathlib import Path
 import pytest
 
 from multisubs import cli
+from multisubs.config import validate_subtitle_config
 from multisubs.errors import ArtifactError, TranscriptionError
-from multisubs.models import RunArtifacts, RunRequest, TranscriptionPaths
+from multisubs.models import (
+    RunArtifacts,
+    RunRequest,
+    TranscriptDocument,
+    TranscriptionPaths,
+)
 
 
 def _request(input_path: Path, output_dir: Path, keep: bool = False) -> RunRequest:
@@ -14,7 +20,7 @@ def _request(input_path: Path, output_dir: Path, keep: bool = False) -> RunReque
         language="pt",
         task="transcribe",
         model_name="turbo",
-        style_options={},
+        subtitle_config=validate_subtitle_config(None),
         keep_transcriptions=keep,
     )
 
@@ -78,6 +84,27 @@ def test_oversized_style_argument_is_argparse_error(tmp_path: Path):
     assert error.value.code == 2
 
 
+def test_build_request_adapts_legacy_style_flags_to_typed_config(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--style-font-size",
+            "22",
+            "--style-alignment",
+            "8",
+        ]
+    )
+
+    request = cli._build_request(args, parser)
+
+    assert request.subtitle_config.appearance.font_size == 22
+    assert request.subtitle_config.layout.alignment == 8
+
+
 def test_default_publication_keeps_json_and_video_only(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
@@ -139,7 +166,17 @@ def test_run_request_cleans_private_work_dir_after_default_success(
     output_dir = tmp_path / "output"
     request = _request(input_path, output_dir)
 
-    def fake_transcription(source, destination, *args, **kwargs):
+    def fake_transcription(source, language, task, model_name, *, progress):
+        return TranscriptDocument(
+            source_path=Path(source),
+            language=language,
+            task=task,
+            model_name=model_name,
+            full_text="artifact",
+            segments=(),
+        )
+
+    def fake_artifact_writer(document, destination, config, *, progress):
         paths = TranscriptionPaths(
             Path(destination) / "video-pt.json",
             Path(destination) / "video-pt.srt",
@@ -155,7 +192,11 @@ def test_run_request_cleans_private_work_dir_after_default_success(
 
     monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
     monkeypatch.setattr(
-        "multisubs.transcriber.generate_transcriptions", fake_transcription
+        "multisubs.transcriber.transcribe_video", fake_transcription
+    )
+    monkeypatch.setattr(
+        "multisubs.transcriber.write_transcription_artifacts",
+        fake_artifact_writer,
     )
     monkeypatch.setattr("multisubs.subtitler.embed_subtitles", fake_render)
 
@@ -181,7 +222,7 @@ def test_run_request_retains_private_work_dir_after_processing_failure(
 
     monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
     monkeypatch.setattr(
-        "multisubs.transcriber.generate_transcriptions", failed_transcription
+        "multisubs.transcriber.transcribe_video", failed_transcription
     )
 
     with pytest.raises(ArtifactError, match="Working artifacts"):
