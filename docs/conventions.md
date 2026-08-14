@@ -179,7 +179,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep the ASS header, style field order, event field order, and dialogue line-break syntax compatible with the ASS format.
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
-- Should centralize default style values in DEFAULT_STYLE and expose user-supported overrides consistently through the CLI.
+- Must pass subtitle appearance and layout through typed configuration objects.
+  DEFAULT_STYLE may remain only as a temporary adapter until the planned CLI
+  cutover; ASS field ordering and conversion belong in the ASS serializer.
 - Must validate style values that can produce invalid ASS or unsafe filter input. Treat colors, font names, alignment, margins, and numeric values as user input.
 - Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.

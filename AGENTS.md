@@ -17,6 +17,7 @@ Read the relevant project documentation before changing behavior:
 | --- | --- |
 | multisubs/cli.py | Argument parsing, user-facing validation, output-directory selection, and artifact cleanup. |
 | multisubs/transcriber.py | WhisperX loading, transcription, word alignment, subtitle-cue construction, and JSON/SRT/ASS generation. |
+| multisubs/ass.py | ASS header, style, timestamp, dialogue escaping, and serialization. |
 | multisubs/subtitler.py | FFmpeg invocation that burns an ASS file into the output video. |
 | multisubs/config.py | Default ASS style values. |
 | multisubs/utils.py | Collision-safe file and directory naming. |

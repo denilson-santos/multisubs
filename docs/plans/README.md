@@ -8,7 +8,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 
 | Package | Status | Progress | Current plan | Package dashboard |
 | --- | --- | ---: | --- | --- |
-| Subtitle positioning | Planned | 0/8 | Shared foundation | [Open dashboard](subtitle-positioning/README.md) |
+| Subtitle positioning | In progress | 0/8 | Shared foundation | [Open dashboard](subtitle-positioning/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 
