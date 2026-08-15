@@ -13,6 +13,7 @@ from . import __version__
 from .config import (
     DEFAULT_STYLE,
     MODELS,
+    POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     parse_style_option,
     validate_subtitle_config,
@@ -90,6 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Retain JSON, SRT, and ASS files in a subtitles directory.",
     )
+    parser.add_argument(
+        "--position",
+        choices=POSITION_CHOICES,
+        default="bottom-center",
+        help=(
+            "Semantic subtitle position; left and right refer to physical screen "
+            "directions (default: bottom-center)."
+        ),
+    )
 
     style_group = parser.add_argument_group(
         "Styling",
@@ -155,7 +165,10 @@ def _build_request(
 
     style_options = {key: getattr(args, f"style_{key}") for key in DEFAULT_STYLE}
     try:
-        subtitle_config = validate_subtitle_config(style_options)
+        subtitle_config = validate_subtitle_config(
+            style_options,
+            position=args.position,
+        )
     except ValidationError as exc:
         parser.error(str(exc))
 
@@ -206,7 +219,8 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
         f"(stream {geometry.stream_index}, rotation "
         f"{geometry.rotation_degrees}°, SAR "
         f"{geometry.sample_aspect_ratio.numerator}:"
-        f"{geometry.sample_aspect_ratio.denominator})."
+        f"{geometry.sample_aspect_ratio.denominator}, position "
+        f"{request.subtitle_config.layout.position.value})."
     )
     work_dir = create_work_dir(request.output_dir)
     try:
