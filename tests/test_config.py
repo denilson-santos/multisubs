@@ -78,7 +78,7 @@ def test_default_style_is_complete_and_copy_is_independent():
 
     assert style == DEFAULT_STYLE
     style["font_size"] = 22
-    assert DEFAULT_STYLE["font_size"] == 14
+    assert DEFAULT_STYLE["font_size"] == 43
 
 
 def test_legacy_style_options_round_trip_through_typed_config():

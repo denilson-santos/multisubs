@@ -47,7 +47,7 @@ def test_write_ass_preserves_style_contract_and_escapes_dialogue(tmp_path: Path)
         "ScaledBorderAndShadow: yes\n"
         "WrapStyle: 0\n"
     ) in content
-    assert "Style: Default,Roboto,14" in content
+    assert "Style: Default,Roboto,43" in content
     assert "0:00:00.00,0:01:01.24" in content
     assert "\\{mundo\\}" in content
     assert "\\N字幕" in content

@@ -68,7 +68,7 @@ MODELS = (
 
 DEFAULT_STYLE: dict[str, str | int] = {
     "font": "Roboto",
-    "font_size": 14,
+    "font_size": 43,
     "primary_color": "&H00FFFFFF",
     "secondary_color": "&H00FFFFFF",
     "outline_color": "&H66000000",
@@ -85,9 +85,9 @@ DEFAULT_STYLE: dict[str, str | int] = {
     "outline_weight": 0,
     "shadow_weight": 2,
     "alignment": 2,
-    "margin_l": 40,
-    "margin_r": 40,
-    "margin_v": 15,
+    "margin_l": 0,
+    "margin_r": 0,
+    "margin_v": 35,
 }
 
 ASS_STYLE_FIELDS = (
