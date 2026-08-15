@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from multisubs.ass import LEGACY_PLAY_RES_Y, write_ass
+from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
 from multisubs.subtitler import (
     embed_subtitles,
@@ -300,15 +300,11 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             config,
             appearance=replace(
                 config.appearance,
-                # 10% of the output height, expressed in legacy 384x288 units.
-                font_size=max(1, round(LEGACY_PLAY_RES_Y * 0.10)),
+                font_size=max(1, round(height * 0.10)),
                 outline_weight=0,
                 shadow_weight=0,
             ),
-            layout=replace(
-                config.layout,
-                margin_v=max(1, round(LEGACY_PLAY_RES_Y * 0.10)),
-            ),
+            layout=replace(config.layout, margin_v=max(1, round(height * 0.10))),
         )
         write_ass(
             subtitle_path,

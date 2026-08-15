@@ -131,12 +131,6 @@ notation (`&H` followed by 6 or 8 hexadecimal digits), numeric values must be
 finite and in their supported ranges, and font names cannot contain commas or
 line breaks.
 
-The numeric size, spacing, margin, outline, and shadow options use the legacy
-ASS design canvas of `384x288` as their reference and are scaled to the detected
-video canvas. Therefore `--style-font-size 14` preserves a similar visual
-proportion across resolutions; it is not interpreted as a fixed screen-pixel
-size.
-
 ## Generated files
 
 For an input named video.mp4 and language pt:

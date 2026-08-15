@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
             type=_style_argument_type(key),
             default=value,
             metavar=key.upper(),
-            help=_style_help(key, value),
+            help=f"Default: {value}",
         )
     return parser
 
@@ -137,20 +137,6 @@ def _style_argument_type(key: str) -> Callable[[str], str | int]:
             raise argparse.ArgumentTypeError(str(exc)) from exc
 
     return parse
-
-
-def _style_help(key: str, value: str | int) -> str:
-    if key in {
-        "font_size",
-        "spacing",
-        "outline_weight",
-        "shadow_weight",
-        "margin_l",
-        "margin_r",
-        "margin_v",
-    }:
-        return f"Default: {value} (scaled to the detected video geometry)"
-    return f"Default: {value}"
 
 
 def _build_request(

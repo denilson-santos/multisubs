@@ -75,11 +75,6 @@ WrapStyle: 0
 Use the same resolved dimensions for all ASS margins and generated position
 coordinates.
 
-Until relative units are introduced, the temporary `--style-*` numeric values
-are interpreted against the legacy 384x288 ASS design canvas and scaled to the
-resolved render dimensions. This keeps the default `Roboto 14` appearance
-proportional while preserving the raw option values for the later CLI cutover.
-
 Pass original_size to the FFmpeg subtitles filter when required by the render
 graph's aspect-ratio policy. Pass fontsdir only when the user supplied a
 validated fonts directory.

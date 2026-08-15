@@ -17,11 +17,6 @@ from .errors import ArtifactError
 from .models import SubtitleConfig, VideoGeometry
 from .utils import atomic_write_text
 
-LEGACY_PLAY_RES_X = 384
-LEGACY_PLAY_RES_Y = 288
-_VERTICAL_STYLE_FIELDS = ("font_size", "outline_weight", "shadow_weight", "margin_v")
-_HORIZONTAL_STYLE_FIELDS = ("spacing", "margin_l", "margin_r")
-
 
 def write_ass(
     path: Path,
@@ -33,9 +28,7 @@ def write_ass(
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
     config = validate_subtitle_config(subtitle_config)
-    style = _resolve_style_for_geometry(
-        subtitle_config_to_style_options(config), geometry
-    )
+    style = subtitle_config_to_style_options(config)
     lines = [
         "[Script Info]",
         "Title: multisubs generated subtitles",
@@ -65,32 +58,6 @@ def write_ass(
             f"Default,,0,0,0,,{escape_ass_text(str(segment['text']))}"
         )
     atomic_write_text(path, "\n".join(lines) + "\n")
-
-
-def _resolve_style_for_geometry(
-    style: Mapping[str, str | int], geometry: VideoGeometry
-) -> dict[str, str | int]:
-    """Scale legacy ASS units from libass's implicit 384x288 canvas.
-
-    The temporary ``--style-*`` interface historically supplied raw ASS values
-    without a PlayRes header. libass used a 384x288 design canvas in that case,
-    so preserve the visual proportions while the explicit canvas follows the
-    autorotated video frame.
-    """
-    resolved = dict(style)
-    width_scale = geometry.render_width / LEGACY_PLAY_RES_X
-    height_scale = geometry.render_height / LEGACY_PLAY_RES_Y
-    for field in _VERTICAL_STYLE_FIELDS:
-        resolved[field] = _scale_style_value(
-            int(resolved[field]), height_scale, minimum=1 if field == "font_size" else 0
-        )
-    for field in _HORIZONTAL_STYLE_FIELDS:
-        resolved[field] = _scale_style_value(int(resolved[field]), width_scale)
-    return resolved
-
-
-def _scale_style_value(value: int, scale: float, *, minimum: int = 0) -> int:
-    return max(minimum, int(round(value * scale)))
 
 
 def format_ass_time(seconds: object) -> str:
