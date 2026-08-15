@@ -44,6 +44,7 @@ flowchart LR
 | multisubs/ass.py | Serializes ASS headers, typed style configuration, timestamps, and safely escaped dialogue text. | write_ass() |
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream. | probe_video_geometry(), embed_subtitles() |
 | multisubs/config.py | Defines supported choices and validates the typed subtitle configuration while temporarily adapting the existing ASS-style CLI. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
+| multisubs/layout.py | Resolves semantic positions into a validated subtitle-safe rectangle on the probed canvas. | resolve_safe_rectangle() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
 | multisubs/models.py | Defines typed request, subtitle configuration, video geometry, semantic transcript, and artifact value objects. | RunRequest, SubtitleConfig, VideoGeometry, TranscriptDocument, RunArtifacts, TranscriptionPaths |
@@ -52,7 +53,7 @@ flowchart LR
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, and all style values are valid. The existing --style-* values are adapted into a typed SubtitleConfig pending the planned CLI cutover.
+2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, all style values are valid, and the named position is one of the nine supported screen anchors. The existing --style-* values are adapted into a typed SubtitleConfig pending the planned CLI cutover.
 3. For a translation task, the CLI rejects turbo and English-only model names before model loading.
 4. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded.
 5. The geometry policy follows explicitly enabled FFmpeg autorotation: 0° and 180° retain the coded axes; 90° and 270° swap the render axes and invert the sample-aspect-ratio axes. Legacy rotate tags are normalized from their sign convention to the display-matrix convention. Contradictory metadata is rejected.
@@ -60,7 +61,7 @@ flowchart LR
 7. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
 8. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
 9. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies duration and text-length limits as fallbacks.
-10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates ASS serialization to ass.py, which compiles the typed configuration on the normalized video canvas and safely escapes dialogue text. The JSON artifact preserves only JSON-compatible aligned-word metadata and the resolved rendering geometry.
+10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates safe-rectangle validation and ASS serialization to the layout and ass modules, which compile the typed configuration on the normalized video canvas, map the semantic position to a private ASS alignment code, and safely escape dialogue text. The JSON artifact preserves only JSON-compatible aligned-word metadata plus the requested/resolved position and safe rectangle used for rendering.
 11. embed_subtitles() selects the same probed stream, explicitly enables autorotation, and supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter. Available audio streams are copied into a temporary rendered output when present.
 12. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain transcription artifacts in that directory for diagnosis, while the renderer removes its partial temporary media.
 
@@ -103,7 +104,23 @@ The JSON artifact has this high-level shape:
       "rotation_degrees": 90,
       "sample_aspect_ratio": "1:1",
       "display_aspect_ratio": "9:16",
-      "container_duration": 123.45
+      "container_duration": 123.45,
+      "requested_position": "bottom-center",
+      "resolved_position": "bottom-center",
+      "margins": {
+        "left": 0,
+        "right": 0,
+        "top": 35,
+        "bottom": 35
+      },
+      "safe_rectangle": {
+        "left": 0,
+        "top": 35,
+        "right": 1080,
+        "bottom": 1885,
+        "width": 1080,
+        "height": 1850
+      }
     }
   },
   "transcription": {
@@ -121,13 +138,16 @@ The JSON artifact has this high-level shape:
 }
 ~~~
 
-`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX. Its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records the geometry used for both ASS generation and the FFmpeg filter; container_duration is null when ffprobe cannot report it.
+`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX. Its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records the geometry, semantic position, margins, and safe rectangle used for both ASS generation and the FFmpeg filter; container_duration is null when ffprobe cannot report it. Relative units, presets, and custom coordinates will add their requested/resolved values in later features.
 
 ### SRT and ASS
 
 SRT is generated from cue start time, end time, and wrapped text. ASS contains a
 Default style compiled from SubtitleConfig. The existing DEFAULT_STYLE mapping
-is accepted only through a temporary compatibility adapter. ass.py converts line
+is accepted only through a temporary compatibility adapter. The public
+`--position` value is stored on SubtitleLayout and mapped to the private ASS
+alignment field only inside ass.py. layout.py validates that all four margins
+leave a positive safe rectangle on the autorotated canvas. ass.py converts line
 breaks to ASS's \N syntax in dialogue events and escapes subtitle-derived braces
 and backslashes so they cannot become unintended override tags. Every generated
 ASS declares ScriptType, PlayResX, PlayResY, ScaledBorderAndShadow, and WrapStyle

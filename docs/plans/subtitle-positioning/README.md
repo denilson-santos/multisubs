@@ -25,15 +25,15 @@ This table is the source of truth for the package. Status values follow the
 | Order | Plan | Status | Depends on | Pull request |
 | --- | --- | --- | --- | --- |
 | 0 | [Shared foundation](00-foundation.md) | Done | — | [#7](https://github.com/denilson-santos/multisubs/pull/7) |
-| 1 | [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md) | In review | 0 | [#8](https://github.com/denilson-santos/multisubs/pull/8) |
-| 2 | [Named positions](02-named-positions.md) | Planned | 0, 1 | — |
+| 1 | [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md) | Done | 0 | [#8](https://github.com/denilson-santos/multisubs/pull/8) |
+| 2 | [Named positions](02-named-positions.md) | In review | 0, 1 | — |
 | 3 | [Relative units](03-relative-units.md) | Planned | 0, 1 | — |
 | 4 | [Layout presets](04-layout-presets.md) | Planned | 0–3 | — |
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Planned | 0–3 | — |
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Planned | 0, 1, 3, 4 | — |
 | 7 | [Layout preview](07-layout-preview.md) | Planned | 0–6 | — |
 
-Package progress: 1 of 8 plans done.
+Package progress: 1 of 8 plans done; Feature 2 is in review.
 
 ## Delivery-gate status
 
