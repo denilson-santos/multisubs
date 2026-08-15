@@ -47,7 +47,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-6 | The tool must generate a JSON transcript with metadata, an SRT subtitle file, and an ASS subtitle file before rendering. |
 | FR-7 | Subtitle cues should use word-level alignment when available and favor readable boundaries such as sentence punctuation and meaningful pauses. |
 | FR-8 | The tool must render the ASS subtitles into a new video with FFmpeg. |
-| FR-9 | The user must be able to override the default ASS styling through CLI flags. |
+| FR-9 | The user must be able to override the default ASS styling through CLI flags; dimensional style values must retain proportional meaning as video geometry changes. |
 | FR-10 | With --keep-transcriptions, the tool must retain JSON, SRT, and ASS files in a subtitles subdirectory next to the rendered video. |
 | FR-11 | Without --keep-transcriptions, a successful run must retain the JSON transcript and remove the temporary SRT and ASS files after rendering. |
 | FR-12 | Generated files and output directories must receive a numeric suffix when a collision would otherwise occur. |
