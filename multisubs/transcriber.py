@@ -23,8 +23,10 @@ from .config import (
 )
 from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
+from .layout import resolve_safe_rectangle
 from .models import (
     SubtitleConfig,
+    SubtitlePosition,
     TranscriptDocument,
     TranscriptionPaths,
     VideoGeometry,
@@ -78,6 +80,7 @@ def generate_transcriptions(
     task: str = "transcribe",
     model_name: str = "turbo",
     *,
+    position: SubtitlePosition | str | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Generate JSON, SRT, and ASS files for one local video.
@@ -88,7 +91,7 @@ def generate_transcriptions(
     """
     source_path = _normalise_input_path(input_path)
     destination_dir = _normalise_output_dir(output_dir)
-    subtitle_config = validate_subtitle_config(style_options)
+    subtitle_config = validate_subtitle_config(style_options, position=position)
     from .subtitler import probe_video_geometry
 
     geometry = probe_video_geometry(source_path)
@@ -232,6 +235,7 @@ def write_transcription_artifacts(
         input_path=document.source_path,
         task=document.task,
         model_name=document.model_name,
+        subtitle_config=config,
         geometry=geometry,
     )
     _report(progress, "Completed JSON transcript.")
@@ -742,8 +746,11 @@ def _write_json(
     input_path: Path,
     task: str,
     model_name: str,
+    subtitle_config: SubtitleConfig,
     geometry: VideoGeometry,
 ) -> None:
+    layout = subtitle_config.layout
+    safe_rectangle = resolve_safe_rectangle(geometry, layout)
     json_data = {
         "schema_version": 1,
         "metadata": {
@@ -765,6 +772,22 @@ def _write_json(
                 "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
                 "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
                 "container_duration": geometry.duration_seconds,
+                "requested_position": layout.position.value,
+                "resolved_position": layout.position.value,
+                "margins": {
+                    "left": layout.margin_left,
+                    "right": layout.margin_right,
+                    "top": layout.margin_top,
+                    "bottom": layout.margin_bottom,
+                },
+                "safe_rectangle": {
+                    "left": safe_rectangle.left,
+                    "top": safe_rectangle.top,
+                    "right": safe_rectangle.right,
+                    "bottom": safe_rectangle.bottom,
+                    "width": safe_rectangle.width,
+                    "height": safe_rectangle.height,
+                },
             },
         },
         "transcription": {"text": full_text, "segments": list(segments)},

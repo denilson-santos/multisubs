@@ -7,7 +7,12 @@ import re
 from collections.abc import Mapping
 
 from .errors import ValidationError
-from .models import SubtitleAppearance, SubtitleConfig, SubtitleLayout
+from .models import (
+    SubtitleAppearance,
+    SubtitleConfig,
+    SubtitleLayout,
+    SubtitlePosition,
+)
 
 SUPPORTED_LANGUAGES = (
     "ar",
@@ -84,35 +89,13 @@ DEFAULT_STYLE: dict[str, str | int] = {
     "border_style": 4,
     "outline_weight": 0,
     "shadow_weight": 2,
-    "alignment": 2,
     "margin_l": 0,
     "margin_r": 0,
     "margin_v": 35,
 }
 
-ASS_STYLE_FIELDS = (
-    "font",
-    "font_size",
-    "primary_color",
-    "secondary_color",
-    "outline_color",
-    "back_color",
-    "bold",
-    "italic",
-    "underline",
-    "strikeout",
-    "scale_x",
-    "scale_y",
-    "spacing",
-    "angle",
-    "border_style",
-    "outline_weight",
-    "shadow_weight",
-    "alignment",
-    "margin_l",
-    "margin_r",
-    "margin_v",
-)
+POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
+DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
 
 _COLOR_FIELDS = {
     "primary_color",
@@ -169,21 +152,38 @@ def validate_style_options(
 
 def validate_subtitle_config(
     value: SubtitleConfig | Mapping[str, str | int] | None,
+    *,
+    position: SubtitlePosition | str | None = None,
 ) -> SubtitleConfig:
     """Return typed subtitle configuration from typed or legacy style input."""
+    resolved_position = parse_position(position) if position is not None else None
     if isinstance(value, SubtitleConfig):
-        style = subtitle_config_to_style_options(value)
-    else:
-        style = validate_style_options(value)
-    return _subtitle_config_from_validated_style(style)
+        if resolved_position is not None and resolved_position != value.layout.position:
+            raise ValidationError(
+                "position cannot override the position already stored in the "
+                "subtitle configuration"
+            )
+        return value
+    style = validate_style_options(value)
+    return _subtitle_config_from_validated_style(
+        style,
+        position=resolved_position or DEFAULT_POSITION,
+    )
 
 
 def subtitle_config_to_style_options(
     config: SubtitleConfig,
 ) -> dict[str, str | int]:
-    """Convert typed configuration into the established ASS style mapping."""
+    """Convert typed configuration into the temporary ASS style mapping."""
     appearance = config.appearance
     layout = config.layout
+    margin_v = (
+        layout.margin_top
+        if layout.position.value.startswith("top-")
+        else layout.margin_bottom
+        if layout.position.value.startswith("bottom-")
+        else min(layout.margin_top, layout.margin_bottom)
+    )
     return validate_style_options(
         {
             "font": appearance.font,
@@ -203,16 +203,17 @@ def subtitle_config_to_style_options(
             "border_style": appearance.border_style,
             "outline_weight": appearance.outline_weight,
             "shadow_weight": appearance.shadow_weight,
-            "alignment": layout.alignment,
-            "margin_l": layout.margin_l,
-            "margin_r": layout.margin_r,
-            "margin_v": layout.margin_v,
+            "margin_l": layout.margin_left,
+            "margin_r": layout.margin_right,
+            "margin_v": margin_v,
         }
     )
 
 
 def _subtitle_config_from_validated_style(
     style: Mapping[str, str | int],
+    *,
+    position: SubtitlePosition,
 ) -> SubtitleConfig:
     return SubtitleConfig(
         appearance=SubtitleAppearance(
@@ -235,12 +236,27 @@ def _subtitle_config_from_validated_style(
             shadow_weight=int(style["shadow_weight"]),
         ),
         layout=SubtitleLayout(
-            alignment=int(style["alignment"]),
-            margin_l=int(style["margin_l"]),
-            margin_r=int(style["margin_r"]),
-            margin_v=int(style["margin_v"]),
+            position=position,
+            margin_left=int(style["margin_l"]),
+            margin_right=int(style["margin_r"]),
+            margin_top=int(style["margin_v"]),
+            margin_bottom=int(style["margin_v"]),
         ),
     )
+
+
+def parse_position(value: SubtitlePosition | str) -> SubtitlePosition:
+    """Parse one lowercase, hyphenated semantic subtitle position."""
+    if isinstance(value, SubtitlePosition):
+        return value
+    if not isinstance(value, str):
+        raise ValidationError("position must be one of: " + ", ".join(POSITION_CHOICES))
+    try:
+        return SubtitlePosition(value)
+    except ValueError as exc:
+        raise ValidationError(
+            "position must be one of: " + ", ".join(POSITION_CHOICES)
+        ) from exc
 
 
 def _validate_style_value(key: str, value: str | int) -> str | int:
@@ -277,8 +293,6 @@ def _validate_style_value(key: str, value: str | int) -> str | int:
         )
     if key in _NON_NEGATIVE_FIELDS and value < 0:
         raise ValidationError(f"style-{key.replace('_', '-')} cannot be negative")
-    if key == "alignment" and value not in range(1, 10):
-        raise ValidationError("style-alignment must be between 1 and 9")
     if key == "border_style" and value not in {1, 3, 4}:
         raise ValidationError("style-border-style must be one of 1, 3, or 4")
     return value

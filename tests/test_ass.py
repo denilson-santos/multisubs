@@ -3,10 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from multisubs.ass import escape_ass_text, format_ass_time, write_ass
+from multisubs.ass import (
+    _ass_alignment_for_position,
+    escape_ass_text,
+    format_ass_time,
+    write_ass,
+)
 from multisubs.config import DEFAULT_STYLE, validate_subtitle_config
 from multisubs.errors import ArtifactError
-from multisubs.models import VideoGeometry
+from multisubs.models import SubtitlePosition, VideoGeometry
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -48,6 +53,7 @@ def test_write_ass_preserves_style_contract_and_escapes_dialogue(tmp_path: Path)
         "WrapStyle: 0\n"
     ) in content
     assert "Style: Default,Roboto,43" in content
+    assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert "0:00:00.00,0:01:01.24" in content
     assert "\\{mundo\\}" in content
     assert "\\N字幕" in content
@@ -61,3 +67,21 @@ def test_format_ass_time_rejects_invalid_values(value):
 
 def test_escape_ass_text_neutralizes_override_syntax_and_line_endings():
     assert escape_ass_text("{\\an8}\r\ntext") == "\\{\\\\an8\\}\\Ntext"
+
+
+@pytest.mark.parametrize(
+    ("position", "alignment"),
+    [
+        (SubtitlePosition.BOTTOM_LEFT, 1),
+        (SubtitlePosition.BOTTOM_CENTER, 2),
+        (SubtitlePosition.BOTTOM_RIGHT, 3),
+        (SubtitlePosition.MIDDLE_LEFT, 4),
+        (SubtitlePosition.CENTER, 5),
+        (SubtitlePosition.MIDDLE_RIGHT, 6),
+        (SubtitlePosition.TOP_LEFT, 7),
+        (SubtitlePosition.TOP_CENTER, 8),
+        (SubtitlePosition.TOP_RIGHT, 9),
+    ],
+)
+def test_named_positions_use_private_ass_alignment_codes(position, alignment):
+    assert _ass_alignment_for_position(position) == alignment

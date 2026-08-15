@@ -111,13 +111,14 @@ tr, uk, ur, vi, zh
 
 ### Style options
 
-Every default ASS style value can be overridden with a --style-* flag. The defaults live in [multisubs/config.py](multisubs/config.py).
+Every exposed default ASS appearance value can be overridden with a --style-*
+flag. The defaults live in [multisubs/config.py](multisubs/config.py).
 
 | Area | Options |
 | --- | --- |
 | Font and colors | --style-font, --style-font-size, --style-primary-color, --style-secondary-color, --style-outline-color, --style-back-color |
 | Text treatment | --style-bold, --style-italic, --style-underline, --style-strikeout |
-| Size and position | --style-scale-x, --style-scale-y, --style-spacing, --style-angle, --style-alignment, --style-margin-l, --style-margin-r, --style-margin-v |
+| Size and position | --style-scale-x, --style-scale-y, --style-spacing, --style-angle, --style-margin-l, --style-margin-r, --style-margin-v |
 | Border and shadow | --style-border-style, --style-outline-weight, --style-shadow-weight |
 
 Color values are passed through to ASS. Quote values containing shell-significant characters, for example:
@@ -130,6 +131,20 @@ Style values are validated before model loading. Colors must use ASS hexadecimal
 notation (`&H` followed by 6 or 8 hexadecimal digits), numeric values must be
 finite and in their supported ranges, and font names cannot contain commas or
 line breaks.
+
+### Subtitle positions
+
+Use `--position` to choose a semantic screen anchor. The default is
+`bottom-center`.
+
+| `top-left` | `top-center` | `top-right` |
+| --- | --- | --- |
+| `middle-left` | `center` | `middle-right` |
+| `bottom-left` | `bottom-center` | `bottom-right` |
+
+Left and right are physical screen directions, not language-relative start and
+end values. Numeric ASS alignment codes are private implementation details;
+`--style-alignment` is not a supported option.
 
 ## Generated files
 

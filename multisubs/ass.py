@@ -9,13 +9,49 @@ from pathlib import Path
 from typing import Any
 
 from .config import (
-    ASS_STYLE_FIELDS,
     subtitle_config_to_style_options,
     validate_subtitle_config,
 )
 from .errors import ArtifactError
-from .models import SubtitleConfig, VideoGeometry
+from .layout import resolve_safe_rectangle
+from .models import SubtitleConfig, SubtitlePosition, VideoGeometry
 from .utils import atomic_write_text
+
+ASS_STYLE_FIELDS = (
+    "font",
+    "font_size",
+    "primary_color",
+    "secondary_color",
+    "outline_color",
+    "back_color",
+    "bold",
+    "italic",
+    "underline",
+    "strikeout",
+    "scale_x",
+    "scale_y",
+    "spacing",
+    "angle",
+    "border_style",
+    "outline_weight",
+    "shadow_weight",
+    "alignment",
+    "margin_l",
+    "margin_r",
+    "margin_v",
+)
+
+_ASS_ALIGNMENT_BY_POSITION = {
+    SubtitlePosition.BOTTOM_LEFT: 1,
+    SubtitlePosition.BOTTOM_CENTER: 2,
+    SubtitlePosition.BOTTOM_RIGHT: 3,
+    SubtitlePosition.MIDDLE_LEFT: 4,
+    SubtitlePosition.CENTER: 5,
+    SubtitlePosition.MIDDLE_RIGHT: 6,
+    SubtitlePosition.TOP_LEFT: 7,
+    SubtitlePosition.TOP_CENTER: 8,
+    SubtitlePosition.TOP_RIGHT: 9,
+}
 
 
 def write_ass(
@@ -28,7 +64,8 @@ def write_ass(
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
     config = validate_subtitle_config(subtitle_config)
-    style = subtitle_config_to_style_options(config)
+    resolve_safe_rectangle(geometry, config.layout)
+    style = _compile_style(config)
     lines = [
         "[Script Info]",
         "Title: multisubs generated subtitles",
@@ -58,6 +95,21 @@ def write_ass(
             f"Default,,0,0,0,,{escape_ass_text(str(segment['text']))}"
         )
     atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+def _compile_style(config: SubtitleConfig) -> dict[str, str | int]:
+    """Compile semantic layout into the private numeric ASS style fields."""
+    style = subtitle_config_to_style_options(config)
+    style["alignment"] = _ass_alignment_for_position(config.layout.position)
+    return style
+
+
+def _ass_alignment_for_position(position: SubtitlePosition) -> int:
+    """Return the private ASS alignment code for one semantic position."""
+    try:
+        return _ASS_ALIGNMENT_BY_POSITION[position]
+    except KeyError as exc:
+        raise ArtifactError(f"Unsupported subtitle position: {position}") from exc
 
 
 def format_ass_time(seconds: object) -> str:
