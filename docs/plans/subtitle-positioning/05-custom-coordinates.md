@@ -1,6 +1,6 @@
 # Feature 5: custom subtitle coordinates
 
-Status: planned
+Status: Planned
 
 Depends on:
 

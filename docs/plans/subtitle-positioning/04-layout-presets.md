@@ -1,6 +1,6 @@
 # Feature 4: layout presets
 
-Status: planned
+Status: Planned
 
 Depends on:
 
@@ -42,6 +42,10 @@ The default is auto.
 The vertical-social values must be calibrated with documented generic overlay
 guides. The preset must not claim compatibility guarantees for a named social
 platform whose interface can change.
+
+Presets own the resolved default line count. The public `--max-lines` override
+is delivered by [Feature 7](07-maximum-lines.md) after adaptive wrapping can
+enforce the value without losing text or inventing timestamps.
 
 ## Auto selection
 

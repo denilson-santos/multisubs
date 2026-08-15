@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Plan Docs"
+  short_description: "Create and maintain implementation plans"
+  default_prompt: "Use $create-plan-docs to create implementation plan documents for this repository."

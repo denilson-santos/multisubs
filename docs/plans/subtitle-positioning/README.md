@@ -26,14 +26,15 @@ This table is the source of truth for the package. Status values follow the
 | --- | --- | --- | --- | --- |
 | 0 | [Shared foundation](00-foundation.md) | Done | — | [#7](https://github.com/denilson-santos/multisubs/pull/7) |
 | 1 | [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md) | Done | 0 | [#8](https://github.com/denilson-santos/multisubs/pull/8) |
-| 2 | [Named positions](02-named-positions.md) | In review | 0, 1 | [#10](https://github.com/denilson-santos/multisubs/pull/10) |
+| 2 | [Named positions](02-named-positions.md) | Done | 0, 1 | [#10](https://github.com/denilson-santos/multisubs/pull/10) |
 | 3 | [Relative units](03-relative-units.md) | Planned | 0, 1 | — |
 | 4 | [Layout presets](04-layout-presets.md) | Planned | 0–3 | — |
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Planned | 0–3 | — |
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Planned | 0, 1, 3, 4 | — |
-| 7 | [Layout preview](07-layout-preview.md) | Planned | 0–6 | — |
+| 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
+| 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
-Package progress: 1 of 8 plans done; Feature 2 is in review.
+Package progress: 3 of 9 plans done; Feature 3 is the next unblocked plan.
 
 ## Delivery-gate status
 
@@ -42,7 +43,7 @@ Delivery gates are tracked separately from feature progress.
 | Gate | Status | Depends on | Pull request |
 | --- | --- | --- | --- |
 | Breaking CLI cutover | Planned | Plans 0–3 | — |
-| Major-version release | Planned | Plans 0–7 and CLI cutover | — |
+| Major-version release | Planned | Plans 0–8 and CLI cutover | — |
 
 ## Target CLI
 
@@ -119,6 +120,7 @@ incompatible options.
 - Presets.
 - Custom coordinates.
 - Adaptive wrapping.
+- Maximum-line override.
 
 ### Milestone 3: editing feedback
 

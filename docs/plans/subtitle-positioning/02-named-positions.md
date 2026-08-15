@@ -1,6 +1,6 @@
 # Feature 2: named subtitle positions
 
-Status: In review
+Status: Done
 
 Depends on:
 

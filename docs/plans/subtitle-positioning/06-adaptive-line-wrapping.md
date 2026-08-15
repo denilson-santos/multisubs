@@ -1,6 +1,6 @@
 # Feature 6: adaptive line wrapping
 
-Status: planned
+Status: Planned
 
 Depends on:
 
@@ -24,6 +24,11 @@ while preserving the existing preference for punctuation, clauses, and pauses.
 - SRT receives intentional visual line breaks but cannot express position or safe
   areas.
 - ASS remains the authoritative rendered layout.
+
+This feature makes the cue-layout engine capable of enforcing the resolved
+`SubtitleLayout.max_lines` value supplied by presets. The explicit user override
+is added separately by [Feature 7](07-maximum-lines.md), after this engine is in
+place.
 
 ## Internal cue separation
 
@@ -102,7 +107,7 @@ Keep all thresholds centralized and documented.
 - [ ] Pass resolved layout into cue layout.
 - [ ] Replace MAX_CHARS_PER_LINE with a calculated width budget.
 - [ ] Preserve MAX_CUE_DURATION and semantic boundary priorities.
-- [ ] Add max-lines validation.
+- [ ] Add internal max-lines validation and enforcement.
 - [ ] Add Unicode display-width estimation.
 - [ ] Account for backdrop and shadow bounds.
 - [ ] Configure ASS WrapStyle and margins consistently.
@@ -140,7 +145,7 @@ With a controlled installed font:
 ## Documentation
 
 - Replace the fixed 42-character architecture statement.
-- Document max-width and max-lines.
+- Document max-width and preset-provided max-lines behavior.
 - Explain approximate calculation versus final libass shaping.
 - Document long-token fallback.
 - Update FR-7 if expected wrapping outcomes change.
