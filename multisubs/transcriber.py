@@ -1,4 +1,4 @@
-"""WhisperX transcription, cue construction, and subtitle serialization."""
+"""WhisperX transcription, cue construction, and artifact coordination."""
 
 from __future__ import annotations
 
@@ -9,22 +9,26 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from fractions import Fraction
 from numbers import Real
 from pathlib import Path
 from typing import Any, cast
 
-from .config import (
-    ASS_STYLE_FIELDS,
-    validate_style_options,
-)
+from .ass import write_ass
 from .config import (
     DEFAULT_STYLE as _DEFAULT_STYLE,
 )
 from .config import (
     MODELS as _MODELS,
 )
+from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
-from .models import TranscriptionPaths
+from .models import (
+    SubtitleConfig,
+    TranscriptDocument,
+    TranscriptionPaths,
+    VideoGeometry,
+)
 from .utils import atomic_write_text, find_unique_stem
 
 MAX_CHARS_PER_LINE = 42
@@ -69,7 +73,7 @@ MODELS = _MODELS
 def generate_transcriptions(
     input_path: str | Path,
     output_dir: str | Path,
-    style_options: Mapping[str, str | int] | None = None,
+    style_options: SubtitleConfig | Mapping[str, str | int] | None = None,
     lang: str = "en",
     task: str = "transcribe",
     model_name: str = "turbo",
@@ -84,7 +88,36 @@ def generate_transcriptions(
     """
     source_path = _normalise_input_path(input_path)
     destination_dir = _normalise_output_dir(output_dir)
-    style = validate_style_options(style_options)
+    subtitle_config = validate_subtitle_config(style_options)
+    from .subtitler import probe_video_geometry
+
+    geometry = probe_video_geometry(source_path)
+    document = transcribe_video(
+        source_path,
+        lang=lang,
+        task=task,
+        model_name=model_name,
+        progress=progress,
+    )
+    return write_transcription_artifacts(
+        document,
+        destination_dir,
+        subtitle_config,
+        geometry=geometry,
+        progress=progress,
+    )
+
+
+def transcribe_video(
+    input_path: str | Path,
+    lang: str = "en",
+    task: str = "transcribe",
+    model_name: str = "turbo",
+    *,
+    progress: ProgressReporter = None,
+) -> TranscriptDocument:
+    """Transcribe and align one video without serializing output artifacts."""
+    source_path = _normalise_input_path(input_path)
 
     _report(progress, f"Generating transcripts for '{source_path.name}'...")
     torch, whisperx = _load_runtime_dependencies()
@@ -158,24 +191,55 @@ def generate_transcriptions(
     _validate_subtitle_segments(segments)
 
     full_text = _result_full_text(result_mapping, segments)
-    paths = _choose_transcription_paths(destination_dir, source_path.stem, lang)
+    return TranscriptDocument(
+        source_path=source_path,
+        language=lang,
+        task=task,
+        model_name=model_name,
+        full_text=full_text,
+        segments=tuple(segments),
+    )
+
+
+def write_transcription_artifacts(
+    document: TranscriptDocument,
+    output_dir: str | Path,
+    subtitle_config: SubtitleConfig | Mapping[str, str | int] | None = None,
+    *,
+    geometry: VideoGeometry | None = None,
+    progress: ProgressReporter = None,
+) -> tuple[str, str, str]:
+    """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
+    destination_dir = _normalise_output_dir(output_dir)
+    config = validate_subtitle_config(subtitle_config)
+    if geometry is None:
+        from .subtitler import probe_video_geometry
+
+        geometry = probe_video_geometry(document.source_path)
+    _validate_subtitle_segments(document.segments)
+    paths = _choose_transcription_paths(
+        destination_dir,
+        document.source_path.stem,
+        document.language,
+    )
 
     _write_json(
         paths.json_path,
-        full_text=full_text,
-        segments=segments,
-        file_name=source_path.stem,
-        lang=lang,
-        input_path=source_path,
-        task=task,
-        model_name=model_name,
+        full_text=document.full_text,
+        segments=document.segments,
+        file_name=document.source_path.stem,
+        lang=document.language,
+        input_path=document.source_path,
+        task=document.task,
+        model_name=document.model_name,
+        geometry=geometry,
     )
     _report(progress, "Completed JSON transcript.")
 
-    _write_srt(paths.srt_path, segments)
+    _write_srt(paths.srt_path, document.segments)
     _report(progress, "Completed SRT transcript.")
 
-    _write_ass(paths.ass_path, segments, style)
+    write_ass(paths.ass_path, document.segments, config, geometry)
     _report(progress, "Completed ASS transcript.")
     return paths.as_tuple()
 
@@ -678,8 +742,10 @@ def _write_json(
     input_path: Path,
     task: str,
     model_name: str,
+    geometry: VideoGeometry,
 ) -> None:
     json_data = {
+        "schema_version": 1,
         "metadata": {
             "file_name": file_name,
             "original_path": str(input_path),
@@ -689,6 +755,17 @@ def _write_json(
             "model": model_name,
             "duration": segments[-1]["end"] if segments else 0.0,
             "num_segments": len(segments),
+            "rendering": {
+                "video_stream_index": geometry.stream_index,
+                "coded_width": geometry.coded_width,
+                "coded_height": geometry.coded_height,
+                "render_width": geometry.render_width,
+                "render_height": geometry.render_height,
+                "rotation_degrees": geometry.rotation_degrees,
+                "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
+                "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
+                "container_duration": geometry.duration_seconds,
+            },
         },
         "transcription": {"text": full_text, "segments": list(segments)},
     }
@@ -699,6 +776,10 @@ def _write_json(
             f"Could not serialize JSON transcript '{path}': {exc}"
         ) from exc
     atomic_write_text(path, f"{content}\n")
+
+
+def _format_fraction(value: Fraction) -> str:
+    return f"{value.numerator}:{value.denominator}"
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
@@ -726,57 +807,6 @@ def _format_srt_time(seconds: object) -> str:
     minutes, remainder = divmod(remainder, 60_000)
     whole_seconds, millis = divmod(remainder, 1_000)
     return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d},{millis:03d}"
-
-
-def _write_ass(
-    path: Path,
-    segments: Sequence[Mapping[str, Any]],
-    style_options: Mapping[str, str | int],
-) -> None:
-    style = validate_style_options(style_options)
-    lines = [
-        "[Script Info]",
-        "Title: multisubs generated subtitles",
-        "ScriptType: v4.00+",
-        "",
-        "[V4+ Styles]",
-        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
-        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
-        "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, "
-        "MarginR, MarginV, Encoding",
-        "Style: Default,"
-        + ",".join(str(style[field]) for field in ASS_STYLE_FIELDS)
-        + ",1",
-        "",
-        "[Events]",
-        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
-        "Effect, Text",
-    ]
-    for segment in segments:
-        lines.append(
-            "Dialogue: 0,"
-            f"{_format_ass_time(segment['start'])},{_format_ass_time(segment['end'])},"
-            f"Default,,0,0,0,,{_escape_ass_text(str(segment['text']))}"
-        )
-    atomic_write_text(path, "\n".join(lines) + "\n")
-
-
-def _format_ass_time(seconds: object) -> str:
-    value = _finite_time(seconds)
-    if value is None:
-        raise ArtifactError("ASS timestamp must be a finite, non-negative number")
-    total_centiseconds = round(value * 100)
-    hours, remainder = divmod(total_centiseconds, 360_000)
-    minutes, remainder = divmod(remainder, 6_000)
-    whole_seconds, centiseconds = divmod(remainder, 100)
-    return f"{hours}:{minutes:02d}:{whole_seconds:02d}.{centiseconds:02d}"
-
-
-def _escape_ass_text(text: str) -> str:
-    escaped = text.replace("\r\n", "\n").replace("\r", "\n")
-    escaped = escaped.replace("\\", "\\\\")
-    escaped = escaped.replace("{", "\\{").replace("}", "\\}")
-    return escaped.replace("\n", "\\N")
 
 
 def _json_safe_mapping(value: Mapping[object, object]) -> dict[str, Any]:

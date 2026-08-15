@@ -179,7 +179,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep the ASS header, style field order, event field order, and dialogue line-break syntax compatible with the ASS format.
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
-- Should centralize default style values in DEFAULT_STYLE and expose user-supported overrides consistently through the CLI.
+- Must pass subtitle appearance and layout through typed configuration objects.
+  DEFAULT_STYLE may remain only as a temporary adapter until the planned CLI
+  cutover; ASS field ordering and conversion belong in the ASS serializer.
 - Must validate style values that can produce invalid ASS or unsafe filter input. Treat colors, font names, alignment, margins, and numeric values as user input.
 - Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.
@@ -200,7 +202,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must safely escape or pass subtitle-file paths for the FFmpeg filter syntax. Paths with spaces, quotes, colons, commas, backslashes, and non-ASCII characters require dedicated coverage.
 - Must keep video-rendering policy explicit: subtitle filter, video codec, audio-stream policy, container compatibility, metadata preservation, and overwrite policy.
 - Must avoid accidental re-encoding policy changes. If a change modifies codec, quality, stream mapping, audio-copy behavior, or container handling, document it in [README.md](../README.md) and [architecture.md](architecture.md).
-- Should inspect input streams with ffprobe before adding features that depend on audio/video stream selection, duration, rotation, or container compatibility.
+- Must inspect the selected input video stream with ffprobe before model loading. The ASS canvas, rendering metadata, and FFmpeg subtitles filter must share the same normalized geometry and explicit autorotation policy.
 - Should write rendered media to a temporary destination and publish it atomically after FFmpeg succeeds.
 - Must surface FFmpeg failures with enough context to diagnose the command stage, input, output, and relevant stderr without leaking sensitive file contents.
 - Should treat malformed media as untrusted input. Bound resource use where possible and avoid recursively processing paths supplied by a user.
