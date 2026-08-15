@@ -1,9 +1,15 @@
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
-from multisubs.ass import escape_ass_text, format_ass_time, write_ass
+from multisubs.ass import (
+    _resolve_style_for_geometry,
+    escape_ass_text,
+    format_ass_time,
+    write_ass,
+)
 from multisubs.config import DEFAULT_STYLE, validate_subtitle_config
 from multisubs.errors import ArtifactError
 from multisubs.models import VideoGeometry
@@ -47,7 +53,8 @@ def test_write_ass_preserves_style_contract_and_escapes_dialogue(tmp_path: Path)
         "ScaledBorderAndShadow: yes\n"
         "WrapStyle: 0\n"
     ) in content
-    assert "Style: Default,Roboto,14" in content
+    assert "Style: Default,Roboto,93" in content
+    assert ",13,2,112,112,100,1" in content
     assert "0:00:00.00,0:01:01.24" in content
     assert "\\{mundo\\}" in content
     assert "\\N字幕" in content
@@ -61,3 +68,50 @@ def test_format_ass_time_rejects_invalid_values(value):
 
 def test_escape_ass_text_neutralizes_override_syntax_and_line_endings():
     assert escape_ass_text("{\\an8}\r\ntext") == "\\{\\\\an8\\}\\Ntext"
+
+
+def test_legacy_style_values_scale_to_the_explicit_canvas():
+    resolved = _resolve_style_for_geometry(
+        DEFAULT_STYLE,
+        GEOMETRY,
+    )
+
+    assert resolved["font_size"] == 93
+    assert resolved["margin_l"] == 112
+    assert resolved["margin_v"] == 100
+    assert resolved["shadow_weight"] == 13
+
+
+def test_default_style_scales_to_1080p_canvas():
+    geometry = replace(
+        GEOMETRY,
+        coded_width=1920,
+        coded_height=1080,
+        render_width=1920,
+        render_height=1080,
+        rotation_degrees=0,
+        display_aspect_ratio=Fraction(16, 9),
+    )
+
+    resolved = _resolve_style_for_geometry(DEFAULT_STYLE, geometry)
+
+    assert resolved["font_size"] == 52
+    assert resolved["margin_l"] == 200
+    assert resolved["margin_v"] == 56
+    assert resolved["shadow_weight"] == 8
+
+
+def test_legacy_style_values_are_unchanged_on_the_reference_canvas():
+    reference = VideoGeometry(
+        stream_index=0,
+        coded_width=384,
+        coded_height=288,
+        render_width=384,
+        render_height=288,
+        rotation_degrees=0,
+        sample_aspect_ratio=Fraction(1, 1),
+        display_aspect_ratio=Fraction(4, 3),
+        duration_seconds=1.0,
+    )
+
+    assert _resolve_style_for_geometry(DEFAULT_STYLE, reference) == DEFAULT_STYLE

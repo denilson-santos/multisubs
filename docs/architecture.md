@@ -131,7 +131,10 @@ is accepted only through a temporary compatibility adapter. ass.py converts line
 breaks to ASS's \N syntax in dialogue events and escapes subtitle-derived braces
 and backslashes so they cannot become unintended override tags. Every generated
 ASS declares ScriptType, PlayResX, PlayResY, ScaledBorderAndShadow, and WrapStyle
-in a stable order. PlayRes matches the autorotated render dimensions.
+in a stable order. PlayRes matches the autorotated render dimensions. Legacy
+numeric font, margin, spacing, outline, and shadow values are resolved from the
+implicit 384x288 ASS canvas before serialization, preserving their visual
+proportions on the explicit canvas.
 
 ## Output layouts
 
