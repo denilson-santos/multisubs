@@ -202,7 +202,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must safely escape or pass subtitle-file paths for the FFmpeg filter syntax. Paths with spaces, quotes, colons, commas, backslashes, and non-ASCII characters require dedicated coverage.
 - Must keep video-rendering policy explicit: subtitle filter, video codec, audio-stream policy, container compatibility, metadata preservation, and overwrite policy.
 - Must avoid accidental re-encoding policy changes. If a change modifies codec, quality, stream mapping, audio-copy behavior, or container handling, document it in [README.md](../README.md) and [architecture.md](architecture.md).
-- Should inspect input streams with ffprobe before adding features that depend on audio/video stream selection, duration, rotation, or container compatibility.
+- Must inspect the selected input video stream with ffprobe before model loading. The ASS canvas, rendering metadata, and FFmpeg subtitles filter must share the same normalized geometry and explicit autorotation policy.
 - Should write rendered media to a temporary destination and publish it atomically after FFmpeg succeeds.
 - Must surface FFmpeg failures with enough context to diagnose the command stage, input, output, and relevant stderr without leaking sensitive file contents.
 - Should treat malformed media as untrusted input. Bound resource use where possible and avoid recursively processing paths supplied by a user.

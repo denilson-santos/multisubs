@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from fractions import Fraction
 from numbers import Real
 from pathlib import Path
 from typing import Any, cast
@@ -22,7 +23,12 @@ from .config import (
 )
 from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
-from .models import SubtitleConfig, TranscriptDocument, TranscriptionPaths
+from .models import (
+    SubtitleConfig,
+    TranscriptDocument,
+    TranscriptionPaths,
+    VideoGeometry,
+)
 from .utils import atomic_write_text, find_unique_stem
 
 MAX_CHARS_PER_LINE = 42
@@ -83,6 +89,9 @@ def generate_transcriptions(
     source_path = _normalise_input_path(input_path)
     destination_dir = _normalise_output_dir(output_dir)
     subtitle_config = validate_subtitle_config(style_options)
+    from .subtitler import probe_video_geometry
+
+    geometry = probe_video_geometry(source_path)
     document = transcribe_video(
         source_path,
         lang=lang,
@@ -94,6 +103,7 @@ def generate_transcriptions(
         document,
         destination_dir,
         subtitle_config,
+        geometry=geometry,
         progress=progress,
     )
 
@@ -196,11 +206,16 @@ def write_transcription_artifacts(
     output_dir: str | Path,
     subtitle_config: SubtitleConfig | Mapping[str, str | int] | None = None,
     *,
+    geometry: VideoGeometry | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
     destination_dir = _normalise_output_dir(output_dir)
     config = validate_subtitle_config(subtitle_config)
+    if geometry is None:
+        from .subtitler import probe_video_geometry
+
+        geometry = probe_video_geometry(document.source_path)
     _validate_subtitle_segments(document.segments)
     paths = _choose_transcription_paths(
         destination_dir,
@@ -217,13 +232,14 @@ def write_transcription_artifacts(
         input_path=document.source_path,
         task=document.task,
         model_name=document.model_name,
+        geometry=geometry,
     )
     _report(progress, "Completed JSON transcript.")
 
     _write_srt(paths.srt_path, document.segments)
     _report(progress, "Completed SRT transcript.")
 
-    write_ass(paths.ass_path, document.segments, config)
+    write_ass(paths.ass_path, document.segments, config, geometry)
     _report(progress, "Completed ASS transcript.")
     return paths.as_tuple()
 
@@ -726,8 +742,10 @@ def _write_json(
     input_path: Path,
     task: str,
     model_name: str,
+    geometry: VideoGeometry,
 ) -> None:
     json_data = {
+        "schema_version": 1,
         "metadata": {
             "file_name": file_name,
             "original_path": str(input_path),
@@ -737,6 +755,17 @@ def _write_json(
             "model": model_name,
             "duration": segments[-1]["end"] if segments else 0.0,
             "num_segments": len(segments),
+            "rendering": {
+                "video_stream_index": geometry.stream_index,
+                "coded_width": geometry.coded_width,
+                "coded_height": geometry.coded_height,
+                "render_width": geometry.render_width,
+                "render_height": geometry.render_height,
+                "rotation_degrees": geometry.rotation_degrees,
+                "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
+                "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
+                "container_duration": geometry.duration_seconds,
+            },
         },
         "transcription": {"text": full_text, "segments": list(segments)},
     }
@@ -747,6 +776,10 @@ def _write_json(
             f"Could not serialize JSON transcript '{path}': {exc}"
         ) from exc
     atomic_write_text(path, f"{content}\n")
+
+
+def _format_fraction(value: Fraction) -> str:
+    return f"{value.numerator}:{value.denominator}"
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:

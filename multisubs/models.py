@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,26 @@ class SubtitleConfig:
 
     appearance: SubtitleAppearance
     layout: SubtitleLayout
+
+
+@dataclass(frozen=True)
+class VideoGeometry:
+    """Validated source and render geometry for one selected video stream."""
+
+    stream_index: int
+    coded_width: int
+    coded_height: int
+    render_width: int
+    render_height: int
+    rotation_degrees: int
+    sample_aspect_ratio: Fraction
+    display_aspect_ratio: Fraction
+    duration_seconds: float | None
+
+    @property
+    def original_size(self) -> str:
+        """Return the libass/FFmpeg canvas size for the autorotated frame."""
+        return f"{self.render_width}x{self.render_height}"
 
 
 @dataclass(frozen=True)

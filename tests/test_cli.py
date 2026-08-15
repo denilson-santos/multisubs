@@ -1,15 +1,29 @@
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from multisubs import cli
 from multisubs.config import validate_subtitle_config
-from multisubs.errors import ArtifactError, TranscriptionError
+from multisubs.errors import ArtifactError, TranscriptionError, ValidationError
 from multisubs.models import (
     RunArtifacts,
     RunRequest,
     TranscriptDocument,
     TranscriptionPaths,
+    VideoGeometry,
+)
+
+GEOMETRY = VideoGeometry(
+    stream_index=0,
+    coded_width=1920,
+    coded_height=1080,
+    render_width=1920,
+    render_height=1080,
+    rotation_degrees=0,
+    sample_aspect_ratio=Fraction(1, 1),
+    display_aspect_ratio=Fraction(16, 9),
+    duration_seconds=10.0,
 )
 
 
@@ -176,7 +190,8 @@ def test_run_request_cleans_private_work_dir_after_default_success(
             segments=(),
         )
 
-    def fake_artifact_writer(document, destination, config, *, progress):
+    def fake_artifact_writer(document, destination, config, *, geometry, progress):
+        assert geometry is GEOMETRY
         paths = TranscriptionPaths(
             Path(destination) / "video-pt.json",
             Path(destination) / "video-pt.srt",
@@ -186,14 +201,18 @@ def test_run_request_cleans_private_work_dir_after_default_success(
             Path(path).write_text("artifact", encoding="utf-8")
         return paths.as_tuple()
 
-    def fake_render(source, subtitle, destination, lang, *, output_path, progress):
+    def fake_render(
+        source, subtitle, destination, lang, *, output_path, geometry, progress
+    ):
+        assert geometry is GEOMETRY
         Path(output_path).write_bytes(b"video")
         return str(output_path)
 
     monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
     monkeypatch.setattr(
-        "multisubs.transcriber.transcribe_video", fake_transcription
+        "multisubs.subtitler.probe_video_geometry", lambda path: GEOMETRY
     )
+    monkeypatch.setattr("multisubs.transcriber.transcribe_video", fake_transcription)
     monkeypatch.setattr(
         "multisubs.transcriber.write_transcription_artifacts",
         fake_artifact_writer,
@@ -222,10 +241,34 @@ def test_run_request_retains_private_work_dir_after_processing_failure(
 
     monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
     monkeypatch.setattr(
-        "multisubs.transcriber.transcribe_video", failed_transcription
+        "multisubs.subtitler.probe_video_geometry", lambda path: GEOMETRY
     )
+    monkeypatch.setattr("multisubs.transcriber.transcribe_video", failed_transcription)
 
     with pytest.raises(ArtifactError, match="Working artifacts"):
         cli._run_request(_request(input_path, output_dir), lambda message: None)
 
     assert len(list(output_dir.glob(".multisubs-*"))) == 1
+
+
+def test_run_request_rejects_probe_failure_before_transcription(
+    tmp_path: Path, monkeypatch
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    output_dir = tmp_path / "output"
+
+    monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
+    monkeypatch.setattr(
+        "multisubs.subtitler.probe_video_geometry",
+        lambda path: (_ for _ in ()).throw(ValidationError("invalid geometry")),
+    )
+    monkeypatch.setattr(
+        "multisubs.transcriber.transcribe_video",
+        lambda *args, **kwargs: pytest.fail("transcription must not start"),
+    )
+
+    with pytest.raises(ValidationError, match="invalid geometry"):
+        cli._run_request(_request(input_path, output_dir), lambda message: None)
+
+    assert not output_dir.exists()

@@ -14,7 +14,7 @@ from .config import (
     validate_subtitle_config,
 )
 from .errors import ArtifactError
-from .models import SubtitleConfig
+from .models import SubtitleConfig, VideoGeometry
 from .utils import atomic_write_text
 
 
@@ -22,14 +22,21 @@ def write_ass(
     path: Path,
     segments: Sequence[Mapping[str, Any]],
     subtitle_config: SubtitleConfig | Mapping[str, str | int] | None,
+    geometry: VideoGeometry,
 ) -> None:
-    """Write safe ASS dialogue using typed or legacy subtitle configuration."""
+    """Write safe ASS dialogue on the probed, autorotated video canvas."""
+    if geometry.render_width <= 0 or geometry.render_height <= 0:
+        raise ArtifactError("ASS canvas dimensions must be positive")
     config = validate_subtitle_config(subtitle_config)
     style = subtitle_config_to_style_options(config)
     lines = [
         "[Script Info]",
         "Title: multisubs generated subtitles",
         "ScriptType: v4.00+",
+        f"PlayResX: {geometry.render_width}",
+        f"PlayResY: {geometry.render_height}",
+        "ScaledBorderAndShadow: yes",
+        "WrapStyle: 0",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "

@@ -5,12 +5,14 @@
 multisubs is a small Python package with one CLI entry point. It orchestrates two external capabilities:
 
 - WhisperX and PyTorch for transcription and word-level timing alignment.
-- FFmpeg, through ffmpeg-python, for rendering ASS subtitles into a video.
+- FFmpeg and ffprobe for normalized media geometry and ASS subtitle rendering.
 
 ~~~mermaid
 flowchart LR
     user[User command] --> cli[cli.py]
     input[Input video] --> cli
+    input --> probe[ffprobe geometry]
+    probe --> cli
     config[config.py<br/>typed subtitle config] --> cli
     cli --> transcriber[transcriber.py]
     transcriber --> whisper[WhisperX + PyTorch]
@@ -20,9 +22,11 @@ flowchart LR
     cues --> asswriter[ass.py]
     asswriter --> ass[ASS]
     config --> asswriter
+    probe --> asswriter
     cli --> subtitler[subtitler.py]
     input --> subtitler
     ass --> subtitler
+    probe --> subtitler
     subtitler --> ffmpeg[FFmpeg subtitles filter]
     ffmpeg --> video[Rendered video]
     utils[utils.py] --> transcriber
@@ -38,11 +42,11 @@ flowchart LR
 | multisubs/cli.py | Defines the console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | main() |
 | multisubs/transcriber.py | Loads WhisperX, transcribes audio, aligns words, builds readable cues, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/ass.py | Serializes ASS headers, typed style configuration, timestamps, and safely escaped dialogue text. | write_ass() |
-| multisubs/subtitler.py | Invokes FFmpeg to burn the generated ASS file into a copy of the input video. | embed_subtitles() |
+| multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream. | probe_video_geometry(), embed_subtitles() |
 | multisubs/config.py | Defines supported choices and validates the typed subtitle configuration while temporarily adapting the existing ASS-style CLI. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
-| multisubs/models.py | Defines typed request, subtitle configuration, semantic transcript, and artifact value objects. | RunRequest, SubtitleConfig, TranscriptDocument, RunArtifacts, TranscriptionPaths |
+| multisubs/models.py | Defines typed request, subtitle configuration, video geometry, semantic transcript, and artifact value objects. | RunRequest, SubtitleConfig, VideoGeometry, TranscriptDocument, RunArtifacts, TranscriptionPaths |
 | multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
 
 ## Execution flow
@@ -50,13 +54,15 @@ flowchart LR
 1. The console script declared in pyproject.toml calls cli.main().
 2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, and all style values are valid. The existing --style-* values are adapted into a typed SubtitleConfig pending the planned CLI cutover.
 3. For a translation task, the CLI rejects turbo and English-only model names before model loading.
-4. The CLI validates FFmpeg's executable and subtitles filter, then creates a private temporary work directory inside the output directory.
-5. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
-6. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
-7. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies duration and text-length limits as fallbacks.
-8. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates ASS serialization to ass.py, which compiles the typed configuration and safely escapes dialogue text. The JSON artifact preserves only JSON-compatible aligned-word metadata.
-9. embed_subtitles() passes the input video and ASS path through structured ffmpeg-python filter arguments, copying available audio streams into a temporary rendered output when present.
-10. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain transcription artifacts in that directory for diagnosis, while the renderer removes its partial temporary media.
+4. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded.
+5. The geometry policy follows explicitly enabled FFmpeg autorotation: 0° and 180° retain the coded axes; 90° and 270° swap the render axes and invert the sample-aspect-ratio axes. Legacy rotate tags are normalized from their sign convention to the display-matrix convention. Contradictory metadata is rejected.
+6. The CLI reports the resolved dimensions and creates a private temporary work directory inside the output directory.
+7. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
+8. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
+9. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies duration and text-length limits as fallbacks.
+10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates ASS serialization to ass.py, which compiles the typed configuration on the normalized video canvas and safely escapes dialogue text. The JSON artifact preserves only JSON-compatible aligned-word metadata and the resolved rendering geometry.
+11. embed_subtitles() selects the same probed stream, explicitly enables autorotation, and supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter. Available audio streams are copied into a temporary rendered output when present.
+12. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain transcription artifacts in that directory for diagnosis, while the renderer removes its partial temporary media.
 
 ## Subtitle-cue construction
 
@@ -78,6 +84,7 @@ The JSON artifact has this high-level shape:
 
 ~~~
 {
+  "schema_version": 1,
   "metadata": {
     "file_name": "video",
     "original_path": "/path/to/video.mp4",
@@ -86,7 +93,18 @@ The JSON artifact has this high-level shape:
     "created_at": "ISO-8601 timestamp",
     "model": "turbo",
     "duration": 123.45,
-    "num_segments": 12
+    "num_segments": 12,
+    "rendering": {
+      "video_stream_index": 0,
+      "coded_width": 1920,
+      "coded_height": 1080,
+      "render_width": 1080,
+      "render_height": 1920,
+      "rotation_degrees": 90,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "9:16",
+      "container_duration": 123.45
+    }
   },
   "transcription": {
     "text": "Complete transcription",
@@ -103,7 +121,7 @@ The JSON artifact has this high-level shape:
 }
 ~~~
 
-The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX. Its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp.
+`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX. Its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records the geometry used for both ASS generation and the FFmpeg filter; container_duration is null when ffprobe cannot report it.
 
 ### SRT and ASS
 
@@ -111,7 +129,9 @@ SRT is generated from cue start time, end time, and wrapped text. ASS contains a
 Default style compiled from SubtitleConfig. The existing DEFAULT_STYLE mapping
 is accepted only through a temporary compatibility adapter. ass.py converts line
 breaks to ASS's \N syntax in dialogue events and escapes subtitle-derived braces
-and backslashes so they cannot become unintended override tags.
+and backslashes so they cannot become unintended override tags. Every generated
+ASS declares ScriptType, PlayResX, PlayResY, ScaledBorderAndShadow, and WrapStyle
+in a stable order. PlayRes matches the autorotated render dimensions.
 
 ## Output layouts
 
@@ -132,10 +152,13 @@ The transcriber owns all model interaction. It chooses the compute device, calls
 
 ### FFmpeg
 
-subtitler.py owns video rendering. It checks that the FFmpeg executable and
-subtitles filter are available, uses structured filter arguments for safe paths,
-and requests copying of any available audio streams. FFmpeg failures are wrapped in a
-RenderingError with a bounded diagnostic while preserving the original cause.
+subtitler.py owns ffprobe inspection and video rendering. It checks that both
+executables and the subtitles filter are available, bounds probe time and
+diagnostics, and parses only the geometry contract from JSON. The render graph
+selects the recorded stream index, explicitly enables FFmpeg autorotation, uses
+the render dimensions as libass original_size, and requests copying of any
+available audio streams. Probe and FFmpeg failures preserve their original cause
+behind an actionable project error.
 
 ## Design constraints
 
@@ -147,3 +170,4 @@ RenderingError with a bounded diagnostic while preserving the original cause.
 - File collision avoidance is a required safety property, not merely a convenience.
 - Final media is published only after FFmpeg succeeds; temporary output is never presented as a completed video.
 - CLI diagnostics use non-zero exit statuses for validation and processing failures.
+- ASS PlayRes, JSON rendering metadata, and the FFmpeg subtitles filter must use one VideoGeometry instance per run.
