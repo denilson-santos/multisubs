@@ -119,6 +119,19 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must reject unsupported translation/model combinations before expensive work starts. Translation target and model restrictions are product requirements, not merely UI hints.
 - Should offer a dry-run or validation-only mode before adding an operation with expensive processing or destructive potential.
 
+### Dimension and unit options
+
+- Must require an explicit `%` or `px` suffix for public layout lengths; bare
+  numbers are ambiguous and must be rejected.
+- Must parse bounded decimal input before model loading, reject signs and
+  exponent notation, and preserve the original requested string for metadata.
+- Must resolve percentages only after normalized video geometry is available,
+  using the field's documented axis or reference value.
+- Must use one deterministic rounding policy for every relative length and
+  perform combined safe-area validation after all fields are resolved.
+- Must keep unresolved unit values out of ASS serialization; the ASS writer
+  receives a geometry-resolved typed configuration.
+
 ### Exit status, output, and diagnostics
 
 - Must return a non-zero exit status for invalid arguments, missing dependencies, model failures, media-processing failures, and failed output writes.
