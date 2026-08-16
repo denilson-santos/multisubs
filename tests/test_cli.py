@@ -7,6 +7,7 @@ from multisubs import cli
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import ArtifactError, TranscriptionError, ValidationError
 from multisubs.models import (
+    RelativeLength,
     RunArtifacts,
     RunRequest,
     TranscriptDocument,
@@ -119,6 +120,79 @@ def test_build_request_adapts_style_flags_and_named_position(tmp_path: Path):
     assert request.subtitle_config.layout.position.value == "top-right"
 
 
+def test_build_request_accepts_relative_layout_values(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--font-size",
+            "4.5%",
+            "--backdrop-size",
+            "6%",
+            "--shadow-size",
+            "4%",
+            "--margin-left",
+            "8%",
+            "--margin-right",
+            "72px",
+        ]
+    )
+
+    request = cli._build_request(args, parser)
+
+    font_size = request.subtitle_config.appearance.font_size
+    assert isinstance(font_size, RelativeLength)
+    assert font_size.original == "4.5%"
+    assert str(font_size.value) == "4.5"
+    margin_left = request.subtitle_config.layout.margin_left
+    margin_right = request.subtitle_config.layout.margin_right
+    assert isinstance(margin_left, RelativeLength)
+    assert isinstance(margin_right, RelativeLength)
+    assert margin_left.unit == "%"
+    assert margin_right.original == "72px"
+
+
+def test_relative_layout_values_override_temporary_style_adapter(
+    tmp_path: Path,
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--style-font-size",
+            "22",
+            "--font-size",
+            "4.5%",
+        ]
+    )
+
+    request = cli._build_request(args, parser)
+
+    font_size = request.subtitle_config.appearance.font_size
+    assert isinstance(font_size, RelativeLength)
+    assert font_size.original == "4.5%"
+
+
+@pytest.mark.parametrize("value", ["14", "-1px", "1e2px"])
+def test_relative_layout_options_require_explicit_units(
+    tmp_path: Path, value: str
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["-i", str(input_path), "--font-size", value])
+
+    assert error.value.code == 2
+
+
 @pytest.mark.parametrize(
     ("option", "value"),
     [("--style-alignment", "8"), ("--position", "5")],
@@ -207,8 +281,17 @@ def test_run_request_cleans_private_work_dir_after_default_success(
             segments=(),
         )
 
-    def fake_artifact_writer(document, destination, config, *, geometry, progress):
+    def fake_artifact_writer(
+        document,
+        destination,
+        config,
+        *,
+        geometry,
+        resolved_subtitle_config,
+        progress,
+    ):
         assert geometry is GEOMETRY
+        assert resolved_subtitle_config is not None
         paths = TranscriptionPaths(
             Path(destination) / "video-pt.json",
             Path(destination) / "video-pt.srt",

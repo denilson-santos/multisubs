@@ -23,8 +23,9 @@ from .config import (
 )
 from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
-from .layout import resolve_safe_rectangle
+from .layout import resolve_safe_rectangle, resolve_subtitle_config
 from .models import (
+    RelativeLength,
     SubtitleConfig,
     SubtitlePosition,
     TranscriptDocument,
@@ -95,6 +96,7 @@ def generate_transcriptions(
     from .subtitler import probe_video_geometry
 
     geometry = probe_video_geometry(source_path)
+    resolved_config = resolve_subtitle_config(subtitle_config, geometry)
     document = transcribe_video(
         source_path,
         lang=lang,
@@ -107,6 +109,7 @@ def generate_transcriptions(
         destination_dir,
         subtitle_config,
         geometry=geometry,
+        resolved_subtitle_config=resolved_config,
         progress=progress,
     )
 
@@ -210,6 +213,7 @@ def write_transcription_artifacts(
     subtitle_config: SubtitleConfig | Mapping[str, str | int] | None = None,
     *,
     geometry: VideoGeometry | None = None,
+    resolved_subtitle_config: SubtitleConfig | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
@@ -219,6 +223,10 @@ def write_transcription_artifacts(
         from .subtitler import probe_video_geometry
 
         geometry = probe_video_geometry(document.source_path)
+    resolved_config = resolve_subtitle_config(
+        resolved_subtitle_config or config,
+        geometry,
+    )
     _validate_subtitle_segments(document.segments)
     paths = _choose_transcription_paths(
         destination_dir,
@@ -236,6 +244,7 @@ def write_transcription_artifacts(
         task=document.task,
         model_name=document.model_name,
         subtitle_config=config,
+        resolved_subtitle_config=resolved_config,
         geometry=geometry,
     )
     _report(progress, "Completed JSON transcript.")
@@ -243,7 +252,7 @@ def write_transcription_artifacts(
     _write_srt(paths.srt_path, document.segments)
     _report(progress, "Completed SRT transcript.")
 
-    write_ass(paths.ass_path, document.segments, config, geometry)
+    write_ass(paths.ass_path, document.segments, resolved_config, geometry)
     _report(progress, "Completed ASS transcript.")
     return paths.as_tuple()
 
@@ -747,10 +756,12 @@ def _write_json(
     task: str,
     model_name: str,
     subtitle_config: SubtitleConfig,
+    resolved_subtitle_config: SubtitleConfig,
     geometry: VideoGeometry,
 ) -> None:
-    layout = subtitle_config.layout
-    safe_rectangle = resolve_safe_rectangle(geometry, layout)
+    requested_layout = subtitle_config.layout
+    resolved_layout = resolved_subtitle_config.layout
+    safe_rectangle = resolve_safe_rectangle(geometry, resolved_layout)
     json_data = {
         "schema_version": 1,
         "metadata": {
@@ -772,13 +783,45 @@ def _write_json(
                 "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
                 "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
                 "container_duration": geometry.duration_seconds,
-                "requested_position": layout.position.value,
-                "resolved_position": layout.position.value,
+                "requested_position": requested_layout.position.value,
+                "resolved_position": resolved_layout.position.value,
                 "margins": {
-                    "left": layout.margin_left,
-                    "right": layout.margin_right,
-                    "top": layout.margin_top,
-                    "bottom": layout.margin_bottom,
+                    "left": resolved_layout.margin_left,
+                    "right": resolved_layout.margin_right,
+                    "top": resolved_layout.margin_top,
+                    "bottom": resolved_layout.margin_bottom,
+                },
+                "requested": {
+                    "font_size": _format_requested_length(
+                        subtitle_config.appearance.font_size
+                    ),
+                    "backdrop_size": _format_requested_length(
+                        subtitle_config.appearance.outline_weight
+                    ),
+                    "shadow_size": _format_requested_length(
+                        subtitle_config.appearance.shadow_weight
+                    ),
+                    "margins": {
+                        "left": _format_requested_length(requested_layout.margin_left),
+                        "right": _format_requested_length(
+                            requested_layout.margin_right
+                        ),
+                        "top": _format_requested_length(requested_layout.margin_top),
+                        "bottom": _format_requested_length(
+                            requested_layout.margin_bottom
+                        ),
+                    },
+                },
+                "resolved": {
+                    "font_size": resolved_subtitle_config.appearance.font_size,
+                    "backdrop_size": resolved_subtitle_config.appearance.outline_weight,
+                    "shadow_size": resolved_subtitle_config.appearance.shadow_weight,
+                    "margins": {
+                        "left": resolved_layout.margin_left,
+                        "right": resolved_layout.margin_right,
+                        "top": resolved_layout.margin_top,
+                        "bottom": resolved_layout.margin_bottom,
+                    },
                 },
                 "safe_rectangle": {
                     "left": safe_rectangle.left,
@@ -803,6 +846,12 @@ def _write_json(
 
 def _format_fraction(value: Fraction) -> str:
     return f"{value.numerator}:{value.denominator}"
+
+
+def _format_requested_length(value: object) -> str:
+    if isinstance(value, RelativeLength):
+        return value.original
+    return f"{value}px"
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
