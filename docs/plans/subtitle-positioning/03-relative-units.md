@@ -1,6 +1,8 @@
 # Feature 3: relative layout units
 
-Status: In progress
+Status: In review
+
+Pull request: [#12](https://github.com/denilson-santos/multisubs/pull/12)
 
 Depends on:
 
