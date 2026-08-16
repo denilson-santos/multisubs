@@ -23,7 +23,45 @@ Create implementation plans that are specific enough for another agent to execut
 5. Inspect the affected production code, tests, configuration, and package metadata. Base tasks and file references on the repository as it exists; do not plan against guessed architecture.
 6. Check the current Git branch and worktree without modifying them. Use existing pull-request links and user-provided merge information when updating lifecycle status.
 
-Ask a concise question only when an unresolved product choice would materially change the plan. Otherwise, record reasonable assumptions and continue.
+Resolve routine uncertainty from repository evidence and reasonable assumptions.
+Use the material-uncertainty gate below before asking the user anything.
+
+## Clarify only material uncertainty
+
+Investigate before asking. Read the relevant contracts, code, tests, plans, and
+history first; do not ask the user for facts that the repository can answer.
+
+Ask the user only when all of these conditions hold:
+
+- Two or more reasonable approaches remain after investigation.
+- The user's intent and repository contracts do not select one approach.
+- The choice materially changes user-visible behavior, compatibility, scope,
+  architecture, data contracts, dependencies, delivery order, security, or
+  meaningful implementation risk.
+- Choosing without confirmation could cause substantial rework or produce a
+  plan the user would reasonably reject.
+
+Do not ask about naming, formatting, minor implementation details, reversible
+internal choices, or preferences with a clear repository precedent. Choose a
+reasonable default, state the assumption in the plan when useful, and continue.
+
+When clarification is necessary:
+
+1. Consolidate related decisions into one clarification round. Prefer one
+   question and never ask more than three independent questions at once.
+2. Present two or three concrete, mutually exclusive options when possible.
+3. Put the recommended option first and briefly explain how each option changes
+   the outcome or tradeoff.
+4. Explain why the decision blocks or materially changes the plan; do not ask an
+   open-ended question without giving the known constraints.
+5. Do not finalize the affected design as `Planned` until the user answers.
+6. Accept the answer as the decision and do not reopen it unless new repository
+   evidence creates a direct contradiction.
+
+Limit clarification to one round by default. Ask a follow-up only when the
+answer introduces a new material contradiction that cannot be resolved from the
+repository. If the user explicitly defers the choice, keep the plan `Proposed`
+and record the unresolved item in an `Open decisions` section instead of looping.
 
 ## Choose the document changes
 
