@@ -8,13 +8,14 @@ from multisubs.config import (
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     parse_position,
+    parse_relative_length,
     parse_style_option,
     subtitle_config_to_style_options,
     validate_style_options,
     validate_subtitle_config,
 )
 from multisubs.errors import ValidationError
-from multisubs.models import SubtitleConfig, SubtitlePosition
+from multisubs.models import RelativeLength, SubtitleConfig, SubtitlePosition
 
 
 def test_public_choices_match_supported_models_and_alignment_languages():
@@ -110,6 +111,65 @@ def test_legacy_style_options_round_trip_through_typed_config():
         "font_size": 22,
         "margin_v": 30,
     }
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "value", "unit", "original"),
+    [
+        ("8%", "8", "%", "8%"),
+        (" 4.5% ", "4.5", "%", "4.5%"),
+        ("72px", "72", "px", "72px"),
+        ("0px", "0", "px", "0px"),
+    ],
+)
+def test_parse_relative_length_accepts_bounded_percent_and_pixel_values(
+    raw_value, value, unit, original
+):
+    parsed = parse_relative_length(raw_value)
+
+    assert isinstance(parsed, RelativeLength)
+    assert str(parsed.value) == value
+    assert parsed.unit == unit
+    assert parsed.original == original
+
+
+@pytest.mark.parametrize(
+    "raw_value",
+    [
+        "8",
+        "-1px",
+        "+1%",
+        "1e2px",
+        "1.2345%",
+        "1000000px",
+        "8 em",
+        "nan%",
+    ],
+)
+def test_parse_relative_length_rejects_ambiguous_or_oversized_values(raw_value):
+    with pytest.raises(ValidationError, match="% or px"):
+        parse_relative_length(raw_value)
+
+
+def test_relative_values_are_stored_until_geometry_is_available():
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "4.5%",
+            "outline_weight": "6%",
+            "shadow_weight": "4%",
+            "margin_left": "8%",
+            "margin_right": "8%",
+            "margin_top": "5px",
+            "margin_bottom": "72px",
+        },
+    )
+
+    assert config.appearance.font_size == parse_relative_length("4.5%")
+    assert config.appearance.outline_weight == parse_relative_length("6%")
+    assert config.appearance.shadow_weight == parse_relative_length("4%")
+    assert config.layout.margin_left == parse_relative_length("8%")
+    assert config.layout.margin_bottom == parse_relative_length("72px")
 
 
 def test_typed_subtitle_config_is_revalidated():
