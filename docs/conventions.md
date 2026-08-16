@@ -307,6 +307,16 @@ Do not run a command from this list merely because it appears here if the corres
 
 ### Commits and pull requests
 
+- Must not treat a request to implement a change or execute an implementation
+  plan as authorization to stage, commit, push, or open a pull request.
+- Must perform version-control and publication actions only when the user has
+  explicitly requested the intended outcome. Authorization applies only to the
+  confirmed in-scope changes and the normal actions required for that outcome.
+- When an implementation plan does not already include explicit publication
+  authorization, must finish the local implementation and relevant checks,
+  summarize the changed files, diff, verification, and remaining risks, and ask
+  the user for confirmation before staging, committing, pushing, or opening a
+  pull request.
 - Should keep a change focused on one user-visible behavior or one maintainability concern.
 - Should use clear imperative commit subjects. A Conventional Commits-style prefix such as feat:, fix:, docs:, test:, refactor:, or chore: is recommended if a commit convention is adopted.
 - Must include tests or explain why tests are not applicable.
