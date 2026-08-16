@@ -240,6 +240,22 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "sample_aspect_ratio": "1:1",
         "display_aspect_ratio": "16:9",
         "container_duration": 12.5,
+        "requested_position": "bottom-center",
+        "resolved_position": "bottom-center",
+        "margins": {
+            "left": 0,
+            "right": 0,
+            "top": 35,
+            "bottom": 35,
+        },
+        "safe_rectangle": {
+            "left": 0,
+            "top": 35,
+            "right": 1920,
+            "bottom": 1045,
+            "width": 1920,
+            "height": 1010,
+        },
     }
     assert srt_path.exists() and ass_path.exists()
 

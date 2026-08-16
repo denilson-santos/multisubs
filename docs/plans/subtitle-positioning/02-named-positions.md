@@ -1,6 +1,6 @@
 # Feature 2: named subtitle positions
 
-Status: planned
+Status: Done
 
 Depends on:
 
@@ -85,14 +85,14 @@ start and end values.
 
 ## Implementation tasks
 
-- [ ] Define the public position choices.
-- [ ] Remove numeric alignment parsing.
-- [ ] Add position-to-anchor mapping.
-- [ ] Add safe-rectangle calculation.
-- [ ] Update ASS style compilation.
-- [ ] Add cross-field conflict validation.
-- [ ] Update progress and rendering metadata.
-- [ ] Replace CLI help and examples.
+- [x] Define the public position choices.
+- [x] Remove numeric alignment parsing.
+- [x] Add position-to-anchor mapping.
+- [x] Add safe-rectangle calculation.
+- [x] Update ASS style compilation.
+- [ ] Add cross-field conflict validation (deferred until Feature 5 adds custom coordinates).
+- [x] Update progress and rendering metadata.
+- [x] Replace CLI help and examples.
 
 ## Unit tests
 
@@ -104,6 +104,10 @@ start and end values.
 - Conflict with custom coordinates fails before runtime.
 - Generated ASS contains the correct private numeric alignment.
 
+Implemented in `tests/test_layout.py`, `tests/test_cli.py`,
+`tests/test_config.py`, and `tests/test_ass.py`. Custom-coordinate conflict
+coverage remains pending Feature 5 because those public options do not exist yet.
+
 ## Integration tests
 
 Render one short two-line subtitle in all nine positions and verify:
@@ -112,6 +116,10 @@ Render one short two-line subtitle in all nine positions and verify:
 - It remains inside the safe rectangle.
 - Top and bottom margins are measured from the correct edge.
 - Text with right-to-left shaping does not reverse the physical position.
+
+Implemented in `tests/test_integration.py` as an opt-in nine-position render
+matrix. RTL-specific shaping remains covered when the integration font/runtime
+fixture is expanded.
 
 ## Documentation
 

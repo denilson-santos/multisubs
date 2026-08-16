@@ -8,6 +8,7 @@ import pytest
 
 from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
+from multisubs.models import SubtitlePosition
 from multisubs.subtitler import (
     embed_subtitles,
     probe_video_geometry,
@@ -233,7 +234,7 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
     config = replace(
         config,
         appearance=replace(config.appearance, font_size=16),
-        layout=replace(config.layout, margin_v=12),
+        layout=replace(config.layout, margin_top=12, margin_bottom=12),
     )
     write_ass(
         subtitle_path,
@@ -304,7 +305,11 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
                 outline_weight=0,
                 shadow_weight=0,
             ),
-            layout=replace(config.layout, margin_v=max(1, round(height * 0.10))),
+            layout=replace(
+                config.layout,
+                margin_top=max(1, round(height * 0.10)),
+                margin_bottom=max(1, round(height * 0.10)),
+            ),
         )
         write_ass(
             subtitle_path,
@@ -352,3 +357,90 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
 
     for metric in zip(*normalized_bounds, strict=True):
         assert max(metric) - min(metric) < 0.035
+
+
+@pytest.mark.integration
+def test_named_positions_render_inside_expected_frame_thirds(tmp_path: Path):
+    input_path = tmp_path / "positions-input.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x180:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+
+    for position in SubtitlePosition:
+        subtitle_path = tmp_path / f"{position.value}.ass"
+        output_path = tmp_path / f"{position.value}.mp4"
+        geometry = probe_video_geometry(input_path)
+        config = validate_subtitle_config(
+            {"font_size": 18, "margin_l": 10, "margin_r": 10, "margin_v": 10},
+            position=position,
+        )
+        write_ass(
+            subtitle_path,
+            [{"start": 0.0, "end": 0.3, "text": "TEST"}],
+            config,
+            geometry,
+        )
+        embed_subtitles(
+            input_path,
+            subtitle_path,
+            tmp_path,
+            output_path=output_path,
+            geometry=geometry,
+        )
+        frame = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                "0.15",
+                "-i",
+                str(output_path),
+                "-frames:v",
+                "1",
+                "-pix_fmt",
+                "gray",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+        foreground = [index for index, value in enumerate(frame) if value > 80]
+        assert foreground
+        x_values = [index % 320 for index in foreground]
+        y_values = [index // 320 for index in foreground]
+        center_x = (min(x_values) + max(x_values)) / 2 / 320
+        center_y = (min(y_values) + max(y_values)) / 2 / 180
+
+        if position.value.endswith("left"):
+            assert center_x < 1 / 3
+        elif position.value.endswith("right"):
+            assert center_x > 2 / 3
+        else:
+            assert 1 / 3 < center_x < 2 / 3
+
+        if position.value.startswith("top"):
+            assert center_y < 1 / 3
+        elif position.value.startswith("bottom"):
+            assert center_y > 2 / 3
+        else:
+            assert 1 / 3 < center_y < 2 / 3

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -32,14 +33,29 @@ class SubtitleAppearance:
     shadow_weight: int
 
 
+class SubtitlePosition(str, Enum):
+    """Human-readable screen anchors mapped to private ASS alignments."""
+
+    TOP_LEFT = "top-left"
+    TOP_CENTER = "top-center"
+    TOP_RIGHT = "top-right"
+    MIDDLE_LEFT = "middle-left"
+    CENTER = "center"
+    MIDDLE_RIGHT = "middle-right"
+    BOTTOM_LEFT = "bottom-left"
+    BOTTOM_CENTER = "bottom-center"
+    BOTTOM_RIGHT = "bottom-right"
+
+
 @dataclass(frozen=True)
 class SubtitleLayout:
-    """Validated global ASS layout values used before geometry-aware layout."""
+    """Validated semantic layout values before relative-unit resolution."""
 
-    alignment: int
-    margin_l: int
-    margin_r: int
-    margin_v: int
+    position: SubtitlePosition
+    margin_left: int
+    margin_right: int
+    margin_top: int
+    margin_bottom: int
 
 
 @dataclass(frozen=True)

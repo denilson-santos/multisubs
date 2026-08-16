@@ -9,7 +9,7 @@ contracts. Reorder the pipeline so video geometry is known before ASS layout is
 resolved, without weakening artifact safety or forcing heavy runtime imports
 during CLI validation.
 
-This foundation is a prerequisite for the seven positioning features. It should
+This foundation is a prerequisite for the eight positioning features. It should
 land as a behavior-preserving refactor and retain a temporary adapter for the
 existing --style-* inputs. Their approved removal belongs to the package cutover
 after the replacement interface is complete.

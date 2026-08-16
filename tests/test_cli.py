@@ -98,7 +98,7 @@ def test_oversized_style_argument_is_argparse_error(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_build_request_adapts_legacy_style_flags_to_typed_config(tmp_path: Path):
+def test_build_request_adapts_style_flags_and_named_position(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
@@ -108,15 +108,32 @@ def test_build_request_adapts_legacy_style_flags_to_typed_config(tmp_path: Path)
             str(input_path),
             "--style-font-size",
             "22",
-            "--style-alignment",
-            "8",
+            "--position",
+            "top-right",
         ]
     )
 
     request = cli._build_request(args, parser)
 
     assert request.subtitle_config.appearance.font_size == 22
-    assert request.subtitle_config.layout.alignment == 8
+    assert request.subtitle_config.layout.position.value == "top-right"
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [("--style-alignment", "8"), ("--position", "5")],
+)
+def test_numeric_alignment_and_position_values_are_rejected(
+    tmp_path: Path, option: str, value: str
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["-i", str(input_path), option, value])
+
+    assert error.value.code == 2
 
 
 def test_default_publication_keeps_json_and_video_only(tmp_path: Path):

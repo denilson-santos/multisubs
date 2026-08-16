@@ -47,7 +47,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-6 | The tool must generate a JSON transcript with metadata, an SRT subtitle file, and an ASS subtitle file before rendering. |
 | FR-7 | Subtitle cues should use word-level alignment when available and favor readable boundaries such as sentence punctuation and meaningful pauses. |
 | FR-8 | The tool must render the ASS subtitles into a new video with FFmpeg. |
-| FR-9 | The user must be able to override the default ASS styling through CLI flags. |
+| FR-9 | The user must be able to override the default ASS appearance through CLI flags and choose one of nine named subtitle positions. |
 | FR-10 | With --keep-transcriptions, the tool must retain JSON, SRT, and ASS files in a subtitles subdirectory next to the rendered video. |
 | FR-11 | Without --keep-transcriptions, a successful run must retain the JSON transcript and remove the temporary SRT and ASS files after rendering. |
 | FR-12 | Generated files and output directories must receive a numeric suffix when a collision would otherwise occur. |
@@ -83,7 +83,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 4. A non-retained successful run leaves the rendered video and JSON transcript while removing its intermediate SRT and ASS files.
 5. A translation request using turbo or an English-only model is rejected before transcription begins.
 6. The JSON output contains metadata and timed subtitle segments.
-7. A user can change an exposed style option and see it reflected in the generated ASS style definition and rendered video.
+7. A user can change an exposed style option or choose a named position and see it reflected in the generated ASS style definition and rendered video.
 8. Invalid input exits non-zero without loading a model, and a failed render does not publish a partial final video.
 9. A transient model or alignment connection failure is retried automatically, while a deterministic loading failure is surfaced without unnecessary retries.
 10. Landscape, portrait, square, rotated, and non-square-pixel inputs use an ASS canvas matching the dimensions seen by the autorotated FFmpeg render graph.

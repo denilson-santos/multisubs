@@ -1,6 +1,6 @@
-# Feature 7: layout preview
+# Feature 8: layout preview
 
-Status: planned
+Status: Planned
 
 Depends on:
 
@@ -11,6 +11,7 @@ Depends on:
 - [Layout presets](04-layout-presets.md)
 - [Custom coordinates](05-custom-coordinates.md)
 - [Adaptive line wrapping](06-adaptive-line-wrapping.md)
+- [Configurable maximum subtitle lines](07-maximum-lines.md)
 
 ## Objective
 
@@ -89,6 +90,7 @@ Validation:
 - Treat preview text as untrusted user content.
 - Normalize physical newlines consistently.
 - Apply the same adaptive wrapping as real cues.
+- Honor the same resolved max-lines value as final subtitle rendering.
 - Escape it with the same ASS dialogue serializer.
 - Give the sample cue a duration that includes the requested frame timestamp.
 
@@ -147,6 +149,7 @@ Add render_subtitle_preview() to multisubs/subtitler.py:
 - Unknown duration fallback.
 - Timestamp before zero and beyond duration.
 - Preview text escaping.
+- Resolved max-lines propagation into preview cue layout.
 - Guide event serialization.
 - Collision-safe output.
 - --keep-transcriptions conflict.

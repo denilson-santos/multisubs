@@ -1,6 +1,6 @@
 # Feature 3: relative layout units
 
-Status: planned
+Status: Planned
 
 Depends on:
 
