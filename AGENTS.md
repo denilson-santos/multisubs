@@ -64,23 +64,6 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 - Do not commit virtual environments, model caches, generated videos, or generated subtitle artifacts. The repository ignores data/ and common build outputs for this reason.
 - Avoid unrelated reformatting. Follow the surrounding file's style when modifying it.
 
-## Version-control approval
-
-- Editing files and running verification within an implementation request do not
-  authorize staging, committing, pushing, or opening a pull request.
-- Perform version-control and publication actions only after the user explicitly
-  requests the intended outcome. Treat the authorization scope literally: a
-  request to implement a change or execute a plan is not by itself a request to
-  commit or publish it.
-- When implementing a plan without prior publication authorization, complete the
-  local implementation and relevant verification first. Then report the changed
-  files, diff summary, checks run, and any remaining risks, and ask the user for
-  confirmation before staging files, creating commits, pushing a branch, or
-  opening a pull request.
-- A direct request to commit, publish, or open a pull request authorizes only the
-  normal version-control actions required for that stated outcome and only for
-  the confirmed in-scope changes. Do not include unrelated working-tree changes.
-
 ## Documentation expectations
 
 Documentation is part of the definition of done for behavior changes. Use this matrix to decide what to read and update:
