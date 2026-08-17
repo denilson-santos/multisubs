@@ -64,6 +64,17 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 - Do not commit virtual environments, model caches, generated videos, or generated subtitle artifacts. The repository ignores data/ and common build outputs for this reason.
 - Avoid unrelated reformatting. Follow the surrounding file's style when modifying it.
 
+## Implementation-plan delivery approval
+
+- When implementing an explicit plan, complete the local implementation and
+  relevant verification before starting its Git delivery workflow.
+- Always stop and ask the user for explicit confirmation before staging,
+  committing, pushing, or opening or updating a pull request for plan work.
+- Treat branch, commit, and pull-request instructions written in a plan as the
+  delivery template, not as authorization to execute those actions.
+- After the user confirms delivery, follow the plan's branch, commit, and
+  pull-request instructions and include only the changes belonging to that plan.
+
 ## Documentation expectations
 
 Documentation is part of the definition of done for behavior changes. Use this matrix to decide what to read and update:
