@@ -1,8 +1,10 @@
 # Feature 4: layout presets
 
-Status: In review
+Status: Done
 
 Pull request: [#13](https://github.com/denilson-santos/multisubs/pull/13)
+
+The implementation and documentation were merged through pull request #13.
 
 Depends on:
 
