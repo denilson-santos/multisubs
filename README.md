@@ -95,6 +95,8 @@ multisubs \
 | -t, --task TASK | transcribe | Either transcribe or translate. Translation output is always English. |
 | -m, --model MODEL | turbo | Whisper model: tiny.en, tiny, base.en, base, small.en, small, medium.en, medium, large, or turbo. |
 | -k, --keep-transcriptions | off | Retain JSON, SRT, and ASS files in a structured output directory. |
+| --layout PRESET | auto | Select auto, landscape, portrait, square, vertical-social, upper-third, or centered subtitle layout. |
+| --position POSITION | preset value | Override the selected layout's semantic position. |
 | -v, --version | — | Print the package version. |
 | -h, --help | — | Show every CLI option and accepted language code. |
 
@@ -132,6 +134,53 @@ notation (`&H` followed by 6 or 8 hexadecimal digits), numeric values must be
 finite and in their supported ranges, and font names cannot contain commas or
 line breaks.
 
+### Layout presets
+
+Use `--layout` to choose a complete position and safe-area baseline:
+
+| Preset | Behavior |
+| --- | --- |
+| `auto` | Selects `landscape`, `portrait`, or `square` from the autorotated render canvas. |
+| `landscape` | Bottom-center subtitles with 6% left/right and bottom insets. |
+| `portrait` | Bottom-center subtitles with 8% left/right and bottom insets. |
+| `square` | Bottom-center subtitles with 7% left/right and bottom insets. |
+| `vertical-social` | Generic vertical composition with asymmetric 8%/12% side and 16% bottom safe-area insets. |
+| `upper-third` | Top-center subtitles with 6% side and 8% top insets. |
+| `centered` | Centered subtitles with an 8% inset on every side. |
+
+Auto uses the autorotated render dimensions: ratios above 1.1 are landscape,
+ratios below 0.9 are portrait, and the inclusive band between them is square.
+The `vertical-social` preset is a generic overlay-safe baseline, not a guarantee
+for any named platform whose interface may change.
+
+For example:
+
+~~~
+multisubs -i ./video.mp4 --layout portrait
+multisubs -i ./video.mp4 --layout upper-third --position top-right
+multisubs -i ./video.mp4 --layout landscape
+multisubs -i ./video.mp4 --layout square
+multisubs -i ./video.mp4 --layout vertical-social
+multisubs -i ./video.mp4 --layout centered
+~~~
+
+`--position` and the relative margin options override only their corresponding
+preset fields. Preset selection happens before relative units are converted to
+PlayRes pixels, and the final merged safe rectangle is validated before model
+loading.
+
+Normalized safe-area guide (`0` is the top/left edge and `1` is the
+bottom/right edge):
+
+| Preset | Safe X range | Safe Y range |
+| --- | --- | --- |
+| landscape | 0.06–0.94 | 0.00–0.94 |
+| portrait | 0.08–0.92 | 0.00–0.92 |
+| square | 0.07–0.93 | 0.00–0.93 |
+| vertical-social | 0.08–0.88 | 0.08–0.84 |
+| upper-third | 0.06–0.94 | 0.08–1.00 |
+| centered | 0.08–0.92 | 0.08–0.92 |
+
 ### Relative layout units
 
 The typed layout options accept an explicit unit suffix:
@@ -159,8 +208,9 @@ values.
 
 ### Subtitle positions
 
-Use `--position` to choose a semantic screen anchor. The default is
-`bottom-center`.
+Use `--position` to override a preset with a semantic screen anchor. Presets
+currently default to `bottom-center` except `upper-third` (`top-center`) and
+`centered` (`center`).
 
 | `top-left` | `top-center` | `top-right` |
 | --- | --- | --- |
@@ -194,7 +244,8 @@ graph. Generated ASS files declare those displayed dimensions as PlayResX and
 PlayResY. Right-angle rotation swaps the canvas axes, while sample aspect ratio
 is retained when calculating the displayed aspect ratio. The selected stream,
 coded and render dimensions, rotation, aspect ratios, and container duration are
-recorded under `metadata.rendering` in the versioned JSON transcript. Relative
+recorded under `metadata.rendering` in the versioned JSON transcript. Rendering
+metadata also records the requested and resolved layout preset names. Relative
 layout options record both their requested strings and resolved PlayRes pixels.
 
 See [docs/prd.md](docs/prd.md) for product scope and [docs/architecture.md](docs/architecture.md) for implementation details.

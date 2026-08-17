@@ -12,6 +12,8 @@ from pathlib import Path
 from . import __version__
 from .config import (
     DEFAULT_STYLE,
+    LAYOUT_PRESET_CHOICES,
+    LAYOUT_PRESETS,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
@@ -94,12 +96,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Retain JSON, SRT, and ASS files in a subtitles directory.",
     )
     parser.add_argument(
+        "--layout",
+        choices=LAYOUT_PRESET_CHOICES,
+        default="auto",
+        help=(
+            "Named subtitle layout preset. auto selects landscape, portrait, or "
+            "square from the autorotated video geometry (default: auto). "
+            + " ".join(
+                f"{preset.value}: {LAYOUT_PRESETS[preset].description}"
+                for preset in LAYOUT_PRESETS
+            )
+        ),
+    )
+    parser.add_argument(
         "--position",
         choices=POSITION_CHOICES,
-        default="bottom-center",
+        default=None,
         help=(
-            "Semantic subtitle position; left and right refer to physical screen "
-            "directions (default: bottom-center)."
+            "Override the preset's semantic position; left and right refer to "
+            "physical screen directions."
         ),
     )
 
@@ -237,6 +252,7 @@ def _build_request(
         subtitle_config = validate_subtitle_config(
             style_options,
             position=args.position,
+            layout_preset=args.layout,
             relative_values=relative_values,
         )
     except ValidationError as exc:
@@ -293,7 +309,8 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
         f"{geometry.rotation_degrees}°, SAR "
         f"{geometry.sample_aspect_ratio.numerator}:"
         f"{geometry.sample_aspect_ratio.denominator}, position "
-        f"{request.subtitle_config.layout.position.value})."
+        f"{resolved_subtitle_config.layout.position.value}, preset "
+        f"{resolved_subtitle_config.layout_preset.value})."
     )
     work_dir = create_work_dir(request.output_dir)
     try:

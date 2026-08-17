@@ -1,6 +1,8 @@
 # Feature 4: layout presets
 
-Status: Planned
+Status: In review
+
+Pull request: [#13](https://github.com/denilson-santos/multisubs/pull/13)
 
 Depends on:
 
@@ -13,6 +15,12 @@ Depends on:
 
 Provide coherent, reusable position and safe-area configurations for common
 video geometries without requiring a long list of flags.
+
+The first implementation slice wires presets to the typed fields that already
+exist: semantic position and the four safe-area margins. Maximum width and
+maximum line count remain owned by [Feature 6](06-adaptive-line-wrapping.md) and
+[Feature 7](07-maximum-lines.md); those plans extend the same preset merge
+contract when their fields become available.
 
 ## Public interface
 
@@ -81,14 +89,14 @@ modify global defaults during a run.
 
 ## Implementation tasks
 
-- [ ] Define immutable preset objects.
-- [ ] Add --layout choices and descriptions.
-- [ ] Implement aspect-ratio classification.
-- [ ] Implement field-by-field explicit overrides.
-- [ ] Add safe-area validation after merge.
-- [ ] Add requested/resolved metadata.
-- [ ] Print the resolved preset in progress output.
-- [ ] Visually calibrate defaults before final acceptance.
+- [x] Define immutable preset objects.
+- [x] Add --layout choices and descriptions.
+- [x] Implement aspect-ratio classification.
+- [x] Implement field-by-field explicit overrides.
+- [x] Add safe-area validation after merge.
+- [x] Add requested/resolved metadata.
+- [x] Print the resolved preset in progress output.
+- [x] Visually calibrate defaults with synthetic FFmpeg foreground-bound assertions.
 
 ## Unit tests
 
@@ -115,6 +123,11 @@ Review:
 
 Golden updates require explicit visual review.
 
+The repository does not commit generated media. Until a reviewed fixture store
+exists, integration coverage uses short synthetic FFmpeg videos and measures
+the rendered alpha/foreground bounds directly; any local preview images remain
+untracked test artifacts.
+
 ## Documentation
 
 - Add one command example per preset family.
@@ -138,8 +151,8 @@ Suggested commits:
    - Add complete preset objects and immutability tests.
 2. feat: select subtitle layouts by aspect ratio
    - Add auto classification, explicit override merging, and boundary tests.
-3. test: add golden previews for subtitle presets
-   - Add reviewed reference renders and integration assertions.
+3. test: add preset render assertions
+   - Add synthetic FFmpeg render assertions without committing generated media.
 4. docs: document subtitle layout presets
    - Add commands, safe-area diagrams, precedence, and product requirements.
 
@@ -167,5 +180,6 @@ Before requesting review:
 - auto selects the expected preset after rotation is resolved.
 - Explicit flags consistently override preset fields.
 - Presets render within their documented safe areas.
-- Defaults are backed by approved golden previews for landscape, portrait, and
-  square video.
+- Defaults are backed by approved synthetic FFmpeg render assertions for
+  landscape, portrait, and square video; generated preview media is not
+  committed to the repository.

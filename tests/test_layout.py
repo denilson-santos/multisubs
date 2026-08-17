@@ -1,3 +1,4 @@
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -5,11 +6,12 @@ import pytest
 from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import (
+    classify_layout_preset,
     resolve_relative_length,
     resolve_safe_rectangle,
     resolve_subtitle_config,
 )
-from multisubs.models import SubtitlePosition, VideoGeometry
+from multisubs.models import SubtitleLayoutPreset, SubtitlePosition, VideoGeometry
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -120,6 +122,66 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     assert resolved.layout.margin_right == 72
     assert resolved.layout.margin_top == 54
     assert resolved.layout.margin_bottom == 72
+
+
+def test_auto_preset_uses_post_rotation_render_aspect_ratio():
+    assert classify_layout_preset(GEOMETRY) is SubtitleLayoutPreset.LANDSCAPE
+    assert (
+        classify_layout_preset(
+            replace(
+                GEOMETRY,
+                render_width=90,
+                render_height=160,
+                coded_width=160,
+                coded_height=90,
+                rotation_degrees=90,
+            )
+        )
+        is SubtitleLayoutPreset.PORTRAIT
+    )
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "expected"),
+    [
+        (110, 100, SubtitleLayoutPreset.SQUARE),
+        (111, 100, SubtitleLayoutPreset.LANDSCAPE),
+        (90, 100, SubtitleLayoutPreset.SQUARE),
+        (89, 100, SubtitleLayoutPreset.PORTRAIT),
+    ],
+)
+def test_auto_preset_boundaries_are_exact(width, height, expected):
+    geometry = VideoGeometry(
+        stream_index=0,
+        coded_width=width,
+        coded_height=height,
+        render_width=width,
+        render_height=height,
+        rotation_degrees=0,
+        sample_aspect_ratio=Fraction(1, 1),
+        display_aspect_ratio=Fraction(width, height),
+        duration_seconds=1.0,
+    )
+
+    assert classify_layout_preset(geometry) is expected
+
+
+def test_preset_merge_applies_only_explicit_layout_overrides():
+    config = validate_subtitle_config(
+        None,
+        layout_preset="portrait",
+        position="top-right",
+        relative_values={"margin_right": "72px"},
+    )
+
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+
+    assert resolved.layout_preset is SubtitleLayoutPreset.PORTRAIT
+    assert resolved.layout.position is SubtitlePosition.TOP_RIGHT
+    assert resolved.layout.margin_left == 154
+    assert resolved.layout.margin_right == 72
+    assert resolved.layout.margin_top == 0
+    assert resolved.layout.margin_bottom == 86
 
 
 @pytest.mark.parametrize(

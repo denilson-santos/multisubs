@@ -10,6 +10,7 @@ from multisubs.models import (
     RelativeLength,
     RunArtifacts,
     RunRequest,
+    SubtitleLayoutPreset,
     TranscriptDocument,
     TranscriptionPaths,
     VideoGeometry,
@@ -118,6 +119,29 @@ def test_build_request_adapts_style_flags_and_named_position(tmp_path: Path):
 
     assert request.subtitle_config.appearance.font_size == 22
     assert request.subtitle_config.layout.position.value == "top-right"
+    assert request.subtitle_config.layout_preset is SubtitleLayoutPreset.AUTO
+
+
+def test_build_request_accepts_layout_preset_and_position_override(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--layout",
+            "portrait",
+            "--position",
+            "top-right",
+        ]
+    )
+
+    request = cli._build_request(args, parser)
+
+    assert request.subtitle_config.layout_preset is SubtitleLayoutPreset.PORTRAIT
+    assert request.subtitle_config.layout.position.value == "top-right"
+    assert "position" in request.subtitle_config.layout_overrides
 
 
 def test_build_request_accepts_relative_layout_values(tmp_path: Path):
@@ -206,6 +230,17 @@ def test_numeric_alignment_and_position_values_are_rejected(
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), option, value])
+
+    assert error.value.code == 2
+
+
+def test_unknown_layout_preset_is_argparse_error(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["-i", str(input_path), "--layout", "5"])
 
     assert error.value.code == 2
 

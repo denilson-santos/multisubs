@@ -6,13 +6,16 @@ import math
 import re
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+from types import MappingProxyType
 
 from .errors import ValidationError
 from .models import (
+    LayoutPreset,
     RelativeLength,
     SubtitleAppearance,
     SubtitleConfig,
     SubtitleLayout,
+    SubtitleLayoutPreset,
     SubtitlePosition,
 )
 
@@ -98,6 +101,7 @@ DEFAULT_STYLE: dict[str, str | int] = {
 
 POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
+LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
 
 _COLOR_FIELDS = {
     "primary_color",
@@ -128,6 +132,15 @@ _RELATIVE_FIELDS = {
     "margin_top",
     "margin_bottom",
 }
+_LAYOUT_OVERRIDE_FIELDS = frozenset(
+    {
+        "position",
+        "margin_left",
+        "margin_right",
+        "margin_top",
+        "margin_bottom",
+    }
+)
 
 
 def parse_relative_length(raw_value: str) -> RelativeLength:
@@ -149,6 +162,82 @@ def parse_relative_length(raw_value: str) -> RelativeLength:
     if not value.is_finite():
         raise ValidationError("length must be a finite decimal number")
     return RelativeLength(value=value, unit=match.group("unit"), original=original)
+
+
+def _preset_length(raw_value: str) -> RelativeLength:
+    return parse_relative_length(raw_value)
+
+
+LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
+    {
+        SubtitleLayoutPreset.LANDSCAPE: LayoutPreset(
+            name=SubtitleLayoutPreset.LANDSCAPE,
+            description="wide video with a balanced lower safe area",
+            layout=SubtitleLayout(
+                position=SubtitlePosition.BOTTOM_CENTER,
+                margin_left=_preset_length("6%"),
+                margin_right=_preset_length("6%"),
+                margin_top=_preset_length("0%"),
+                margin_bottom=_preset_length("6%"),
+            ),
+        ),
+        SubtitleLayoutPreset.PORTRAIT: LayoutPreset(
+            name=SubtitleLayoutPreset.PORTRAIT,
+            description="tall video with an expanded lower safe area",
+            layout=SubtitleLayout(
+                position=SubtitlePosition.BOTTOM_CENTER,
+                margin_left=_preset_length("8%"),
+                margin_right=_preset_length("8%"),
+                margin_top=_preset_length("0%"),
+                margin_bottom=_preset_length("8%"),
+            ),
+        ),
+        SubtitleLayoutPreset.SQUARE: LayoutPreset(
+            name=SubtitleLayoutPreset.SQUARE,
+            description="square video with a compact lower safe area",
+            layout=SubtitleLayout(
+                position=SubtitlePosition.BOTTOM_CENTER,
+                margin_left=_preset_length("7%"),
+                margin_right=_preset_length("7%"),
+                margin_top=_preset_length("0%"),
+                margin_bottom=_preset_length("7%"),
+            ),
+        ),
+        SubtitleLayoutPreset.VERTICAL_SOCIAL: LayoutPreset(
+            name=SubtitleLayoutPreset.VERTICAL_SOCIAL,
+            description="generic vertical overlay-safe composition",
+            layout=SubtitleLayout(
+                position=SubtitlePosition.BOTTOM_CENTER,
+                margin_left=_preset_length("8%"),
+                margin_right=_preset_length("12%"),
+                margin_top=_preset_length("8%"),
+                margin_bottom=_preset_length("16%"),
+            ),
+        ),
+        SubtitleLayoutPreset.UPPER_THIRD: LayoutPreset(
+            name=SubtitleLayoutPreset.UPPER_THIRD,
+            description="top-centered subtitle in the upper third",
+            layout=SubtitleLayout(
+                position=SubtitlePosition.TOP_CENTER,
+                margin_left=_preset_length("6%"),
+                margin_right=_preset_length("6%"),
+                margin_top=_preset_length("8%"),
+                margin_bottom=_preset_length("0%"),
+            ),
+        ),
+        SubtitleLayoutPreset.CENTERED: LayoutPreset(
+            name=SubtitleLayoutPreset.CENTERED,
+            description="centered subtitle with a balanced safe area",
+            layout=SubtitleLayout(
+                position=SubtitlePosition.CENTER,
+                margin_left=_preset_length("8%"),
+                margin_right=_preset_length("8%"),
+                margin_top=_preset_length("8%"),
+                margin_bottom=_preset_length("8%"),
+            ),
+        ),
+    }
+)
 
 
 def parse_style_option(key: str, raw_value: str) -> str | int:
@@ -190,10 +279,14 @@ def validate_subtitle_config(
     value: SubtitleConfig | Mapping[str, str | int] | None,
     *,
     position: SubtitlePosition | str | None = None,
+    layout_preset: SubtitleLayoutPreset | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
 ) -> SubtitleConfig:
     """Return typed subtitle configuration from typed or legacy style input."""
     resolved_position = parse_position(position) if position is not None else None
+    resolved_preset = (
+        parse_layout_preset(layout_preset) if layout_preset is not None else None
+    )
     if isinstance(value, SubtitleConfig):
         if relative_values:
             raise ValidationError(
@@ -204,13 +297,33 @@ def validate_subtitle_config(
                 "position cannot override the position already stored in the "
                 "subtitle configuration"
             )
+        if resolved_preset is not None and resolved_preset != value.layout_preset:
+            raise ValidationError(
+                "layout preset cannot override the preset already stored in the "
+                "subtitle configuration"
+            )
         _validate_typed_subtitle_config(value)
         return value
     style = validate_style_options(value)
     parsed_relative_values = _validate_relative_values(relative_values)
+    style_keys = set(value) if value else set()
+    layout_overrides = set()
+    if resolved_position is not None:
+        layout_overrides.add("position")
+    if "margin_l" in style_keys:
+        layout_overrides.add("margin_left")
+    if "margin_r" in style_keys:
+        layout_overrides.add("margin_right")
+    if "margin_v" in style_keys:
+        layout_overrides.update({"margin_top", "margin_bottom"})
+    layout_overrides.update(
+        field for field in parsed_relative_values if field in _LAYOUT_OVERRIDE_FIELDS
+    )
     return _subtitle_config_from_validated_style(
         style,
         position=resolved_position or DEFAULT_POSITION,
+        layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
+        layout_overrides=frozenset(layout_overrides),
         relative_values=parsed_relative_values,
     )
 
@@ -267,6 +380,8 @@ def _subtitle_config_from_validated_style(
     style: Mapping[str, str | int],
     *,
     position: SubtitlePosition,
+    layout_preset: SubtitleLayoutPreset = SubtitleLayoutPreset.AUTO,
+    layout_overrides: frozenset[str] = frozenset(),
     relative_values: Mapping[str, RelativeLength] | None = None,
 ) -> SubtitleConfig:
     relative_values = relative_values or {}
@@ -305,6 +420,8 @@ def _subtitle_config_from_validated_style(
                 "margin_bottom", int(style["margin_v"])
             ),
         ),
+        layout_preset=layout_preset,
+        layout_overrides=layout_overrides,
     )
 
 
@@ -319,6 +436,37 @@ def parse_position(value: SubtitlePosition | str) -> SubtitlePosition:
     except ValueError as exc:
         raise ValidationError(
             "position must be one of: " + ", ".join(POSITION_CHOICES)
+        ) from exc
+
+
+def parse_layout_preset(
+    value: SubtitleLayoutPreset | str,
+) -> SubtitleLayoutPreset:
+    """Parse one public layout preset name."""
+    if isinstance(value, SubtitleLayoutPreset):
+        return value
+    if not isinstance(value, str):
+        raise ValidationError(
+            "layout must be one of: " + ", ".join(LAYOUT_PRESET_CHOICES)
+        )
+    try:
+        return SubtitleLayoutPreset(value)
+    except ValueError as exc:
+        raise ValidationError(
+            "layout must be one of: " + ", ".join(LAYOUT_PRESET_CHOICES)
+        ) from exc
+
+
+def get_layout_preset(value: SubtitleLayoutPreset | str) -> LayoutPreset:
+    """Return an immutable concrete preset definition."""
+    preset = parse_layout_preset(value)
+    if preset is SubtitleLayoutPreset.AUTO:
+        raise ValidationError("auto must be resolved against video geometry first")
+    try:
+        return LAYOUT_PRESETS[preset]
+    except KeyError as exc:
+        raise ValidationError(
+            f"No layout preset is defined for '{preset.value}'"
         ) from exc
 
 
@@ -371,6 +519,24 @@ def _validate_relative_length(value: object, field: str) -> None:
 
 
 def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
+    if not isinstance(config.layout.position, SubtitlePosition):
+        raise ValidationError("layout position must use a supported position value")
+    try:
+        preset = parse_layout_preset(config.layout_preset)
+    except ValidationError:
+        raise
+    if not isinstance(config.layout_overrides, frozenset):
+        raise ValidationError("layout overrides must be an immutable set")
+    if not all(isinstance(field, str) for field in config.layout_overrides):
+        raise ValidationError("layout overrides must contain field names")
+    unknown_overrides = set(config.layout_overrides).difference(
+        _LAYOUT_OVERRIDE_FIELDS
+    )
+    if unknown_overrides:
+        names = ", ".join(sorted(unknown_overrides))
+        raise ValidationError(f"Unknown layout override(s): {names}")
+    if preset is not config.layout_preset:
+        raise ValidationError("layout preset must use a supported preset value")
     style_values: dict[str, str | int] = {
         "font": config.appearance.font,
         "primary_color": config.appearance.primary_color,
