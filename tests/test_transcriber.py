@@ -241,13 +241,15 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "sample_aspect_ratio": "1:1",
         "display_aspect_ratio": "16:9",
         "container_duration": 12.5,
+        "requested_preset": "auto",
+        "resolved_preset": "landscape",
         "requested_position": "bottom-center",
         "resolved_position": "bottom-center",
         "margins": {
-            "left": 0,
-            "right": 0,
-            "top": 35,
-            "bottom": 35,
+            "left": 115,
+            "right": 115,
+            "top": 0,
+            "bottom": 65,
         },
         "requested": {
             "font_size": "43px",
@@ -265,19 +267,19 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "backdrop_size": 0,
             "shadow_size": 2,
             "margins": {
-                "left": 0,
-                "right": 0,
-                "top": 35,
-                "bottom": 35,
+                "left": 115,
+                "right": 115,
+                "top": 0,
+                "bottom": 65,
             },
         },
         "safe_rectangle": {
-            "left": 0,
-            "top": 35,
-            "right": 1920,
-            "bottom": 1045,
-            "width": 1920,
-            "height": 1010,
+            "left": 115,
+            "top": 0,
+            "right": 1805,
+            "bottom": 1015,
+            "width": 1690,
+            "height": 1015,
         },
     }
     assert srt_path.exists() and ass_path.exists()
@@ -338,6 +340,8 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     assert rendering["resolved"]["margins"] == {
         "left": 154,
         "right": 154,
-        "top": 35,
-        "bottom": 35,
+        "top": 0,
+        "bottom": 65,
     }
+    assert rendering["requested_preset"] == "auto"
+    assert rendering["resolved_preset"] == "landscape"

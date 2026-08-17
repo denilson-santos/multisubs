@@ -27,6 +27,7 @@ from .layout import resolve_safe_rectangle, resolve_subtitle_config
 from .models import (
     RelativeLength,
     SubtitleConfig,
+    SubtitleLayoutPreset,
     SubtitlePosition,
     TranscriptDocument,
     TranscriptionPaths,
@@ -82,6 +83,7 @@ def generate_transcriptions(
     model_name: str = "turbo",
     *,
     position: SubtitlePosition | str | None = None,
+    layout_preset: SubtitleLayoutPreset | str | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Generate JSON, SRT, and ASS files for one local video.
@@ -92,7 +94,11 @@ def generate_transcriptions(
     """
     source_path = _normalise_input_path(input_path)
     destination_dir = _normalise_output_dir(output_dir)
-    subtitle_config = validate_subtitle_config(style_options, position=position)
+    subtitle_config = validate_subtitle_config(
+        style_options,
+        position=position,
+        layout_preset=layout_preset,
+    )
     from .subtitler import probe_video_geometry
 
     geometry = probe_video_geometry(source_path)
@@ -783,6 +789,8 @@ def _write_json(
                 "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
                 "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
                 "container_duration": geometry.duration_seconds,
+                "requested_preset": subtitle_config.layout_preset.value,
+                "resolved_preset": resolved_subtitle_config.layout_preset.value,
                 "requested_position": requested_layout.position.value,
                 "resolved_position": resolved_layout.position.value,
                 "margins": {
