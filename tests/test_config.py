@@ -1,12 +1,17 @@
 from dataclasses import replace
+from typing import Any, cast
 
 import pytest
 
 from multisubs.config import (
     DEFAULT_STYLE,
+    LAYOUT_PRESET_CHOICES,
+    LAYOUT_PRESETS,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
+    get_layout_preset,
+    parse_layout_preset,
     parse_position,
     parse_relative_length,
     parse_style_option,
@@ -15,7 +20,12 @@ from multisubs.config import (
     validate_subtitle_config,
 )
 from multisubs.errors import ValidationError
-from multisubs.models import RelativeLength, SubtitleConfig, SubtitlePosition
+from multisubs.models import (
+    RelativeLength,
+    SubtitleConfig,
+    SubtitleLayoutPreset,
+    SubtitlePosition,
+)
 
 
 def test_public_choices_match_supported_models_and_alignment_languages():
@@ -88,8 +98,48 @@ def test_default_position_is_bottom_center_and_choices_are_named():
     config = validate_subtitle_config(None)
 
     assert config.layout.position is SubtitlePosition.BOTTOM_CENTER
+    assert config.layout_preset is SubtitleLayoutPreset.AUTO
+    assert config.layout_overrides == frozenset()
     assert POSITION_CHOICES == tuple(position.value for position in SubtitlePosition)
     assert parse_position("top-right") is SubtitlePosition.TOP_RIGHT
+
+
+def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
+    assert LAYOUT_PRESET_CHOICES == tuple(
+        preset.value for preset in SubtitleLayoutPreset
+    )
+    assert parse_layout_preset("portrait") is SubtitleLayoutPreset.PORTRAIT
+    assert set(LAYOUT_PRESETS) == {
+        SubtitleLayoutPreset.LANDSCAPE,
+        SubtitleLayoutPreset.PORTRAIT,
+        SubtitleLayoutPreset.SQUARE,
+        SubtitleLayoutPreset.VERTICAL_SOCIAL,
+        SubtitleLayoutPreset.UPPER_THIRD,
+        SubtitleLayoutPreset.CENTERED,
+    }
+    for preset in LAYOUT_PRESETS.values():
+        assert preset.layout.position in SubtitlePosition
+        assert preset.description
+    with pytest.raises(TypeError):
+        cast(Any, LAYOUT_PRESETS)[SubtitleLayoutPreset.LANDSCAPE] = get_layout_preset(
+            "square"
+        )
+    with pytest.raises(AttributeError):
+        cast(Any, get_layout_preset("portrait").layout).margin_left = 10
+
+
+def test_explicit_layout_options_record_field_overrides():
+    config = validate_subtitle_config(
+        {"margin_l": 24},
+        layout_preset="portrait",
+        position="top-right",
+        relative_values={"margin_bottom": "12%"},
+    )
+
+    assert config.layout_preset is SubtitleLayoutPreset.PORTRAIT
+    assert config.layout_overrides == frozenset(
+        {"position", "margin_left", "margin_bottom"}
+    )
 
 
 def test_legacy_style_options_round_trip_through_typed_config():
