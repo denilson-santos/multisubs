@@ -28,13 +28,13 @@ This table is the source of truth for the package. Status values follow the
 | 1 | [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md) | Done | 0 | [#8](https://github.com/denilson-santos/multisubs/pull/8) |
 | 2 | [Named positions](02-named-positions.md) | Done | 0, 1 | [#10](https://github.com/denilson-santos/multisubs/pull/10) |
 | 3 | [Relative units](03-relative-units.md) | Done | 0, 1 | [#12](https://github.com/denilson-santos/multisubs/pull/12) |
-| 4 | [Layout presets](04-layout-presets.md) | In progress | 0–3 | — |
+| 4 | [Layout presets](04-layout-presets.md) | In review | 0–3 | [#13](https://github.com/denilson-santos/multisubs/pull/13) |
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Planned | 0–3 | — |
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Planned | 0, 1, 3, 4 | — |
 | 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
-Package progress: 4 of 9 plans done; Feature 4 is currently in progress.
+Package progress: 4 of 9 plans done; Feature 4 is currently in review.
 
 ## Delivery-gate status
 

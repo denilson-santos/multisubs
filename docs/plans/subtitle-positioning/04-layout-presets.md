@@ -1,6 +1,8 @@
 # Feature 4: layout presets
 
-Status: In progress
+Status: In review
+
+Pull request: [#13](https://github.com/denilson-santos/multisubs/pull/13)
 
 Depends on:
 
