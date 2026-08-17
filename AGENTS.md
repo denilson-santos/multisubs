@@ -66,12 +66,16 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 
 ## Implementation-plan delivery approval
 
-- When implementing an explicit plan, complete the local implementation and
-  relevant verification before starting its Git delivery workflow.
+- When an explicit plan specifies a Git branch, that instruction authorizes
+  creating and switching to the named branch before implementation without a
+  separate confirmation. First verify the intended base branch and preserve
+  all existing working-tree changes.
+- Apart from that authorized branch setup, complete the local implementation
+  and relevant verification before starting the plan's Git delivery workflow.
 - Always stop and ask the user for explicit confirmation before staging,
   committing, pushing, or opening or updating a pull request for plan work.
-- Treat branch, commit, and pull-request instructions written in a plan as the
-  delivery template, not as authorization to execute those actions.
+- Treat commit and pull-request instructions written in a plan as the delivery
+  template, not as authorization to stage, commit, push, or publish changes.
 - After the user confirms delivery, follow the plan's branch, commit, and
   pull-request instructions and include only the changes belonging to that plan.
 
