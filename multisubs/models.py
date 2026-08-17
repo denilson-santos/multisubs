@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
@@ -11,11 +12,20 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class RelativeLength:
+    """One validated layout length before video geometry is known."""
+
+    value: Decimal
+    unit: str
+    original: str
+
+
+@dataclass(frozen=True)
 class SubtitleAppearance:
     """Validated ASS appearance values hidden behind the typed pipeline."""
 
     font: str
-    font_size: int
+    font_size: int | RelativeLength
     primary_color: str
     secondary_color: str
     outline_color: str
@@ -29,8 +39,8 @@ class SubtitleAppearance:
     spacing: int
     angle: int
     border_style: int
-    outline_weight: int
-    shadow_weight: int
+    outline_weight: int | RelativeLength
+    shadow_weight: int | RelativeLength
 
 
 class SubtitlePosition(str, Enum):
@@ -52,10 +62,10 @@ class SubtitleLayout:
     """Validated semantic layout values before relative-unit resolution."""
 
     position: SubtitlePosition
-    margin_left: int
-    margin_right: int
-    margin_top: int
-    margin_bottom: int
+    margin_left: int | RelativeLength
+    margin_right: int | RelativeLength
+    margin_top: int | RelativeLength
+    margin_bottom: int | RelativeLength
 
 
 @dataclass(frozen=True)

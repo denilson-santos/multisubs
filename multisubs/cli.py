@@ -15,11 +15,13 @@ from .config import (
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
+    parse_relative_length,
     parse_style_option,
     validate_subtitle_config,
 )
 from .errors import ArtifactError, MultisubsError, ValidationError
-from .models import RunArtifacts, RunRequest, TranscriptionPaths
+from .layout import resolve_subtitle_config
+from .models import RelativeLength, RunArtifacts, RunRequest, TranscriptionPaths
 from .utils import (
     create_unique_dir,
     create_work_dir,
@@ -101,6 +103,49 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    relative_group = parser.add_argument_group(
+        "Relative layout units",
+        "Use percentages or pixels; bare numbers are not accepted.",
+    )
+    for option, help_text in (
+        (
+            "--font-size",
+            "Font size as a percentage of the shorter render edge or pixels.",
+        ),
+        (
+            "--backdrop-size",
+            "Backdrop/outline size as a percentage of the resolved font size "
+            "or pixels.",
+        ),
+        (
+            "--shadow-size",
+            "Shadow size as a percentage of the resolved font size or pixels.",
+        ),
+        (
+            "--margin-left",
+            "Left margin as a percentage of render width or pixels.",
+        ),
+        (
+            "--margin-right",
+            "Right margin as a percentage of render width or pixels.",
+        ),
+        (
+            "--margin-top",
+            "Top margin as a percentage of render height or pixels.",
+        ),
+        (
+            "--margin-bottom",
+            "Bottom margin as a percentage of render height or pixels.",
+        ),
+    ):
+        relative_group.add_argument(
+            option,
+            type=_relative_length_argument_type,
+            default=None,
+            metavar="LENGTH",
+            help=help_text,
+        )
+
     style_group = parser.add_argument_group(
         "Styling",
         "ASS style overrides. Colors use &H followed by 6 or 8 hexadecimal digits.",
@@ -109,7 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
         style_group.add_argument(
             f"--style-{key.replace('_', '-')}",
             type=_style_argument_type(key),
-            default=value,
+            default=None,
             metavar=key.upper(),
             help=f"Default: {value}",
         )
@@ -149,6 +194,13 @@ def _style_argument_type(key: str) -> Callable[[str], str | int]:
     return parse
 
 
+def _relative_length_argument_type(raw_value: str) -> RelativeLength:
+    try:
+        return parse_relative_length(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _build_request(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> RunRequest:
@@ -163,11 +215,29 @@ def _build_request(
             f"Output path '{args.output_dir}' is a file; provide a directory instead"
         )
 
-    style_options = {key: getattr(args, f"style_{key}") for key in DEFAULT_STYLE}
+    style_options = {
+        key: value
+        for key in DEFAULT_STYLE
+        if (value := getattr(args, f"style_{key}")) is not None
+    }
+    relative_values = {
+        key: value
+        for key, value in {
+            "font_size": args.font_size,
+            "outline_weight": args.backdrop_size,
+            "shadow_weight": args.shadow_size,
+            "margin_left": args.margin_left,
+            "margin_right": args.margin_right,
+            "margin_top": args.margin_top,
+            "margin_bottom": args.margin_bottom,
+        }.items()
+        if value is not None
+    }
     try:
         subtitle_config = validate_subtitle_config(
             style_options,
             position=args.position,
+            relative_values=relative_values,
         )
     except ValidationError as exc:
         parser.error(str(exc))
@@ -213,6 +283,9 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
 
     validate_ffmpeg_support()
     geometry = probe_video_geometry(request.input_path)
+    resolved_subtitle_config = resolve_subtitle_config(
+        request.subtitle_config, geometry
+    )
     progress(
         "Detected video layout: "
         f"{geometry.render_width}x{geometry.render_height} "
@@ -236,6 +309,7 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
             work_dir,
             request.subtitle_config,
             geometry=geometry,
+            resolved_subtitle_config=resolved_subtitle_config,
             progress=progress,
         )
         transcripts = TranscriptionPaths(

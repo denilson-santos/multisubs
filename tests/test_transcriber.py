@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from multisubs import transcriber
+from multisubs.config import validate_subtitle_config
 from multisubs.errors import TranscriptionError
 from multisubs.models import TranscriptDocument, VideoGeometry
 
@@ -248,6 +249,28 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "top": 35,
             "bottom": 35,
         },
+        "requested": {
+            "font_size": "43px",
+            "backdrop_size": "0px",
+            "shadow_size": "2px",
+            "margins": {
+                "left": "0px",
+                "right": "0px",
+                "top": "35px",
+                "bottom": "35px",
+            },
+        },
+        "resolved": {
+            "font_size": 43,
+            "backdrop_size": 0,
+            "shadow_size": 2,
+            "margins": {
+                "left": 0,
+                "right": 0,
+                "top": 35,
+                "bottom": 35,
+            },
+        },
         "safe_rectangle": {
             "left": 0,
             "top": 35,
@@ -288,7 +311,33 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     )
 
     paths = transcriber.write_transcription_artifacts(
-        document, tmp_path / "output", geometry=GEOMETRY
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(
+            None,
+            relative_values={
+                "font_size": "4.5%",
+                "margin_left": "8%",
+                "margin_right": "8%",
+            },
+        ),
+        geometry=GEOMETRY,
     )
 
     assert all(Path(path).exists() for path in paths)
+    payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
+    rendering = payload["metadata"]["rendering"]
+    assert rendering["requested"]["font_size"] == "4.5%"
+    assert rendering["requested"]["margins"] == {
+        "left": "8%",
+        "right": "8%",
+        "top": "35px",
+        "bottom": "35px",
+    }
+    assert rendering["resolved"]["font_size"] == 49
+    assert rendering["resolved"]["margins"] == {
+        "left": 154,
+        "right": 154,
+        "top": 35,
+        "bottom": 35,
+    }

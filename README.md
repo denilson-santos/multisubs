@@ -132,6 +132,31 @@ notation (`&H` followed by 6 or 8 hexadecimal digits), numeric values must be
 finite and in their supported ranges, and font names cannot contain commas or
 line breaks.
 
+### Relative layout units
+
+The typed layout options accept an explicit unit suffix:
+
+| Option | Percentage basis |
+| --- | --- |
+| `--font-size` | Shorter autorotated render edge |
+| `--backdrop-size`, `--shadow-size` | Resolved font size |
+| `--margin-left`, `--margin-right` | Render width |
+| `--margin-top`, `--margin-bottom` | Render height |
+
+Use `%` for resolution-independent values or `px` for fixed PlayRes pixels:
+
+~~~
+multisubs -i ./video.mp4 --font-size 4.5% --margin-left 8% \
+  --margin-right 8% --margin-bottom 72px
+~~~
+
+Bare numbers, signs, exponent notation, and excessive precision are rejected.
+Percentages are rounded deterministically to the nearest PlayRes pixel, with
+half values rounded up. Geometry-dependent validation runs after ffprobe and
+before WhisperX. During the transition to the final layout CLI, matching
+semantic options take precedence over their temporary `--style-*` adapter
+values.
+
 ### Subtitle positions
 
 Use `--position` to choose a semantic screen anchor. The default is
@@ -169,7 +194,8 @@ graph. Generated ASS files declare those displayed dimensions as PlayResX and
 PlayResY. Right-angle rotation swaps the canvas axes, while sample aspect ratio
 is retained when calculating the displayed aspect ratio. The selected stream,
 coded and render dimensions, rotation, aspect ratios, and container duration are
-recorded under `metadata.rendering` in the versioned JSON transcript.
+recorded under `metadata.rendering` in the versioned JSON transcript. Relative
+layout options record both their requested strings and resolved PlayRes pixels.
 
 See [docs/prd.md](docs/prd.md) for product scope and [docs/architecture.md](docs/architecture.md) for implementation details.
 
