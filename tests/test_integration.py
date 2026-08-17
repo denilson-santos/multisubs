@@ -8,6 +8,7 @@ import pytest
 
 from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
+from multisubs.layout import resolve_subtitle_config
 from multisubs.models import SubtitlePosition
 from multisubs.subtitler import (
     embed_subtitles,
@@ -263,6 +264,7 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
 @pytest.mark.integration
 def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
     normalized_bounds: list[tuple[float, float, float]] = []
+    fixed_glyph_heights: list[int] = []
     cases = (
         (320, 180, "1/1"),
         (640, 360, "1/1"),
@@ -274,6 +276,8 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         input_path = tmp_path / f"input-{width}x{height}.mp4"
         subtitle_path = tmp_path / f"subtitle-{width}x{height}.ass"
         output_path = tmp_path / f"rendered-{width}x{height}.mp4"
+        fixed_subtitle_path = tmp_path / f"fixed-subtitle-{width}x{height}.ass"
+        fixed_output_path = tmp_path / f"fixed-rendered-{width}x{height}.mp4"
         subprocess.run(
             [
                 "ffmpeg",
@@ -296,20 +300,13 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             check=True,
         )
         geometry = probe_video_geometry(input_path)
-        config = validate_subtitle_config(None)
-        config = replace(
-            config,
-            appearance=replace(
-                config.appearance,
-                font_size=max(1, round(height * 0.10)),
-                outline_weight=0,
-                shadow_weight=0,
-            ),
-            layout=replace(
-                config.layout,
-                margin_top=max(1, round(height * 0.10)),
-                margin_bottom=max(1, round(height * 0.10)),
-            ),
+        config = validate_subtitle_config(
+            {"outline_weight": 0, "shadow_weight": 0},
+            relative_values={
+                "font_size": "10%",
+                "margin_top": "10%",
+                "margin_bottom": "10%",
+            },
         )
         write_ass(
             subtitle_path,
@@ -325,38 +322,186 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             geometry=geometry,
         )
 
-        frame = subprocess.run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-ss",
-                "0.1",
-                "-i",
-                str(output_path),
-                "-frames:v",
-                "1",
-                "-pix_fmt",
-                "gray",
-                "-f",
-                "rawvideo",
-                "pipe:1",
-            ],
-            check=True,
-            capture_output=True,
-        ).stdout
-        foreground = [index for index, value in enumerate(frame) if value > 80]
-        assert foreground
-        x_values = [index % width for index in foreground]
-        y_values = [index // width for index in foreground]
-        center_x = (min(x_values) + max(x_values)) / 2 / width
-        glyph_height = (max(y_values) - min(y_values) + 1) / height
-        bottom_gap = (height - 1 - max(y_values)) / height
-        normalized_bounds.append((center_x, glyph_height, bottom_gap))
+        def measure_foreground(
+            video_path: Path, frame_width: int, frame_height: int
+        ) -> tuple[float, float, float]:
+            frame = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    "0.1",
+                    "-i",
+                    str(video_path),
+                    "-frames:v",
+                    "1",
+                    "-pix_fmt",
+                    "gray",
+                    "-f",
+                    "rawvideo",
+                    "pipe:1",
+                ],
+                check=True,
+                capture_output=True,
+            ).stdout
+            foreground = [index for index, value in enumerate(frame) if value > 80]
+            assert foreground
+            x_values = [index % frame_width for index in foreground]
+            y_values = [index // frame_width for index in foreground]
+            return (
+                (min(x_values) + max(x_values)) / 2 / frame_width,
+                max(y_values) - min(y_values) + 1,
+                (frame_height - 1 - max(y_values)) / frame_height,
+            )
+
+        center_x, rendered_glyph_height, bottom_gap = measure_foreground(
+            output_path, width, height
+        )
+        normalized_bounds.append(
+            (center_x, rendered_glyph_height / height, bottom_gap)
+        )
+
+        fixed_config = validate_subtitle_config(
+            {"outline_weight": 0, "shadow_weight": 0},
+            relative_values={
+                "font_size": "18px",
+                "margin_top": "12px",
+                "margin_bottom": "12px",
+            },
+        )
+        write_ass(
+            fixed_subtitle_path,
+            [{"start": 0.0, "end": 0.2, "text": "TEST"}],
+            fixed_config,
+            geometry,
+        )
+        embed_subtitles(
+            input_path,
+            fixed_subtitle_path,
+            tmp_path,
+            output_path=fixed_output_path,
+            geometry=geometry,
+        )
+        _, fixed_glyph_height, _ = measure_foreground(
+            fixed_output_path, width, height
+        )
+        fixed_glyph_heights.append(round(fixed_glyph_height))
 
     for metric in zip(*normalized_bounds, strict=True):
         assert max(metric) - min(metric) < 0.035
+    assert max(fixed_glyph_heights) - min(fixed_glyph_heights) <= 3
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("width", "height", "preset", "expected_preset", "vertical_region", "margins"),
+    [
+        (320, 180, "auto", "landscape", "bottom", (19, 19, 0, 11)),
+        (180, 320, "auto", "portrait", "bottom", (14, 14, 0, 26)),
+        (240, 240, "auto", "square", "bottom", (17, 17, 0, 17)),
+        (
+            320,
+            180,
+            "vertical-social",
+            "vertical-social",
+            "bottom",
+            (26, 38, 14, 29),
+        ),
+        (320, 180, "upper-third", "upper-third", "top", (19, 19, 14, 0)),
+        (320, 180, "centered", "centered", "middle", (26, 26, 14, 14)),
+    ],
+)
+def test_layout_presets_render_inside_expected_regions(
+    tmp_path: Path,
+    width: int,
+    height: int,
+    preset: str,
+    expected_preset: str,
+    vertical_region: str,
+    margins: tuple[int, int, int, int],
+):
+    input_path = tmp_path / f"preset-input-{preset}-{width}x{height}.mp4"
+    subtitle_path = tmp_path / f"preset-{preset}-{width}x{height}.ass"
+    output_path = tmp_path / f"preset-{preset}-{width}x{height}.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=black:s={width}x{height}:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(None, layout_preset=preset)
+    resolved = resolve_subtitle_config(config, geometry)
+    assert resolved.layout_preset.value == expected_preset
+    assert (
+        resolved.layout.margin_left,
+        resolved.layout.margin_right,
+        resolved.layout.margin_top,
+        resolved.layout.margin_bottom,
+    ) == margins
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.3, "text": "PRESET"}],
+        config,
+        geometry,
+    )
+    embed_subtitles(
+        input_path,
+        subtitle_path,
+        tmp_path,
+        output_path=output_path,
+        geometry=geometry,
+    )
+    frame = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "0.15",
+            "-i",
+            str(output_path),
+            "-frames:v",
+            "1",
+            "-pix_fmt",
+            "gray",
+            "-f",
+            "rawvideo",
+            "pipe:1",
+        ],
+        check=True,
+        capture_output=True,
+    ).stdout
+    foreground = [index for index, value in enumerate(frame) if value > 80]
+    assert foreground
+    x_values = [index % width for index in foreground]
+    y_values = [index // width for index in foreground]
+    center_x = (min(x_values) + max(x_values)) / 2 / width
+    center_y = (min(y_values) + max(y_values)) / 2 / height
+    assert 0.35 < center_x < 0.65
+    if vertical_region == "top":
+        assert center_y < 0.45
+    elif vertical_region == "bottom":
+        assert center_y > 0.55
+    else:
+        assert 0.35 < center_y < 0.65
 
 
 @pytest.mark.integration

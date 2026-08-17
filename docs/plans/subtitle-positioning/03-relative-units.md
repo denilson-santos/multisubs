@@ -1,6 +1,10 @@
 # Feature 3: relative layout units
 
-Status: Planned
+Status: Done
+
+Pull request: [#12](https://github.com/denilson-santos/multisubs/pull/12)
+
+The implementation and documentation were merged through pull request #12.
 
 Depends on:
 
@@ -24,6 +28,13 @@ Accepted forms:
 ~~~
 
 Bare numbers are rejected so the coordinate system is never ambiguous.
+
+The current staged implementation wires unit-bearing options for the dimensions
+already present in the typed configuration: font size, backdrop/outline size,
+shadow size, and four margins. `--position-x`/`--position-y` are introduced by
+[Feature 5](05-custom-coordinates.md), and `--max-width` is introduced by
+[Feature 6](06-adaptive-line-wrapping.md); both consume the same parser and
+resolution helpers rather than being duplicated in this feature.
 
 ## Resolution bases
 
@@ -115,14 +126,14 @@ All geometry-dependent validation happens after FFprobe and before WhisperX.
 
 ## Implementation tasks
 
-- [ ] Implement strict syntax parsing.
-- [ ] Define per-field percentage bases.
-- [ ] Define rounding and bounds.
-- [ ] Convert appearance values.
-- [ ] Convert layout values.
-- [ ] Validate combined safe-area dimensions.
-- [ ] Add requested/resolved JSON metadata.
-- [ ] Add unit syntax to CLI help.
+- [x] Implement strict syntax parsing.
+- [x] Define per-field percentage bases.
+- [x] Define rounding and bounds.
+- [x] Convert appearance values.
+- [x] Convert layout values.
+- [x] Validate combined safe-area dimensions.
+- [x] Add requested/resolved JSON metadata.
+- [x] Add unit syntax to CLI help.
 
 ## Unit tests
 

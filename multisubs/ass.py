@@ -13,7 +13,7 @@ from .config import (
     validate_subtitle_config,
 )
 from .errors import ArtifactError
-from .layout import resolve_safe_rectangle
+from .layout import resolve_safe_rectangle, resolve_subtitle_config
 from .models import SubtitleConfig, SubtitlePosition, VideoGeometry
 from .utils import atomic_write_text
 
@@ -63,7 +63,9 @@ def write_ass(
     """Write safe ASS dialogue on the probed, autorotated video canvas."""
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
-    config = validate_subtitle_config(subtitle_config)
+    config = resolve_subtitle_config(
+        validate_subtitle_config(subtitle_config), geometry
+    )
     resolve_safe_rectangle(geometry, config.layout)
     style = _compile_style(config)
     lines = [
