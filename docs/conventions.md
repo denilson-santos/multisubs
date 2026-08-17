@@ -131,6 +131,9 @@ Update a higher-level document when a proposed change intentionally modifies the
   perform combined safe-area validation after all fields are resolved.
 - Must keep unresolved unit values out of ASS serialization; the ASS writer
   receives a geometry-resolved typed configuration.
+- Must define layout preset sources centrally as immutable typed values in
+  `config.py`; preset selection, field-by-field override merging, and
+  geometry-dependent resolution belong in `layout.py`.
 
 ### Exit status, output, and diagnostics
 
@@ -195,6 +198,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must pass subtitle appearance and layout through typed configuration objects.
   DEFAULT_STYLE may remain only as a temporary adapter until the planned CLI
   cutover; ASS field ordering and conversion belong in the ASS serializer.
+- Must not mutate a layout preset during a run. Preset definitions and their
+  nested layout values must remain immutable so separate invocations cannot
+  influence one another.
 - Must validate style values that can produce invalid ASS or unsafe filter input. Treat colors, font names, alignment, margins, and numeric values as user input.
 - Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.

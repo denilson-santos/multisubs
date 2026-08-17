@@ -1,8 +1,10 @@
 # Feature 3: relative layout units
 
-Status: In review
+Status: Done
 
 Pull request: [#12](https://github.com/denilson-santos/multisubs/pull/12)
+
+The implementation and documentation were merged through pull request #12.
 
 Depends on:
 
