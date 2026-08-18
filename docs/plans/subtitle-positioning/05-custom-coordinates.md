@@ -1,6 +1,6 @@
 # Feature 5: custom subtitle coordinates
 
-Status: Planned
+Status: In progress
 
 Depends on:
 
@@ -48,7 +48,9 @@ of frame height.
 - --layout may still provide appearance, margins, maximum width, and line count,
   but not the final point.
 - --anchor without custom coordinates is rejected to avoid a no-op option.
-- max-width remains active in custom-coordinate mode.
+- max-width remains active in custom-coordinate mode once introduced by
+  [Feature 6](06-adaptive-line-wrapping.md); this slice validates a minimal
+  line against the current safe rectangle.
 
 All syntax conflicts fail before FFprobe. Canvas-bound checks happen after
 FFprobe and before WhisperX.
@@ -86,14 +88,16 @@ contract change.
 
 ## Implementation tasks
 
-- [ ] Add X/Y and anchor arguments.
-- [ ] Add pair and conflict validation.
-- [ ] Resolve coordinates against PlayRes.
-- [ ] Add CuePlacement to the internal cue contract.
-- [ ] Implement safe generated override serialization.
-- [ ] Integrate generated tags with escaped dialogue text.
-- [ ] Record requested and resolved coordinates.
-- [ ] Add custom placement to preview mode.
+- [x] Add X/Y and anchor arguments.
+- [x] Add pair and conflict validation.
+- [x] Resolve coordinates against PlayRes.
+- [x] Add CuePlacement to the internal cue contract.
+- [x] Implement safe generated override serialization.
+- [x] Integrate generated tags with escaped dialogue text.
+- [x] Record requested and resolved coordinates.
+- [ ] Add custom placement to preview mode; the preview CLI is delivered by
+      [Feature 8](08-layout-preview.md), so this branch only exposes the
+      reusable per-cue placement contract.
 
 ## Unit tests
 
