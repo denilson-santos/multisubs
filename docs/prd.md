@@ -47,7 +47,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-6 | The tool must generate a JSON transcript with metadata, an SRT subtitle file, and an ASS subtitle file before rendering. |
 | FR-7 | Subtitle cues should use word-level alignment when available and favor readable boundaries such as sentence punctuation and meaningful pauses. |
 | FR-8 | The tool must render the ASS subtitles into a new video with FFmpeg. |
-| FR-9 | The user must be able to select a complete subtitle layout preset (`auto`, `landscape`, `portrait`, `square`, `vertical-social`, `upper-third`, or `centered`) and override its appearance and layout through explicit CLI options, including unit-bearing font, backdrop, shadow, and margin values, and nine named subtitle positions. |
+| FR-9 | The user must be able to select a complete subtitle layout preset (`auto`, `landscape`, `portrait`, `square`, `vertical-social`, `upper-third`, or `centered`) and override its appearance and layout through explicit CLI options, including unit-bearing font, backdrop, shadow, and margin values, nine named subtitle positions, or a safe custom X/Y coordinate paired with one of the nine anchors. |
 | FR-10 | With --keep-transcriptions, the tool must retain JSON, SRT, and ASS files in a subtitles subdirectory next to the rendered video. |
 | FR-11 | Without --keep-transcriptions, a successful run must retain the JSON transcript and remove the temporary SRT and ASS files after rendering. |
 | FR-12 | Generated files and output directories must receive a numeric suffix when a collision would otherwise occur. |
@@ -89,6 +89,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 10. Landscape, portrait, square, rotated, and non-square-pixel inputs use an ASS canvas matching the dimensions seen by the autorotated FFmpeg render graph.
 11. Equivalent percentage-based font and margin values produce equivalent normalized subtitle bounds across supported video resolutions, while pixel values remain fixed in the PlayRes canvas.
 12. `--layout auto` classifies the autorotated render canvas using the documented aspect-ratio bands, and explicit position or margin options override only their corresponding preset fields before safe-area validation.
+13. A custom X/Y coordinate uses the autorotated PlayRes canvas, keeps its anchor inside the selected safe rectangle, and appears in generated ASS and JSON metadata without changing SRT text or timing.
 
 ## Constraints and risks
 
