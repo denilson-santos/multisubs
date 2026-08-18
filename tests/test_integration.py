@@ -589,3 +589,109 @@ def test_named_positions_render_inside_expected_frame_thirds(tmp_path: Path):
             assert center_y > 2 / 3
         else:
             assert 1 / 3 < center_y < 2 / 3
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("position_x", "position_y", "anchor", "expected"),
+    [
+        ("50%", "50%", "center", "center"),
+        ("10%", "10%", "top-left", "top-left"),
+        ("50%", "86%", "bottom-center", "bottom-center"),
+    ],
+)
+def test_custom_coordinates_render_at_requested_anchor(
+    tmp_path: Path,
+    position_x: str,
+    position_y: str,
+    anchor: str,
+    expected: str,
+):
+    input_path = tmp_path / f"custom-{expected}-input.mp4"
+    subtitle_path = tmp_path / f"custom-{expected}.ass"
+    output_path = tmp_path / f"custom-{expected}.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x180:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "position_x": position_x,
+            "position_y": position_y,
+        },
+        anchor=anchor,
+    )
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.3, "text": "ONE\nTWO"}],
+        config,
+        geometry,
+    )
+    embed_subtitles(
+        input_path,
+        subtitle_path,
+        tmp_path,
+        output_path=output_path,
+        geometry=geometry,
+    )
+
+    frame = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "0.15",
+            "-i",
+            str(output_path),
+            "-frames:v",
+            "1",
+            "-pix_fmt",
+            "gray",
+            "-f",
+            "rawvideo",
+            "pipe:1",
+        ],
+        check=True,
+        capture_output=True,
+    ).stdout
+    foreground = [index for index, value in enumerate(frame) if value > 80]
+    assert foreground
+    x_values = [index % 320 for index in foreground]
+    y_values = [index // 320 for index in foreground]
+    min_x, max_x = min(x_values), max(x_values)
+    min_y, max_y = min(y_values), max(y_values)
+    center_x = (min_x + max_x) / 2 / 320
+    center_y = (min_y + max_y) / 2 / 180
+
+    if expected == "center":
+        assert abs(center_x - 0.5) < 0.08
+        assert abs(center_y - 0.5) < 0.12
+    elif expected == "top-left":
+        assert min_x / 320 > 0.02
+        assert min_x / 320 < 0.2
+        assert min_y / 180 > 0.02
+        assert min_y / 180 < 0.2
+    else:
+        assert abs(center_x - 0.5) < 0.08
+        assert center_y > 0.55
+        assert max_y / 180 > 0.75
