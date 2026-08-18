@@ -7,11 +7,12 @@ from multisubs.ass import (
     _ass_alignment_for_position,
     escape_ass_text,
     format_ass_time,
+    serialize_ass_placement,
     write_ass,
 )
 from multisubs.config import DEFAULT_STYLE, validate_subtitle_config
 from multisubs.errors import ArtifactError
-from multisubs.models import SubtitlePosition, VideoGeometry
+from multisubs.models import CuePlacement, SubtitlePosition, VideoGeometry
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -85,3 +86,52 @@ def test_escape_ass_text_neutralizes_override_syntax_and_line_endings():
 )
 def test_named_positions_use_private_ass_alignment_codes(position, alignment):
     assert _ass_alignment_for_position(position) == alignment
+
+
+def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
+    path = tmp_path / "custom.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={"position_x": "50%", "position_y": "86%"},
+        anchor="bottom-center",
+    )
+
+    write_ass(
+        path,
+        [
+            {"start": 0.0, "end": 1.0, "text": r"Text, {\an9}\\value"},
+            {"start": 1.0, "end": 2.0, "text": "Segundo"},
+        ],
+        config,
+        GEOMETRY,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    assert content.count(r"{\an2\pos(540,1651)}") == 2
+    assert r"{\an9}" not in content
+    assert r"Text, \{\\an9\}\\\\value" in content
+
+
+@pytest.mark.parametrize(
+    ("anchor", "alignment"),
+    [
+        (position, alignment)
+        for position, alignment in (
+            (SubtitlePosition.TOP_LEFT, 7),
+            (SubtitlePosition.TOP_CENTER, 8),
+            (SubtitlePosition.TOP_RIGHT, 9),
+            (SubtitlePosition.MIDDLE_LEFT, 4),
+            (SubtitlePosition.CENTER, 5),
+            (SubtitlePosition.MIDDLE_RIGHT, 6),
+            (SubtitlePosition.BOTTOM_LEFT, 1),
+            (SubtitlePosition.BOTTOM_CENTER, 2),
+            (SubtitlePosition.BOTTOM_RIGHT, 3),
+        )
+    ],
+)
+def test_serialize_ass_placement_uses_private_anchor_code(anchor, alignment):
+    placement = CuePlacement(anchor=anchor, position_x=10, position_y=20)
+
+    assert serialize_ass_placement(placement) == (
+        f"{{\\an{alignment}\\pos(10,20)}}"
+    )

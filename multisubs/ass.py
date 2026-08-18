@@ -13,8 +13,12 @@ from .config import (
     validate_subtitle_config,
 )
 from .errors import ArtifactError
-from .layout import resolve_safe_rectangle, resolve_subtitle_config
-from .models import SubtitleConfig, SubtitlePosition, VideoGeometry
+from .layout import (
+    resolve_cue_placement,
+    resolve_safe_rectangle,
+    resolve_subtitle_config,
+)
+from .models import CuePlacement, SubtitleConfig, SubtitlePosition, VideoGeometry
 from .utils import atomic_write_text
 
 ASS_STYLE_FIELDS = (
@@ -59,8 +63,15 @@ def write_ass(
     segments: Sequence[Mapping[str, Any]],
     subtitle_config: SubtitleConfig | Mapping[str, str | int] | None,
     geometry: VideoGeometry,
+    *,
+    placements: Sequence[CuePlacement | None] | None = None,
 ) -> None:
-    """Write safe ASS dialogue on the probed, autorotated video canvas."""
+    """Write safe ASS dialogue on the probed, autorotated video canvas.
+
+    ``placements`` is an internal per-cue contract. When omitted, a custom
+    coordinate configuration produces one resolved placement for every cue;
+    named positions continue to use the compiled style alignment.
+    """
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
     config = resolve_subtitle_config(
@@ -68,6 +79,9 @@ def write_ass(
     )
     resolve_safe_rectangle(geometry, config.layout)
     style = _compile_style(config)
+    default_placement = resolve_cue_placement(config, geometry)
+    if placements is not None and len(placements) != len(segments):
+        raise ArtifactError("ASS cue placements must match the segment count")
     lines = [
         "[Script Info]",
         "Title: multisubs generated subtitles",
@@ -90,11 +104,18 @@ def write_ass(
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
         "Effect, Text",
     ]
-    for segment in segments:
+    for index, segment in enumerate(segments):
+        placement = (
+            placements[index] if placements is not None else default_placement
+        )
+        generated_override = (
+            serialize_ass_placement(placement) if placement is not None else ""
+        )
         lines.append(
             "Dialogue: 0,"
             f"{format_ass_time(segment['start'])},{format_ass_time(segment['end'])},"
-            f"Default,,0,0,0,,{escape_ass_text(str(segment['text']))}"
+            f"Default,,0,0,0,,{generated_override}"
+            f"{escape_ass_text(str(segment['text']))}"
         )
     atomic_write_text(path, "\n".join(lines) + "\n")
 
@@ -102,8 +123,30 @@ def write_ass(
 def _compile_style(config: SubtitleConfig) -> dict[str, str | int]:
     """Compile semantic layout into the private numeric ASS style fields."""
     style = subtitle_config_to_style_options(config)
-    style["alignment"] = _ass_alignment_for_position(config.layout.position)
+    style["alignment"] = _ass_alignment_for_position(
+        config.layout.anchor or config.layout.position
+    )
     return style
+
+
+def serialize_ass_placement(placement: CuePlacement) -> str:
+    """Serialize one generated ASS anchor override without transcript text."""
+    if not isinstance(placement, CuePlacement):
+        raise ArtifactError("ASS cue placement must use the typed placement contract")
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for value in (placement.position_x, placement.position_y)
+    ):
+        raise ArtifactError(
+            "ASS cue placement coordinates must be non-negative integers"
+        )
+    alignment = _ass_alignment_for_position(placement.anchor)
+    return (
+        "{"
+        f"\\an{alignment}"
+        f"\\pos({placement.position_x},{placement.position_y})"
+        "}"
+    )
 
 
 def _ass_alignment_for_position(position: SubtitlePosition) -> int:

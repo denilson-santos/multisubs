@@ -23,7 +23,11 @@ from .config import (
 )
 from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
-from .layout import resolve_safe_rectangle, resolve_subtitle_config
+from .layout import (
+    resolve_cue_placement,
+    resolve_safe_rectangle,
+    resolve_subtitle_config,
+)
 from .models import (
     RelativeLength,
     SubtitleConfig,
@@ -84,6 +88,9 @@ def generate_transcriptions(
     *,
     position: SubtitlePosition | str | None = None,
     layout_preset: SubtitleLayoutPreset | str | None = None,
+    position_x: RelativeLength | str | None = None,
+    position_y: RelativeLength | str | None = None,
+    anchor: SubtitlePosition | str | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Generate JSON, SRT, and ASS files for one local video.
@@ -98,11 +105,15 @@ def generate_transcriptions(
         style_options,
         position=position,
         layout_preset=layout_preset,
+        position_x=position_x,
+        position_y=position_y,
+        anchor=anchor,
     )
     from .subtitler import probe_video_geometry
 
     geometry = probe_video_geometry(source_path)
     resolved_config = resolve_subtitle_config(subtitle_config, geometry)
+    resolve_cue_placement(resolved_config, geometry)
     document = transcribe_video(
         source_path,
         lang=lang,
@@ -233,6 +244,7 @@ def write_transcription_artifacts(
         resolved_subtitle_config or config,
         geometry,
     )
+    resolve_cue_placement(resolved_config, geometry)
     _validate_subtitle_segments(document.segments)
     paths = _choose_transcription_paths(
         destination_dir,
@@ -768,6 +780,7 @@ def _write_json(
     requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
     safe_rectangle = resolve_safe_rectangle(geometry, resolved_layout)
+    custom_coordinates = requested_layout.has_custom_coordinates
     json_data = {
         "schema_version": 1,
         "metadata": {
@@ -791,8 +804,12 @@ def _write_json(
                 "container_duration": geometry.duration_seconds,
                 "requested_preset": subtitle_config.layout_preset.value,
                 "resolved_preset": resolved_subtitle_config.layout_preset.value,
-                "requested_position": requested_layout.position.value,
-                "resolved_position": resolved_layout.position.value,
+                "requested_position": (
+                    None if custom_coordinates else requested_layout.position.value
+                ),
+                "resolved_position": (
+                    None if custom_coordinates else resolved_layout.position.value
+                ),
                 "margins": {
                     "left": resolved_layout.margin_left,
                     "right": resolved_layout.margin_right,
@@ -843,6 +860,22 @@ def _write_json(
         },
         "transcription": {"text": full_text, "segments": list(segments)},
     }
+    rendering = json_data["metadata"]["rendering"]
+    if custom_coordinates:
+        rendering["requested_coordinates"] = {
+            "x": _format_requested_length(requested_layout.position_x),
+            "y": _format_requested_length(requested_layout.position_y),
+            "anchor": requested_layout.anchor.value
+            if requested_layout.anchor is not None
+            else None,
+        }
+        rendering["resolved_coordinates"] = {
+            "x": resolved_layout.position_x,
+            "y": resolved_layout.position_y,
+            "anchor": resolved_layout.anchor.value
+            if resolved_layout.anchor is not None
+            else None,
+        }
     try:
         content = json.dumps(json_data, ensure_ascii=False, indent=2, allow_nan=False)
     except (TypeError, ValueError) as exc:

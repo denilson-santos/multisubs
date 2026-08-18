@@ -345,3 +345,44 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     }
     assert rendering["requested_preset"] == "auto"
     assert rendering["resolved_preset"] == "landscape"
+
+
+def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Hello.",
+        segments=(
+            {"id": 0, "start": 0.0, "end": 1.0, "text": "Hello.", "words": []},
+        ),
+    )
+
+    paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(
+            None,
+            relative_values={"position_x": "50%", "position_y": "86%"},
+            anchor="bottom-center",
+        ),
+        geometry=GEOMETRY,
+    )
+
+    payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
+    rendering = payload["metadata"]["rendering"]
+    assert rendering["requested_position"] is None
+    assert rendering["resolved_position"] is None
+    assert rendering["requested_coordinates"] == {
+        "x": "50%",
+        "y": "86%",
+        "anchor": "bottom-center",
+    }
+    assert rendering["resolved_coordinates"] == {
+        "x": 960,
+        "y": 929,
+        "anchor": "bottom-center",
+    }
