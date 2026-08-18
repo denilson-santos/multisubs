@@ -1,6 +1,8 @@
 # Feature 5: custom subtitle coordinates
 
-Status: In progress
+Status: In review
+
+Pull request: [#15](https://github.com/denilson-santos/multisubs/pull/15)
 
 Depends on:
 
