@@ -101,6 +101,7 @@ DEFAULT_STYLE: dict[str, str | int] = {
 
 POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
+DEFAULT_ANCHOR = SubtitlePosition.BOTTOM_CENTER
 LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
 
 _COLOR_FIELDS = {
@@ -131,6 +132,8 @@ _RELATIVE_FIELDS = {
     "margin_right",
     "margin_top",
     "margin_bottom",
+    "position_x",
+    "position_y",
 }
 _LAYOUT_OVERRIDE_FIELDS = frozenset(
     {
@@ -281,14 +284,18 @@ def validate_subtitle_config(
     position: SubtitlePosition | str | None = None,
     layout_preset: SubtitleLayoutPreset | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
+    position_x: RelativeLength | str | None = None,
+    position_y: RelativeLength | str | None = None,
+    anchor: SubtitlePosition | str | None = None,
 ) -> SubtitleConfig:
     """Return typed subtitle configuration from typed or legacy style input."""
     resolved_position = parse_position(position) if position is not None else None
     resolved_preset = (
         parse_layout_preset(layout_preset) if layout_preset is not None else None
     )
+    resolved_anchor = parse_position(anchor) if anchor is not None else None
     if isinstance(value, SubtitleConfig):
-        if relative_values:
+        if relative_values or position_x is not None or position_y is not None:
             raise ValidationError(
                 "relative values cannot override an existing subtitle configuration"
             )
@@ -302,10 +309,45 @@ def validate_subtitle_config(
                 "layout preset cannot override the preset already stored in the "
                 "subtitle configuration"
             )
+        if resolved_anchor is not None and resolved_anchor != value.layout.anchor:
+            raise ValidationError(
+                "anchor cannot override the anchor already stored in the subtitle "
+                "configuration"
+            )
         _validate_typed_subtitle_config(value)
         return value
     style = validate_style_options(value)
     parsed_relative_values = _validate_relative_values(relative_values)
+    for field, raw_value in (
+        ("position_x", position_x),
+        ("position_y", position_y),
+    ):
+        if raw_value is None:
+            continue
+        if field in parsed_relative_values:
+            raise ValidationError(
+                f"{field.replace('_', '-')} was provided more than once"
+            )
+        if isinstance(raw_value, str):
+            raw_value = parse_relative_length(raw_value)
+        _validate_relative_length(raw_value, field)
+        parsed_relative_values[field] = raw_value
+
+    has_position_x = "position_x" in parsed_relative_values
+    has_position_y = "position_y" in parsed_relative_values
+    has_custom_coordinates = has_position_x or has_position_y
+    if has_position_x != has_position_y:
+        raise ValidationError(
+            "position-x and position-y must be supplied together"
+        )
+    if has_custom_coordinates and resolved_position is not None:
+        raise ValidationError(
+            "position cannot be combined with custom position-x and position-y"
+        )
+    if resolved_anchor is not None and not has_custom_coordinates:
+        raise ValidationError(
+            "anchor requires both position-x and position-y"
+        )
     style_keys = set(value) if value else set()
     layout_overrides = set()
     if resolved_position is not None:
@@ -325,6 +367,7 @@ def validate_subtitle_config(
         layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
         layout_overrides=frozenset(layout_overrides),
         relative_values=parsed_relative_values,
+        anchor=(resolved_anchor or DEFAULT_ANCHOR) if has_custom_coordinates else None,
     )
 
 
@@ -383,6 +426,7 @@ def _subtitle_config_from_validated_style(
     layout_preset: SubtitleLayoutPreset = SubtitleLayoutPreset.AUTO,
     layout_overrides: frozenset[str] = frozenset(),
     relative_values: Mapping[str, RelativeLength] | None = None,
+    anchor: SubtitlePosition | None = None,
 ) -> SubtitleConfig:
     relative_values = relative_values or {}
     return SubtitleConfig(
@@ -419,6 +463,9 @@ def _subtitle_config_from_validated_style(
             margin_bottom=relative_values.get(
                 "margin_bottom", int(style["margin_v"])
             ),
+            position_x=relative_values.get("position_x"),
+            position_y=relative_values.get("position_y"),
+            anchor=anchor,
         ),
         layout_preset=layout_preset,
         layout_overrides=layout_overrides,
@@ -521,6 +568,20 @@ def _validate_relative_length(value: object, field: str) -> None:
 def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     if not isinstance(config.layout.position, SubtitlePosition):
         raise ValidationError("layout position must use a supported position value")
+    if config.layout.anchor is not None and not isinstance(
+        config.layout.anchor, SubtitlePosition
+    ):
+        raise ValidationError("layout anchor must use a supported position value")
+    has_position_x = config.layout.position_x is not None
+    has_position_y = config.layout.position_y is not None
+    if has_position_x != has_position_y:
+        raise ValidationError(
+            "position-x and position-y must be supplied together"
+        )
+    if config.layout.anchor is not None and not has_position_x:
+        raise ValidationError("anchor requires both position-x and position-y")
+    if has_position_x and config.layout.anchor is None:
+        raise ValidationError("custom coordinates require an anchor")
     try:
         preset = parse_layout_preset(config.layout_preset)
     except ValidationError:
@@ -577,6 +638,21 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
             }[field]
             style_values[style_key] = value
     validate_style_options(style_values)
+
+    for field, value in {
+        "position_x": config.layout.position_x,
+        "position_y": config.layout.position_y,
+    }.items():
+        if value is None:
+            continue
+        if isinstance(value, RelativeLength):
+            _validate_relative_length(value, field)
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValidationError(
+                f"{field.replace('_', '-')} must be a non-negative integer or "
+                "relative length"
+            )
 
 
 def _resolved_style_int(value: int | RelativeLength, field: str) -> int:

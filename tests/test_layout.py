@@ -7,6 +7,7 @@ from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import (
     classify_layout_preset,
+    resolve_cue_placement,
     resolve_relative_length,
     resolve_safe_rectangle,
     resolve_subtitle_config,
@@ -122,6 +123,108 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     assert resolved.layout.margin_right == 72
     assert resolved.layout.margin_top == 54
     assert resolved.layout.margin_bottom == 72
+
+
+def test_custom_coordinates_resolve_against_render_axes():
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "position_x": "50%",
+            "position_y": "86%",
+        },
+        anchor="bottom-center",
+    )
+
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    placement = resolve_cue_placement(resolved, GEOMETRY)
+
+    assert resolved.layout.position_x == 960
+    assert resolved.layout.position_y == 929
+    assert placement is not None
+    assert (placement.position_x, placement.position_y) == (960, 929)
+    assert placement.anchor is SubtitlePosition.BOTTOM_CENTER
+
+
+@pytest.mark.parametrize(
+    ("anchor", "position_x", "position_y"),
+    [
+        (SubtitlePosition.TOP_LEFT, "6%", "0%"),
+        (SubtitlePosition.TOP_CENTER, "50%", "0%"),
+        (SubtitlePosition.TOP_RIGHT, "94%", "0%"),
+        (SubtitlePosition.MIDDLE_LEFT, "6%", "50%"),
+        (SubtitlePosition.CENTER, "50%", "50%"),
+        (SubtitlePosition.MIDDLE_RIGHT, "94%", "50%"),
+        (SubtitlePosition.BOTTOM_LEFT, "6%", "94%"),
+        (SubtitlePosition.BOTTOM_CENTER, "50%", "94%"),
+        (SubtitlePosition.BOTTOM_RIGHT, "94%", "94%"),
+    ],
+)
+def test_all_custom_anchors_resolve_inside_landscape_safe_rectangle(
+    anchor, position_x, position_y
+):
+    config = validate_subtitle_config(
+        None,
+        relative_values={"position_x": position_x, "position_y": position_y},
+        anchor=anchor,
+    )
+
+    placement = resolve_cue_placement(config, GEOMETRY)
+
+    assert placement is not None
+    assert placement.anchor is anchor
+
+
+@pytest.mark.parametrize(
+    ("position_x", "position_y", "message"),
+    [
+        ("0%", "86%", "position-x.*outside"),
+        ("50%", "100%", "position-y.*outside"),
+        ("100%", "50%", "position-x.*outside"),
+    ],
+)
+def test_custom_anchor_outside_safe_rectangle_is_rejected(
+    position_x, position_y, message
+):
+    config = validate_subtitle_config(
+        None,
+        relative_values={"position_x": position_x, "position_y": position_y},
+        anchor="bottom-center",
+    )
+
+    with pytest.raises(ValidationError, match=message):
+        resolve_cue_placement(config, GEOMETRY)
+
+
+def test_custom_pixel_coordinates_are_bounded_by_the_canvas():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"position_x": "1921px", "position_y": "929px"},
+    )
+
+    with pytest.raises(ValidationError, match="position-x"):
+        resolve_subtitle_config(config, GEOMETRY)
+
+
+@pytest.mark.parametrize(
+    ("position_x", "position_y", "anchor", "expected"),
+    [
+        ("0%", "0%", "top-left", (0, 0)),
+        ("100%", "100%", "bottom-right", (1920, 1080)),
+    ],
+)
+def test_custom_percentage_coordinates_support_canvas_edges(
+    position_x, position_y, anchor, expected
+):
+    config = validate_subtitle_config(
+        {"margin_l": 0, "margin_r": 0, "margin_v": 0},
+        relative_values={"position_x": position_x, "position_y": position_y},
+        anchor=anchor,
+    )
+
+    placement = resolve_cue_placement(config, GEOMETRY)
+
+    assert placement is not None
+    assert (placement.position_x, placement.position_y) == expected
 
 
 def test_auto_preset_uses_post_rotation_render_aspect_ratio():

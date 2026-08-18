@@ -97,6 +97,9 @@ multisubs \
 | -k, --keep-transcriptions | off | Retain JSON, SRT, and ASS files in a structured output directory. |
 | --layout PRESET | auto | Select auto, landscape, portrait, square, vertical-social, upper-third, or centered subtitle layout. |
 | --position POSITION | preset value | Override the selected layout's semantic position. |
+| --position-x LENGTH | — | Attach a custom anchor to an X coordinate measured from the left edge. |
+| --position-y LENGTH | — | Attach a custom anchor to a Y coordinate measured from the top edge. |
+| --anchor POSITION | bottom-center for custom coordinates | Select the subtitle-box anchor used with `--position-x` and `--position-y`. |
 | -v, --version | — | Print the package version. |
 | -h, --help | — | Show every CLI option and accepted language code. |
 
@@ -167,7 +170,9 @@ multisubs -i ./video.mp4 --layout centered
 `--position` and the relative margin options override only their corresponding
 preset fields. Preset selection happens before relative units are converted to
 PlayRes pixels, and the final merged safe rectangle is validated before model
-loading.
+loading. When custom coordinates are supplied, the preset still contributes
+appearance and safe-area margins, while the custom anchor and X/Y become the
+final placement.
 
 Normalized safe-area guide (`0` is the top/left edge and `1` is the
 bottom/right edge):
@@ -191,6 +196,8 @@ The typed layout options accept an explicit unit suffix:
 | `--backdrop-size`, `--shadow-size` | Resolved font size |
 | `--margin-left`, `--margin-right` | Render width |
 | `--margin-top`, `--margin-bottom` | Render height |
+| `--position-x` | Render width |
+| `--position-y` | Render height |
 
 Use `%` for resolution-independent values or `px` for fixed PlayRes pixels:
 
@@ -205,6 +212,41 @@ half values rounded up. Geometry-dependent validation runs after ffprobe and
 before WhisperX. During the transition to the final layout CLI, matching
 semantic options take precedence over their temporary `--style-*` adapter
 values.
+
+### Exact subtitle coordinates
+
+Use `--position-x` and `--position-y` together to attach a subtitle-box anchor
+to an exact point in the autorotated PlayRes canvas. Both options require `%` or
+`px`; X starts at the left edge, Y starts at the top edge, and Y increases
+downward. The default custom anchor is `bottom-center`.
+
+~~~text
+            x = 0%                         x = 100%
+              ┌──────────────────────────────┐  y = 0%
+              │  top-left       top-center   │
+              │                              │
+              │            center            │
+              │                              │
+              │ bottom-left  bottom-center  │  y = 100%
+              └──────────────────────────────┘
+~~~
+
+The anchor identifies the point on the subtitle box, not the glyph baseline:
+
+~~~
+multisubs -i ./video.mp4 \
+  --position-x 50% --position-y 86% --anchor bottom-center
+multisubs -i ./video.mp4 \
+  --position-x 120px --position-y 80px --anchor top-left
+~~~
+
+`--position-x` and `--position-y` must be supplied as a pair. They cannot be
+combined with `--position`, and `--anchor` without both coordinates is rejected.
+The resolved anchor must fit inside the selected layout's safe rectangle; an
+off-screen or clipped placement fails after ffprobe and before transcription.
+Coordinates are represented in generated ASS event overrides. SRT has no
+positioning field, so the SRT artifact keeps its text and timing but cannot
+preserve custom coordinates.
 
 ### Subtitle positions
 

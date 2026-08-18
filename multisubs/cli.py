@@ -22,7 +22,7 @@ from .config import (
     validate_subtitle_config,
 )
 from .errors import ArtifactError, MultisubsError, ValidationError
-from .layout import resolve_subtitle_config
+from .layout import resolve_cue_placement, resolve_subtitle_config
 from .models import RelativeLength, RunArtifacts, RunRequest, TranscriptionPaths
 from .utils import (
     create_unique_dir,
@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--margin-bottom",
             "Bottom margin as a percentage of render height or pixels.",
         ),
-    ):
+        ):
         relative_group.add_argument(
             option,
             type=_relative_length_argument_type,
@@ -160,6 +160,33 @@ def build_parser() -> argparse.ArgumentParser:
             metavar="LENGTH",
             help=help_text,
         )
+
+    coordinate_group = parser.add_argument_group(
+        "Custom subtitle coordinates",
+        "Attach the selected anchor to an exact X/Y coordinate; use % or px.",
+    )
+    coordinate_group.add_argument(
+        "--position-x",
+        type=_relative_length_argument_type,
+        default=None,
+        metavar="LENGTH",
+        help="Horizontal anchor coordinate measured from the left edge.",
+    )
+    coordinate_group.add_argument(
+        "--position-y",
+        type=_relative_length_argument_type,
+        default=None,
+        metavar="LENGTH",
+        help="Vertical anchor coordinate measured from the top edge.",
+    )
+    coordinate_group.add_argument(
+        "--anchor",
+        choices=POSITION_CHOICES,
+        default=None,
+        help=(
+            "Subtitle-box anchor for custom coordinates (default: bottom-center)."
+        ),
+    )
 
     style_group = parser.add_argument_group(
         "Styling",
@@ -245,6 +272,8 @@ def _build_request(
             "margin_right": args.margin_right,
             "margin_top": args.margin_top,
             "margin_bottom": args.margin_bottom,
+            "position_x": args.position_x,
+            "position_y": args.position_y,
         }.items()
         if value is not None
     }
@@ -254,6 +283,7 @@ def _build_request(
             position=args.position,
             layout_preset=args.layout,
             relative_values=relative_values,
+            anchor=args.anchor,
         )
     except ValidationError as exc:
         parser.error(str(exc))
@@ -302,15 +332,24 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
     resolved_subtitle_config = resolve_subtitle_config(
         request.subtitle_config, geometry
     )
+    placement = resolve_cue_placement(resolved_subtitle_config, geometry)
+    if placement is None:
+        placement_description = (
+            f"position {resolved_subtitle_config.layout.position.value}"
+        )
+    else:
+        placement_description = (
+            f"anchor {placement.anchor.value} at "
+            f"({placement.position_x}, {placement.position_y})"
+        )
     progress(
         "Detected video layout: "
         f"{geometry.render_width}x{geometry.render_height} "
         f"(stream {geometry.stream_index}, rotation "
         f"{geometry.rotation_degrees}°, SAR "
         f"{geometry.sample_aspect_ratio.numerator}:"
-        f"{geometry.sample_aspect_ratio.denominator}, position "
-        f"{resolved_subtitle_config.layout.position.value}, preset "
-        f"{resolved_subtitle_config.layout_preset.value})."
+        f"{geometry.sample_aspect_ratio.denominator}, {placement_description}, "
+        f"preset {resolved_subtitle_config.layout_preset.value})."
     )
     work_dir = create_work_dir(request.output_dir)
     try:
