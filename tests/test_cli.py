@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from multisubs import cli
-from multisubs.config import validate_subtitle_config
+from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ArtifactError, TranscriptionError, ValidationError
 from multisubs.models import (
     RelativeLength,
@@ -177,6 +177,64 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
     assert isinstance(margin_right, RelativeLength)
     assert margin_left.unit == "%"
     assert margin_right.original == "72px"
+
+
+def test_build_request_accepts_custom_coordinates_and_default_anchor(
+    tmp_path: Path,
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--position-x",
+            "50%",
+            "--position-y",
+            "86%",
+        ]
+    )
+
+    request = cli._build_request(args, parser)
+
+    position_x = request.subtitle_config.layout.position_x
+    assert isinstance(position_x, RelativeLength)
+    assert position_x == parse_relative_length("50%")
+    anchor = request.subtitle_config.layout.anchor
+    assert anchor is not None
+    assert anchor.value == "bottom-center"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--position-x", "50%"],
+        ["--position-y", "86%"],
+        ["--anchor", "top-left"],
+        [
+            "--position",
+            "top-left",
+            "--position-x",
+            "50%",
+            "--position-y",
+            "86%",
+        ],
+    ],
+)
+def test_custom_coordinate_conflicts_fail_before_runtime(
+    tmp_path: Path, arguments
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        cli._build_request(
+            parser.parse_args(["-i", str(input_path), *arguments]), parser
+        )
+
+    assert error.value.code == 2
 
 
 def test_relative_layout_values_override_temporary_style_adapter(

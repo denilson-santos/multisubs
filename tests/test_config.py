@@ -222,6 +222,53 @@ def test_relative_values_are_stored_until_geometry_is_available():
     assert config.layout.margin_bottom == parse_relative_length("72px")
 
 
+def test_custom_coordinates_store_default_anchor_and_units():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"position_x": "50%", "position_y": "86%"},
+    )
+
+    assert config.layout.position_x == parse_relative_length("50%")
+    assert config.layout.position_y == parse_relative_length("86%")
+    assert config.layout.anchor is SubtitlePosition.BOTTOM_CENTER
+
+
+def test_custom_coordinates_accept_explicit_anchor():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"position_x": "960px", "position_y": "929px"},
+        anchor="top-left",
+    )
+
+    assert config.layout.anchor is SubtitlePosition.TOP_LEFT
+
+
+@pytest.mark.parametrize(
+    ("relative_values", "position", "anchor", "message"),
+    [
+        ({"position_x": "50%"}, None, None, "position-x and position-y"),
+        ({"position_y": "86%"}, None, None, "position-x and position-y"),
+        (
+            {"position_x": "50%", "position_y": "86%"},
+            "top-left",
+            None,
+            "position cannot be combined",
+        ),
+        ({}, None, "top-left", "anchor requires"),
+    ],
+)
+def test_custom_coordinate_conflicts_are_rejected(
+    relative_values, position, anchor, message
+):
+    with pytest.raises(ValidationError, match=message):
+        validate_subtitle_config(
+            None,
+            relative_values=relative_values,
+            position=position,
+            anchor=anchor,
+        )
+
+
 def test_typed_subtitle_config_is_revalidated():
     config = validate_subtitle_config(None)
     config = replace(

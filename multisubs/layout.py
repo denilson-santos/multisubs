@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
+from typing import cast
 
 from .errors import ValidationError
 from .models import (
+    CuePlacement,
     RelativeLength,
     SubtitleConfig,
     SubtitleLayout,
@@ -139,6 +141,9 @@ def resolve_subtitle_config(
             if "margin_bottom" in layout_overrides
             else preset_layout.margin_bottom
         ),
+        position_x=layout.position_x,
+        position_y=layout.position_y,
+        anchor=layout.anchor,
     )
     resolved_layout = SubtitleLayout(
         position=merged_layout.position,
@@ -166,6 +171,27 @@ def resolve_subtitle_config(
             field="margin-bottom",
             maximum=geometry.render_height,
         ),
+        position_x=(
+            resolve_relative_length(
+                merged_layout.position_x,
+                geometry.render_width,
+                field="position-x",
+                maximum=geometry.render_width,
+            )
+            if merged_layout.position_x is not None
+            else None
+        ),
+        position_y=(
+            resolve_relative_length(
+                merged_layout.position_y,
+                geometry.render_height,
+                field="position-y",
+                maximum=geometry.render_height,
+            )
+            if merged_layout.position_y is not None
+            else None
+        ),
+        anchor=merged_layout.anchor,
     )
     resolved_appearance = replace(
         validated.appearance,
@@ -180,6 +206,7 @@ def resolve_subtitle_config(
         layout_overrides=layout_overrides,
     )
     resolve_safe_rectangle(geometry, resolved.layout)
+    _validated_cue_placement(resolved, geometry)
     return resolved
 
 
@@ -275,6 +302,130 @@ def resolve_safe_rectangle(
             "Subtitle top and bottom margins leave no usable safe rectangle"
         )
     return rectangle
+
+
+def resolve_cue_placement(
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+) -> CuePlacement | None:
+    """Resolve and validate one custom placement for every visual cue.
+
+    Named positions remain encoded in the ASS style and return ``None``. Custom
+    coordinates are represented as generated per-event overrides so the
+    transcript text never shares a serialization path with ASS control tags.
+    """
+    resolved = resolve_subtitle_config(config, geometry)
+    return _validated_cue_placement(resolved, geometry)
+
+
+def _validated_cue_placement(
+    resolved: SubtitleConfig,
+    geometry: VideoGeometry,
+) -> CuePlacement | None:
+    """Build a placement from a geometry-resolved configuration."""
+    layout = resolved.layout
+    if layout.position_x is None and layout.position_y is None:
+        return None
+    if layout.position_x is None or layout.position_y is None:
+        raise ValidationError(
+            "position-x and position-y must be supplied together"
+        )
+    if layout.anchor is None:
+        raise ValidationError("custom coordinates require an anchor")
+    if not isinstance(layout.position_x, int) or not isinstance(
+        layout.position_y, int
+    ):
+        raise ValidationError(
+            "custom coordinates must be resolved against video geometry first"
+        )
+
+    safe_rectangle = resolve_safe_rectangle(geometry, layout)
+    placement = CuePlacement(
+        anchor=layout.anchor,
+        position_x=layout.position_x,
+        position_y=layout.position_y,
+    )
+    _validate_cue_placement_bounds(
+        placement,
+        safe_rectangle,
+        font_size=resolved.appearance.font_size,
+        outline_weight=resolved.appearance.outline_weight,
+        shadow_weight=resolved.appearance.shadow_weight,
+    )
+    return placement
+
+
+def _validate_cue_placement_bounds(
+    placement: CuePlacement,
+    safe_rectangle: SafeRectangle,
+    *,
+    font_size: object,
+    outline_weight: object,
+    shadow_weight: object,
+) -> None:
+    """Reject custom anchors that cannot contain even a minimal subtitle line."""
+    if not safe_rectangle.left <= placement.position_x <= safe_rectangle.right:
+        raise ValidationError(
+            "position-x places the subtitle anchor outside the safe rectangle"
+        )
+    if not safe_rectangle.top <= placement.position_y <= safe_rectangle.bottom:
+        raise ValidationError(
+            "position-y places the subtitle anchor outside the safe rectangle"
+        )
+
+    values = (font_size, outline_weight, shadow_weight)
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+        raise ValidationError(
+            "subtitle appearance must be resolved before custom placement"
+        )
+    font_size_value = cast(int, font_size)
+    outline_weight_value = cast(int, outline_weight)
+    shadow_weight_value = cast(int, shadow_weight)
+    extent = max(1, font_size_value + 2 * (outline_weight_value + shadow_weight_value))
+    anchor = placement.anchor.value
+    if anchor.endswith("left") and placement.position_x + extent > safe_rectangle.right:
+        raise ValidationError(
+            "position-x leaves no room for a subtitle line inside the safe rectangle"
+        )
+    if anchor.endswith("right") and placement.position_x - extent < safe_rectangle.left:
+        raise ValidationError(
+            "position-x leaves no room for a subtitle line inside the safe rectangle"
+        )
+    if anchor in {"top-center", "center", "bottom-center"}:
+        half_extent = (extent + 1) // 2
+        if (
+            placement.position_x - half_extent < safe_rectangle.left
+            or placement.position_x + half_extent > safe_rectangle.right
+        ):
+            raise ValidationError(
+                "position-x leaves no room for a subtitle line inside the safe "
+                "rectangle"
+            )
+
+    if (
+        anchor.startswith("top-")
+        and placement.position_y + extent > safe_rectangle.bottom
+    ):
+        raise ValidationError(
+            "position-y leaves no room for a subtitle line inside the safe rectangle"
+        )
+    if (
+        anchor.startswith("bottom-")
+        and placement.position_y - extent < safe_rectangle.top
+    ):
+        raise ValidationError(
+            "position-y leaves no room for a subtitle line inside the safe rectangle"
+        )
+    if anchor in {"middle-left", "center", "middle-right"}:
+        half_extent = (extent + 1) // 2
+        if (
+            placement.position_y - half_extent < safe_rectangle.top
+            or placement.position_y + half_extent > safe_rectangle.bottom
+        ):
+            raise ValidationError(
+                "position-y leaves no room for a subtitle line inside the safe "
+                "rectangle"
+            )
 
 
 def _resolved_layout_int(value: int | RelativeLength, field: str) -> int:

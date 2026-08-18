@@ -78,6 +78,33 @@ class SubtitleLayout:
     margin_right: int | RelativeLength
     margin_top: int | RelativeLength
     margin_bottom: int | RelativeLength
+    position_x: int | RelativeLength | None = None
+    position_y: int | RelativeLength | None = None
+    anchor: SubtitlePosition | None = None
+
+    @property
+    def has_custom_coordinates(self) -> bool:
+        """Return whether this layout uses a per-event X/Y placement."""
+        return self.position_x is not None or self.position_y is not None
+
+
+@dataclass(frozen=True)
+class CuePlacement:
+    """One resolved ASS anchor and position for a visual subtitle cue."""
+
+    anchor: SubtitlePosition
+    position_x: int
+    position_y: int
+
+    @property
+    def x(self) -> int:
+        """Return the resolved horizontal PlayRes coordinate."""
+        return self.position_x
+
+    @property
+    def y(self) -> int:
+        """Return the resolved vertical PlayRes coordinate."""
+        return self.position_y
 
 
 @dataclass(frozen=True)
