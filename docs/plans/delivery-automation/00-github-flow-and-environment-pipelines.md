@@ -1,6 +1,8 @@
 # Plan 0: GitHub Flow and environment pipelines
 
-Status: In progress
+Status: In review
+
+Pull request: [#17](https://github.com/denilson-santos/multisubs/pull/17)
 
 Depends on:
 
@@ -74,8 +76,8 @@ rehearsals from a staged SHA.
 - [x] Update Python compatibility, GitHub Flow, delivery, and active-plan docs.
 - [x] Complete the available local verification on Python 3.10; leave the
       Python 3.13 run to the development matrix.
-- [ ] Rebase onto the reconciled `main`.
-- [ ] Obtain delivery approval, commit, push, open the pull request, and record
+- [x] Rebase onto the reconciled `main`.
+- [x] Obtain delivery approval, commit, push, open the pull request, and record
       its link.
 - [ ] Configure GitHub settings, approve staging, run production rehearsal, and
       retire merged remote branches.
