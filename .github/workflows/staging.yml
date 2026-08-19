@@ -55,6 +55,10 @@ jobs:
     name: shared-verification
     needs: resolve
     uses: ./.github/workflows/_verify.yml
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
     with:
       environment: staging
       target_sha: ${{ needs.resolve.outputs.target_sha }}
