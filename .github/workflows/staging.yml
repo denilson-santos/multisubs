@@ -1,0 +1,78 @@
+name: Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full SHA from main to rebuild as a staging candidate
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  attestations: write
+  id-token: write
+
+concurrency:
+  group: staging
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: resolve-staging-commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      target_sha: ${{ steps.target.outputs.target_sha }}
+      artifact_name: ${{ steps.target.outputs.artifact_name }}
+    steps:
+      - name: Check out main history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and validate the staging commit
+        id: target
+        env:
+          DISPATCH_SHA: ${{ inputs.commit_sha }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          target_sha="${DISPATCH_SHA:-${EVENT_SHA}}"
+          if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "commit_sha must be a full lowercase 40-character SHA" >&2
+            exit 1
+          fi
+          git cat-file -e "${target_sha}^{commit}"
+          git merge-base --is-ancestor "${target_sha}" origin/main
+          echo "target_sha=${target_sha}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_name=staging-${target_sha}" >> "${GITHUB_OUTPUT}"
+
+  verify:
+    name: shared-verification
+    needs: resolve
+    uses: ./.github/workflows/_verify.yml
+    with:
+      environment: staging
+      target_sha: ${{ needs.resolve.outputs.target_sha }}
+      run_integration: true
+      publish_artifact: true
+      artifact_name: ${{ needs.resolve.outputs.artifact_name }}
+
+  gate:
+    name: staging-gate
+    needs: [resolve, verify]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every staging check
+        env:
+          RESOLVE_RESULT: ${{ needs.resolve.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: |
+          test "${RESOLVE_RESULT}" = "success"
+          test "${VERIFY_RESULT}" = "success"
