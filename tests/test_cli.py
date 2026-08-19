@@ -222,9 +222,7 @@ def test_build_request_accepts_custom_coordinates_and_default_anchor(
         ],
     ],
 )
-def test_custom_coordinate_conflicts_fail_before_runtime(
-    tmp_path: Path, arguments
-):
+def test_custom_coordinate_conflicts_fail_before_runtime(tmp_path: Path, arguments):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
@@ -262,9 +260,7 @@ def test_relative_layout_values_override_temporary_style_adapter(
 
 
 @pytest.mark.parametrize("value", ["14", "-1px", "1e2px"])
-def test_relative_layout_options_require_explicit_units(
-    tmp_path: Path, value: str
-):
+def test_relative_layout_options_require_explicit_units(tmp_path: Path, value: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()

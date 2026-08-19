@@ -93,9 +93,7 @@ def test_resolve_relative_length_uses_axis_and_deterministic_rounding(
     raw_value, basis, expected
 ):
     assert (
-        resolve_relative_length(
-            parse_relative_length(raw_value), basis, field="test"
-        )
+        resolve_relative_length(parse_relative_length(raw_value), basis, field="test")
         == expected
     )
 
