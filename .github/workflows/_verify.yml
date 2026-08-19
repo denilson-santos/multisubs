@@ -16,18 +16,11 @@ on:
         default: false
         type: boolean
 
-permissions:
-  contents: read
-
 jobs:
   verify:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    permissions:
-      contents: read
-      attestations: write
-      id-token: write
     environment:
       name: ${{ inputs.environment }}
     strategy:
