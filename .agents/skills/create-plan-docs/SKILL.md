@@ -52,7 +52,8 @@ Resolve contradictions between a new plan and existing plans. Update every affec
 ## Plan Git and pull-request delivery
 
 - Suggest a short branch name based on the change type and plan outcome.
-- Target feature and maintenance pull requests to `dev` unless repository documentation establishes another base.
+- Target feature and maintenance pull requests to `main`, following the GitHub
+  Flow and required checks in `docs/delivery.md`.
 - Propose focused imperative commit subjects using the prefixes allowed by `docs/conventions.md`.
 - Keep behavior and focused tests together when practical; separate structural refactors and documentation when that improves reviewability.
 - Specify the exact focused and repository-wide verification commands relevant to the planned change.

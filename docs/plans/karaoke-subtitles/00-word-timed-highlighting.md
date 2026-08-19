@@ -336,7 +336,7 @@ Suggested pull request:
 
 ~~~
 Title: feat: add word-timed karaoke subtitles
-Base: dev
+Base: main
 ~~~
 
 The pull request must link this plan, state that translation and richer
@@ -363,8 +363,8 @@ cutover or package metadata changes in the implementation branch.
 
 Before staging each commit, inspect `git status --short`, `git diff --check`, and
 the relevant diff. Stage only the logical files for that commit. Before opening
-the pull request, inspect `git log --oneline origin/dev..HEAD` and
-`git diff --stat origin/dev...HEAD`; do not use an unreviewed generated PR body.
+the pull request, inspect `git log --oneline origin/main..HEAD` and
+`git diff --stat origin/main...HEAD`; do not use an unreviewed generated PR body.
 
 ## Acceptance criteria
 

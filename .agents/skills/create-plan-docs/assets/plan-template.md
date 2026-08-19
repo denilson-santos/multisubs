@@ -72,7 +72,7 @@ Suggested pull request:
 
 ~~~
 Title: [type]: [reviewable outcome]
-Base: dev
+Base: main
 ~~~
 
 Before requesting review:

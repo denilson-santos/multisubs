@@ -43,7 +43,7 @@ however, continue consuming the same display-cue contract when implemented.
 
 ## Delivery order
 
-1. Merge the cross-package dependencies above into `dev`.
+1. Merge the cross-package dependencies above into `main`.
 2. Implement [Plan 0](00-word-timed-highlighting.md) in one focused branch and
    pull request.
 3. After merge, mark the plan and package Done in the next planning-status
@@ -62,7 +62,7 @@ unrelated formatting changes.
 
 ## Pull-request strategy
 
-The implementation pull request targets `dev` after all dependencies are
+The implementation pull request targets `main` after all dependencies are
 merged. It must link the individual plan, describe the CLI and artifact
 contracts, include exact verification results, and attach representative
 before/during/after render frames produced with a controlled font.

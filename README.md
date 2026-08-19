@@ -1,12 +1,14 @@
 # multisubs
 
+[![Development](https://github.com/denilson-santos/multisubs/actions/workflows/development.yml/badge.svg)](https://github.com/denilson-santos/multisubs/actions/workflows/development.yml)
+
 multisubs is a command-line tool that transcribes a local video, creates timed subtitle files, and burns those subtitles into a new video.
 
 It uses WhisperX for transcription and word alignment, then produces JSON, SRT, and ASS artifacts. FFmpeg renders the ASS subtitles into the final video.
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.10 through 3.13. WhisperX 3.8.6 does not support Python 3.14.
 - FFmpeg and ffprobe available on your PATH. The FFmpeg build must support the subtitles filter; builds with libass support are recommended. Both executables normally come from the same FFmpeg installation.
 - Enough CPU or GPU memory for the selected Whisper model
 
@@ -310,6 +312,23 @@ python -m pytest
 python -m build
 twine check dist/*
 ~~~
+
+## Contributing and releases
+
+The repository follows GitHub Flow: create a short-lived branch from `main`,
+open a pull request back to `main`, and merge it with squash after the required
+`Development / development-gate` check passes. The `dev` branch is retired and
+is not an integration target.
+
+Each merge to `main` creates a staging candidate after manual approval. Staging
+runs the hermetic and FFmpeg/libass suites, installs the built wheel in a clean
+environment, and retains the attested wheel, source archive, and checksum
+manifest for 90 days. A stable `vX.Y.Z` tag matching `multisubs.__version__`
+promotes those exact files to a manually approved GitHub Release; the release
+workflow never rebuilds them and does not publish to PyPI.
+
+See [docs/delivery.md](docs/delivery.md) for branch rules, environment settings,
+versioning, staging recovery, release drafts, and rollback guidance.
 
 ## Current limitations
 

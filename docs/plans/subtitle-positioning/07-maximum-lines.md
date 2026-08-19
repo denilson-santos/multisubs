@@ -213,7 +213,7 @@ Suggested pull request:
 
 ~~~
 Title: feat: add configurable subtitle line limits
-Base: dev
+Base: main
 ~~~
 
 The pull request must link this plan, distinguish inherited and explicit values,

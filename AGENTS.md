@@ -2,7 +2,7 @@
 
 ## Project purpose
 
-multisubs is a Python 3.10+ CLI for transcribing a local video with WhisperX, producing JSON/SRT/ASS subtitle assets, and rendering hard subtitles into a copied video with FFmpeg.
+multisubs is a Python 3.10–3.13 CLI for transcribing a local video with WhisperX, producing JSON/SRT/ASS subtitle assets, and rendering hard subtitles into a copied video with FFmpeg.
 
 Read the relevant project documentation before changing behavior:
 
@@ -10,6 +10,7 @@ Read the relevant project documentation before changing behavior:
 - [docs/prd.md](docs/prd.md) defines the product problem, scope, requirements, acceptance criteria, and intentional exclusions.
 - [docs/architecture.md](docs/architecture.md) describes the pipeline, component boundaries, subtitle-cue rules, output contracts, and external integrations.
 - [docs/conventions.md](docs/conventions.md) defines engineering, testing, dependency, security, and release conventions for this stack.
+- [docs/delivery.md](docs/delivery.md) defines GitHub Flow, Actions environments, branch protection, artifact promotion, and release recovery.
 
 ## Repository map
 
@@ -29,6 +30,7 @@ Read the relevant project documentation before changing behavior:
 | docs/prd.md | Product requirements and scope; consult it before changing user-facing behavior or priorities. |
 | docs/architecture.md | Technical design; consult it before changing the pipeline, data shape, output lifecycle, or external boundaries. |
 | docs/conventions.md | Engineering standards; consult it before modifying code, dependencies, tests, FFmpeg integration, or release automation. |
+| docs/delivery.md | GitHub Flow, CI environments, protected-branch settings, staging artifacts, and production releases. |
 
 ## Setup and verification
 
@@ -79,6 +81,18 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 - After the user confirms delivery, follow the plan's branch, commit, and
   pull-request instructions and include only the changes belonging to that plan.
 
+## GitHub Flow
+
+- Create short-lived feature, fix, refactor, documentation, or maintenance
+  branches from an updated `main` branch.
+- Open every implementation pull request against `main`; `dev` is not an
+  integration target.
+- Use squash merge after `Development / development-gate` passes and delete the
+  merged remote branch.
+- Treat `development`, `staging`, and `production` as GitHub environments, not
+  branches. Follow [docs/delivery.md](docs/delivery.md) for promotion and release
+  rules.
+
 ## Documentation expectations
 
 Documentation is part of the definition of done for behavior changes. Use this matrix to decide what to read and update:
@@ -91,7 +105,7 @@ Documentation is part of the definition of done for behavior changes. Use this m
 | Cue segmentation, wrapping, timing, or alignment behavior | [subtitle-cue construction](docs/architecture.md#subtitle-cue-construction) and FR-7 in [docs/prd.md](docs/prd.md#functional-requirements) | [docs/architecture.md](docs/architecture.md); update [docs/prd.md](docs/prd.md) if the expected user outcome changes |
 | Module boundaries, execution flow, data contracts, or external integrations | [docs/architecture.md](docs/architecture.md) | [docs/architecture.md](docs/architecture.md); also update [README.md](README.md) for changed user prerequisites or limitations |
 | Product goals, audience, scope, exclusions, or acceptance criteria | [docs/prd.md](docs/prd.md) | [docs/prd.md](docs/prd.md), then align [README.md](README.md) and [docs/architecture.md](docs/architecture.md) where they describe the same behavior |
-| Python style, dependencies, test strategy, privacy, security, CI, or releases | [docs/conventions.md](docs/conventions.md) | [docs/conventions.md](docs/conventions.md), plus the relevant README, PRD, or architecture document |
+| Python style, dependencies, test strategy, privacy, security, CI, or releases | [docs/conventions.md](docs/conventions.md) and [docs/delivery.md](docs/delivery.md) | [docs/conventions.md](docs/conventions.md) and [docs/delivery.md](docs/delivery.md), plus the relevant README, PRD, or architecture document |
 
 ## External dependencies
 

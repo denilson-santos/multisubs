@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This document defines engineering conventions for multisubs: a Python 3.10+ command-line application built with setuptools, PyTorch, WhisperX, ffmpeg-python, FFmpeg, and JSON/SRT/ASS subtitle outputs.
+This document defines engineering conventions for multisubs: a Python 3.10–3.13 command-line application built with setuptools, PyTorch, WhisperX, ffmpeg-python, FFmpeg, and JSON/SRT/ASS subtitle outputs.
 
 It applies to production code, tests, packaging, documentation, automation, and releases. Follow it for all new or materially modified code. Existing code does not need a broad rewrite solely for conformance; improve it when the change is local, low risk, and verified.
 
@@ -13,8 +13,8 @@ The terms below communicate the strength of a convention:
 - **May**: an optional practice that is useful in the stated circumstances.
 
 The repository's `dev` extra configures the recommended local quality tools.
-CI automation is still intentionally out of scope; do not assume an external CI
-service is present.
+GitHub Actions applies the same checks and promotes immutable distribution
+artifacts through the environments documented in [delivery.md](delivery.md).
 
 ## Convention hierarchy
 
@@ -33,7 +33,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 
 ### Python and virtual environments
 
-- Must support Python 3.10 or newer, as declared by requires-python.
+- Must support Python 3.10 through 3.13, as declared by requires-python. The
+  upper bound follows WhisperX 3.8.6 and must be reviewed with any WhisperX
+  upgrade.
 - Must use an isolated virtual environment for development. Invoke package-management commands through python -m pip so they target the active interpreter.
 - Should develop and test against the oldest supported Python version as well as the current development version. The oldest version catches accidental use of newer syntax and standard-library APIs.
 - Should keep runtime imports free of development-only dependencies.
@@ -310,9 +312,21 @@ Do not run a command from this list merely because it appears here if the corres
 
 ### Continuous integration
 
-- Should run the configured formatter, linter, type checker, unit tests, package build, and package-metadata check on every proposed change.
-- Should test the lowest supported Python version and at least one current supported version.
-- Should keep GPU and real-model integration tests separate from the default CI path unless GPU runners are intentionally funded and maintained.
+- Must run compile checks, Ruff formatting and linting, Pyright, hermetic tests,
+  a package build, and package-metadata checks on every pull request to `main`.
+- Must test Python 3.10 and 3.13. Use the pinned CPU PyTorch set in hosted CI so
+  validation does not depend on GPU runners or CUDA wheel downloads.
+- Must keep GPU and real-model integration tests outside the default pull-request
+  path unless GPU runners are intentionally funded and maintained.
+- Must run the opt-in FFmpeg/libass suite in the manually approved staging
+  environment before a commit is eligible for release.
+- Must pin every referenced GitHub Action to a reviewed full commit SHA and use
+  Dependabot to propose controlled updates.
+- Must grant `GITHUB_TOKEN` only the permissions required by each workflow or
+  job. Pull-request validation remains read-only; attestation writes belong only
+  to staging and release writes belong only to production publication.
+- Must not use `pull_request_target` for code validation or expose environment
+  secrets to untrusted pull-request code.
 - Must fail CI on generated-file drift only when those files are intentional, reviewable project artifacts.
 - Should run documentation link checks once the documentation set grows or is published.
 
@@ -323,9 +337,22 @@ Do not run a command from this list merely because it appears here if the corres
 - Should maintain a changelog when releases become externally consumed.
 - Must build from a clean checkout, install the built artifact in a clean environment, invoke multisubs --help, and perform the appropriate smoke checks before publishing.
 - Should publish reproducible source distributions and wheels with provenance or signed artifacts when the distribution channel supports them.
+- Must build wheel and source artifacts once in staging, record SHA-256 checksums,
+  attest their provenance, and promote those exact files without rebuilding.
+- Must publish production only from a stable `vX.Y.Z` tag that matches
+  `multisubs.__version__`, points to a commit in `main`, and has a non-expired
+  successful staging artifact for the same SHA.
+- Must create or resume a matching draft before publication. Never alter an
+  already published release or move an existing release tag; issue a new patch
+  version for a correction.
+- GitHub Releases are the distribution channel for this workflow. Publishing to
+  PyPI or another registry requires a separate product and credential decision.
 
 ### Commits and pull requests
 
+- Must follow GitHub Flow: branch from `main`, open the pull request against
+  `main`, satisfy `Development / development-gate`, squash merge, and remove the
+  merged remote branch. Long-lived environment branches are not used.
 - Should keep a change focused on one user-visible behavior or one maintainability concern.
 - Should use clear imperative commit subjects. A Conventional Commits-style prefix such as feat:, fix:, docs:, test:, refactor:, or chore: is recommended if a commit convention is adopted.
 - Must include tests or explain why tests are not applicable.
