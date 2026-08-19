@@ -72,7 +72,7 @@ def test_select_staging_artifact_rejects_missing_candidate():
 
 def _staging_run(**overrides):
     payload = {
-        "path": ".github/workflows/staging.yml@main",
+        "path": ".github/workflows/staging.yml",
         "head_branch": "main",
         "head_sha": "a" * 40,
         "status": "completed",
@@ -103,7 +103,7 @@ def test_staging_run_allows_approved_dispatch_to_rebuild_older_main_sha():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"path": ".github/workflows/other.yml@main"},
+        {"path": ".github/workflows/other.yml"},
         {"head_branch": "topic"},
         {"status": "in_progress", "conclusion": None},
         {"conclusion": "failure"},

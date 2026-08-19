@@ -12,7 +12,7 @@ from typing import Any
 
 _STABLE_TAG = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
-_STAGING_WORKFLOW_PATH = ".github/workflows/staging.yml@main"
+_STAGING_WORKFLOW_PATH = ".github/workflows/staging.yml"
 
 
 class ReleaseValidationError(ValueError):
