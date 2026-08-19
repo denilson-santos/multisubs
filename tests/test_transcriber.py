@@ -356,9 +356,7 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
         task="transcribe",
         model_name="turbo",
         full_text="Hello.",
-        segments=(
-            {"id": 0, "start": 0.0, "end": 1.0, "text": "Hello.", "words": []},
-        ),
+        segments=({"id": 0, "start": 0.0, "end": 1.0, "text": "Hello.", "words": []},),
     )
 
     paths = transcriber.write_transcription_artifacts(

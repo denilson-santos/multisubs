@@ -8,8 +8,9 @@ statuses, dependencies, implementation pull requests, and delivery order.
 
 | Package | Status | Progress | Current plan | Package dashboard |
 | --- | --- | ---: | --- | --- |
-| Subtitle positioning | In progress | 5/9 | Custom coordinates | [Open dashboard](subtitle-positioning/README.md) |
+| Subtitle positioning | In progress | 6/9 | Adaptive line wrapping | [Open dashboard](subtitle-positioning/README.md) |
 | Karaoke subtitles | Planned | 0/1 | Word-timed highlighting | [Open dashboard](karaoke-subtitles/README.md) |
+| Delivery automation | In review | 0/1 | GitHub Flow and environment pipelines | [Open dashboard](delivery-automation/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

@@ -1,0 +1,41 @@
+name: Development
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: shared-verification
+    uses: ./.github/workflows/_verify.yml
+    permissions:
+      contents: read
+    with:
+      environment: development
+      target_sha: ${{ github.event.pull_request.head.sha }}
+      run_integration: false
+      publish_artifact: false
+
+  gate:
+    name: development-gate
+    needs: verify
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail when shared verification does not pass
+        if: needs.verify.result != 'success'
+        run: |
+          echo "shared verification result: ${{ needs.verify.result }}" >&2
+          exit 1
+
+      - name: Confirm development gate
+        if: needs.verify.result == 'success'
+        run: echo "shared verification passed"

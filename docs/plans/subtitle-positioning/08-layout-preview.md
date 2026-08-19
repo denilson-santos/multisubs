@@ -197,7 +197,7 @@ Suggested pull request:
 
 ~~~
 Title: feat: add fast subtitle layout previews
-Base: dev
+Base: main
 ~~~
 
 The PR must prove that preview mode does not import WhisperX/PyTorch, document

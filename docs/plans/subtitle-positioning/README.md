@@ -29,12 +29,12 @@ This table is the source of truth for the package. Status values follow the
 | 2 | [Named positions](02-named-positions.md) | Done | 0, 1 | [#10](https://github.com/denilson-santos/multisubs/pull/10) |
 | 3 | [Relative units](03-relative-units.md) | Done | 0, 1 | [#12](https://github.com/denilson-santos/multisubs/pull/12) |
 | 4 | [Layout presets](04-layout-presets.md) | Done | 0–3 | [#13](https://github.com/denilson-santos/multisubs/pull/13) |
-| 5 | [Custom coordinates](05-custom-coordinates.md) | In review | 0–3 | [#15](https://github.com/denilson-santos/multisubs/pull/15) |
+| 5 | [Custom coordinates](05-custom-coordinates.md) | Done | 0–3 | [#15](https://github.com/denilson-santos/multisubs/pull/15) |
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Planned | 0, 1, 3, 4 | — |
 | 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
-Package progress: 5 of 9 plans done; Feature 5 is in review.
+Package progress: 6 of 9 plans done; Feature 6 is the next unblocked plan.
 
 ## Delivery-gate status
 
@@ -152,8 +152,9 @@ The default is one pull request per numbered plan, opened only after its
 dependencies are merged. A dependent stacked pull request is acceptable when it
 clearly identifies its base and is rebased after the dependency merges.
 
-Implementation pull requests target the dev integration branch. The final
-release pull request targets main after the package is complete and verified.
+Implementation pull requests target `main` through the repository's GitHub Flow.
+The package release uses the staged-artifact and version-tag process in
+[delivery.md](../../delivery.md) after the package is complete and verified.
 
 Each pull request must contain:
 
@@ -182,12 +183,12 @@ the next unblocked plan.
 
 ## Branch, commit, and PR workflow
 
-Start from an updated integration branch, replacing the example branch with the
+Start from an updated `main` branch, replacing the example branch with the
 one specified by the individual plan:
 
 ~~~
-git switch dev
-git pull --ff-only origin dev
+git switch main
+git pull --ff-only origin main
 git switch -c feat/example-plan
 ~~~
 
@@ -217,8 +218,8 @@ python -m pytest
 python -m ruff check .
 python -m pyright
 git status --short
-git log --oneline origin/dev..HEAD
-git diff --stat origin/dev...HEAD
+git log --oneline origin/main..HEAD
+git diff --stat origin/main...HEAD
 ~~~
 
 Run only tools installed and configured for the project, and record anything not
@@ -228,7 +229,7 @@ through the repository interface or GitHub CLI:
 ~~~
 git push -u origin feat/example-plan
 gh pr create \
-  --base dev \
+  --base main \
   --head feat/example-plan \
   --title "feat: implement one focused behavior" \
   --body-file /path/to/completed-pr-description.md
@@ -253,7 +254,7 @@ Suggested cutover pull request:
 ~~~
 Title: feat!: replace raw ASS style options with subtitle layout controls
 Branch: feat/subtitle-layout-cli-cutover
-Base: dev
+Base: main
 ~~~
 
 The cutover pull request must:
@@ -264,10 +265,11 @@ The cutover pull request must:
 - Mark the change for a major semantic-version release.
 - Verify multisubs --help from a built wheel in a clean environment.
 
-After all package plans and the cutover are merged into dev, create the release
-pull request from dev to main. It must summarize all migrations, link the merged
-feature pull requests, report the complete verification matrix, and contain the
-major-version release notes.
+After all package plans and the cutover are merged into `main`, approve the
+staging candidate and create the matching major-version tag. The production
+workflow must promote the staged files without rebuilding them; the GitHub
+Release summarizes migrations, links the merged feature pull requests, records
+the verification matrix, and contains the major-version release notes.
 
 ## Pull-request description template
 

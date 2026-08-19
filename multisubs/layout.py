@@ -49,9 +49,7 @@ def resolve_relative_length(
         decimal_value = Decimal(value)
 
     try:
-        resolved = int(
-            decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        )
+        resolved = int(decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (ArithmeticError, ValueError) as exc:
         raise ValidationError(f"{field} could not be resolved safely") from exc
     if resolved < 0:
@@ -327,14 +325,10 @@ def _validated_cue_placement(
     if layout.position_x is None and layout.position_y is None:
         return None
     if layout.position_x is None or layout.position_y is None:
-        raise ValidationError(
-            "position-x and position-y must be supplied together"
-        )
+        raise ValidationError("position-x and position-y must be supplied together")
     if layout.anchor is None:
         raise ValidationError("custom coordinates require an anchor")
-    if not isinstance(layout.position_x, int) or not isinstance(
-        layout.position_y, int
-    ):
+    if not isinstance(layout.position_x, int) or not isinstance(layout.position_y, int):
         raise ValidationError(
             "custom coordinates must be resolved against video geometry first"
         )

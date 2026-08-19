@@ -132,6 +132,4 @@ def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
 def test_serialize_ass_placement_uses_private_anchor_code(anchor, alignment):
     placement = CuePlacement(anchor=anchor, position_x=10, position_y=20)
 
-    assert serialize_ass_placement(placement) == (
-        f"{{\\an{alignment}\\pos(10,20)}}"
-    )
+    assert serialize_ass_placement(placement) == (f"{{\\an{alignment}\\pos(10,20)}}")

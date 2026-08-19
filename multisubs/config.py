@@ -337,17 +337,13 @@ def validate_subtitle_config(
     has_position_y = "position_y" in parsed_relative_values
     has_custom_coordinates = has_position_x or has_position_y
     if has_position_x != has_position_y:
-        raise ValidationError(
-            "position-x and position-y must be supplied together"
-        )
+        raise ValidationError("position-x and position-y must be supplied together")
     if has_custom_coordinates and resolved_position is not None:
         raise ValidationError(
             "position cannot be combined with custom position-x and position-y"
         )
     if resolved_anchor is not None and not has_custom_coordinates:
-        raise ValidationError(
-            "anchor requires both position-x and position-y"
-        )
+        raise ValidationError("anchor requires both position-x and position-y")
     style_keys = set(value) if value else set()
     layout_overrides = set()
     if resolved_position is not None:
@@ -378,9 +374,7 @@ def subtitle_config_to_style_options(
     appearance = config.appearance
     layout = config.layout
     font_size = _resolved_style_int(appearance.font_size, "font-size")
-    outline_weight = _resolved_style_int(
-        appearance.outline_weight, "backdrop-size"
-    )
+    outline_weight = _resolved_style_int(appearance.outline_weight, "backdrop-size")
     shadow_weight = _resolved_style_int(appearance.shadow_weight, "shadow-size")
     margin_left = _resolved_style_int(layout.margin_left, "margin-left")
     margin_right = _resolved_style_int(layout.margin_right, "margin-right")
@@ -456,13 +450,9 @@ def _subtitle_config_from_validated_style(
         layout=SubtitleLayout(
             position=position,
             margin_left=relative_values.get("margin_left", int(style["margin_l"])),
-            margin_right=relative_values.get(
-                "margin_right", int(style["margin_r"])
-            ),
+            margin_right=relative_values.get("margin_right", int(style["margin_r"])),
             margin_top=relative_values.get("margin_top", int(style["margin_v"])),
-            margin_bottom=relative_values.get(
-                "margin_bottom", int(style["margin_v"])
-            ),
+            margin_bottom=relative_values.get("margin_bottom", int(style["margin_v"])),
             position_x=relative_values.get("position_x"),
             position_y=relative_values.get("position_y"),
             anchor=anchor,
@@ -540,9 +530,7 @@ def _validate_relative_length(value: object, field: str) -> None:
     if not isinstance(value, RelativeLength):
         raise ValidationError(f"{field.replace('_', '-')} must be a relative length")
     if value.unit not in {"%", "px"}:
-        raise ValidationError(
-            f"{field.replace('_', '-')} must use % or px units"
-        )
+        raise ValidationError(f"{field.replace('_', '-')} must use % or px units")
     if not isinstance(value.value, Decimal) or not value.value.is_finite():
         raise ValidationError(
             f"{field.replace('_', '-')} must be a finite decimal number"
@@ -575,9 +563,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     has_position_x = config.layout.position_x is not None
     has_position_y = config.layout.position_y is not None
     if has_position_x != has_position_y:
-        raise ValidationError(
-            "position-x and position-y must be supplied together"
-        )
+        raise ValidationError("position-x and position-y must be supplied together")
     if config.layout.anchor is not None and not has_position_x:
         raise ValidationError("anchor requires both position-x and position-y")
     if has_position_x and config.layout.anchor is None:
@@ -590,9 +576,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError("layout overrides must be an immutable set")
     if not all(isinstance(field, str) for field in config.layout_overrides):
         raise ValidationError("layout overrides must contain field names")
-    unknown_overrides = set(config.layout_overrides).difference(
-        _LAYOUT_OVERRIDE_FIELDS
-    )
+    unknown_overrides = set(config.layout_overrides).difference(_LAYOUT_OVERRIDE_FIELDS)
     if unknown_overrides:
         names = ", ".join(sorted(unknown_overrides))
         raise ValidationError(f"Unknown layout override(s): {names}")

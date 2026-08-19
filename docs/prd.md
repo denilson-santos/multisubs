@@ -60,7 +60,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | Area | Requirement |
 | --- | --- |
 | Runtime | Run locally through a Python CLI. Use CUDA when available; otherwise support CPU inference. |
-| Compatibility | Require Python 3.10 or newer and a system FFmpeg installation that provides ffprobe and subtitle rendering support. |
+| Compatibility | Require Python 3.10 through 3.13 and a system FFmpeg installation that provides ffprobe and subtitle rendering support. Python 3.14 is excluded while WhisperX 3.8.6 declares an upper bound below 3.14. |
 | Traceability | Include a schema version, source path, selected language, task, model, creation time, duration, segment count, and resolved video geometry in the JSON output. |
 | Usability | Show progress for geometry detection, model loading, transcription, alignment, artifact generation, subtitle rendering, and model-load retries. |
 | Safety | Do not overwrite existing output files or directories. |

@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--margin-bottom",
             "Bottom margin as a percentage of render height or pixels.",
         ),
-        ):
+    ):
         relative_group.add_argument(
             option,
             type=_relative_length_argument_type,
@@ -183,9 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--anchor",
         choices=POSITION_CHOICES,
         default=None,
-        help=(
-            "Subtitle-box anchor for custom coordinates (default: bottom-center)."
-        ),
+        help=("Subtitle-box anchor for custom coordinates (default: bottom-center)."),
     )
 
     style_group = parser.add_argument_group(

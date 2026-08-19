@@ -174,7 +174,7 @@ Suggested pull request:
 
 ~~~
 Title: feat: adapt subtitle wrapping to the resolved layout
-Base: dev
+Base: main
 ~~~
 
 The PR must compare the old fixed-character behavior with the new width budget,

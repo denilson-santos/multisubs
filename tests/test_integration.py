@@ -359,9 +359,7 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         center_x, rendered_glyph_height, bottom_gap = measure_foreground(
             output_path, width, height
         )
-        normalized_bounds.append(
-            (center_x, rendered_glyph_height / height, bottom_gap)
-        )
+        normalized_bounds.append((center_x, rendered_glyph_height / height, bottom_gap))
 
         fixed_config = validate_subtitle_config(
             {"outline_weight": 0, "shadow_weight": 0},
@@ -384,9 +382,7 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             output_path=fixed_output_path,
             geometry=geometry,
         )
-        _, fixed_glyph_height, _ = measure_foreground(
-            fixed_output_path, width, height
-        )
+        _, fixed_glyph_height, _ = measure_foreground(fixed_output_path, width, height)
         fixed_glyph_heights.append(round(fixed_glyph_height))
 
     for metric in zip(*normalized_bounds, strict=True):

@@ -1,0 +1,123 @@
+name: Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full SHA from main to rebuild as a staging candidate
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: resolve-staging-commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      target_sha: ${{ steps.target.outputs.target_sha }}
+      artifact_name: ${{ steps.target.outputs.artifact_name }}
+    steps:
+      - name: Check out main history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and validate the staging commit
+        id: target
+        env:
+          DISPATCH_SHA: ${{ inputs.commit_sha }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          target_sha="${DISPATCH_SHA:-${EVENT_SHA}}"
+          if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "commit_sha must be a full lowercase 40-character SHA" >&2
+            exit 1
+          fi
+          git cat-file -e "${target_sha}^{commit}"
+          git merge-base --is-ancestor "${target_sha}" origin/main
+          echo "target_sha=${target_sha}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_name=staging-${target_sha}" >> "${GITHUB_OUTPUT}"
+
+  verify:
+    name: shared-verification
+    needs: resolve
+    uses: ./.github/workflows/_verify.yml
+    permissions:
+      contents: read
+    with:
+      environment: staging
+      target_sha: ${{ needs.resolve.outputs.target_sha }}
+      run_integration: true
+      publish_artifact: true
+
+  publish:
+    name: attest and retain staging artifact
+    needs: [resolve, verify]
+    if: needs.resolve.result == 'success' && needs.verify.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Download the verified build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: staging-build-${{ needs.resolve.outputs.target_sha }}-${{ github.run_id }}
+          path: dist
+
+      - name: Attest staging artifacts
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+
+      - name: Upload immutable staging artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ needs.resolve.outputs.artifact_name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+  gate:
+    name: staging-gate
+    needs: [resolve, verify, publish]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail when a staging check does not pass
+        if: >-
+          needs.resolve.result != 'success' ||
+          needs.verify.result != 'success' ||
+          needs.publish.result != 'success'
+        run: |
+          echo "resolve result: ${{ needs.resolve.result }}" >&2
+          echo "verify result: ${{ needs.verify.result }}" >&2
+          echo "publish result: ${{ needs.publish.result }}" >&2
+          exit 1
+
+      - name: Confirm staging gate
+        if: >-
+          needs.resolve.result == 'success' &&
+          needs.verify.result == 'success' &&
+          needs.publish.result == 'success'
+        run: echo "staging checks passed"

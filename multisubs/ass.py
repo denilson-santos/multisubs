@@ -105,9 +105,7 @@ def write_ass(
         "Effect, Text",
     ]
     for index, segment in enumerate(segments):
-        placement = (
-            placements[index] if placements is not None else default_placement
-        )
+        placement = placements[index] if placements is not None else default_placement
         generated_override = (
             serialize_ass_placement(placement) if placement is not None else ""
         )
@@ -141,12 +139,7 @@ def serialize_ass_placement(placement: CuePlacement) -> str:
             "ASS cue placement coordinates must be non-negative integers"
         )
     alignment = _ass_alignment_for_position(placement.anchor)
-    return (
-        "{"
-        f"\\an{alignment}"
-        f"\\pos({placement.position_x},{placement.position_y})"
-        "}"
-    )
+    return f"{{\\an{alignment}\\pos({placement.position_x},{placement.position_y})}}"
 
 
 def _ass_alignment_for_position(position: SubtitlePosition) -> int:
