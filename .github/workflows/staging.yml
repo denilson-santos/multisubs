@@ -12,8 +12,6 @@ on:
 
 permissions:
   contents: read
-  attestations: write
-  id-token: write
 
 concurrency:
   group: staging
@@ -57,18 +55,51 @@ jobs:
     uses: ./.github/workflows/_verify.yml
     permissions:
       contents: read
-      attestations: write
-      id-token: write
     with:
       environment: staging
       target_sha: ${{ needs.resolve.outputs.target_sha }}
       run_integration: true
       publish_artifact: true
-      artifact_name: ${{ needs.resolve.outputs.artifact_name }}
+
+  publish:
+    name: attest and retain staging artifact
+    needs: [resolve, verify]
+    if: needs.resolve.result == 'success' && needs.verify.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Download the verified build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: staging-build-${{ needs.resolve.outputs.target_sha }}-${{ github.run_id }}
+          path: dist
+
+      - name: Attest staging artifacts
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+
+      - name: Upload immutable staging artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ needs.resolve.outputs.artifact_name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
 
   gate:
     name: staging-gate
-    needs: [resolve, verify]
+    needs: [resolve, verify, publish]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -77,6 +108,8 @@ jobs:
         env:
           RESOLVE_RESULT: ${{ needs.resolve.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
         run: |
           test "${RESOLVE_RESULT}" = "success"
           test "${VERIFY_RESULT}" = "success"
+          test "${PUBLISH_RESULT}" = "success"
