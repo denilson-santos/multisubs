@@ -104,12 +104,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every staging check
-        env:
-          RESOLVE_RESULT: ${{ needs.resolve.result }}
-          VERIFY_RESULT: ${{ needs.verify.result }}
-          PUBLISH_RESULT: ${{ needs.publish.result }}
+      - name: Fail when a staging check does not pass
+        if: >-
+          needs.resolve.result != 'success' ||
+          needs.verify.result != 'success' ||
+          needs.publish.result != 'success'
         run: |
-          test "${RESOLVE_RESULT}" = "success"
-          test "${VERIFY_RESULT}" = "success"
-          test "${PUBLISH_RESULT}" = "success"
+          echo "resolve result: ${{ needs.resolve.result }}" >&2
+          echo "verify result: ${{ needs.verify.result }}" >&2
+          echo "publish result: ${{ needs.publish.result }}" >&2
+          exit 1
+
+      - name: Confirm staging gate
+        if: >-
+          needs.resolve.result == 'success' &&
+          needs.verify.result == 'success' &&
+          needs.publish.result == 'success'
+        run: echo "staging checks passed"

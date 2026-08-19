@@ -30,7 +30,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every development check
-        env:
-          VERIFY_RESULT: ${{ needs.verify.result }}
-        run: test "${VERIFY_RESULT}" = "success"
+      - name: Fail when shared verification does not pass
+        if: needs.verify.result != 'success'
+        run: |
+          echo "shared verification result: ${{ needs.verify.result }}" >&2
+          exit 1
+
+      - name: Confirm development gate
+        if: needs.verify.result == 'success'
+        run: echo "shared verification passed"
