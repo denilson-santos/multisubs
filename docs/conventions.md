@@ -353,8 +353,18 @@ Do not run a command from this list merely because it appears here if the corres
 - Must follow GitHub Flow: branch from `main`, open the pull request against
   `main`, satisfy `Development / development-gate`, squash merge, and remove the
   merged remote branch. Long-lived environment branches are not used.
+- Must name short-lived branches `<type>/<short-kebab-case-description>`, using
+  `feat`, `fix`, `refactor`, `docs`, `test`, `ci`, `build`, or `chore` according
+  to the primary purpose of the change.
 - Should keep a change focused on one user-visible behavior or one maintainability concern.
-- Should use clear imperative commit subjects. A Conventional Commits-style prefix such as feat:, fix:, docs:, test:, refactor:, or chore: is recommended if a commit convention is adopted.
+- Must use clear imperative Conventional Commit-style subjects with the same
+  allowed type vocabulary, for example `fix: handle missing rotation metadata`.
+- Should keep each commit coherent and independently reviewable. Separate
+  mechanical formatting, structural refactors, behavior, and documentation
+  when combining them would obscure the review.
+- Must use a pull-request title suitable for the eventual squash commit and a
+  body that explains the scope, reason, user or developer impact, verification
+  actually performed, documentation changes, and remaining risks.
 - Must include tests or explain why tests are not applicable.
 - Must include documentation updates or explain why no documented behavior changed.
 - Should describe performance, hardware, dependency, and output-contract impact in the pull request when relevant.
