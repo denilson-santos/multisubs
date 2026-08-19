@@ -66,7 +66,39 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 - Do not commit virtual environments, model caches, generated videos, or generated subtitle artifacts. The repository ignores data/ and common build outputs for this reason.
 - Avoid unrelated reformatting. Follow the surrounding file's style when modifying it.
 
+## General Git delivery approval
+
+- These rules apply to every repository change, including work that has no
+  implementation plan. The plan-specific rules below add constraints rather
+  than replacing these defaults.
+- When the user asks for an implementation and no existing task branch applies,
+  creating and switching to a short-lived branch is authorized as local setup.
+  First update the view of `origin/main`, verify the intended base, and preserve
+  all existing working-tree changes.
+- Name branches `<type>/<short-kebab-case-description>` using the types allowed
+  by [the commit and pull-request conventions](docs/conventions.md#commits-and-pull-requests).
+- Complete the scoped implementation and relevant local verification before
+  starting Git delivery. An implementation request alone does not authorize
+  staging files with Git, committing, pushing, or opening or updating a pull
+  request.
+- Stop and ask for explicit delivery confirmation before the first Git staging,
+  commit, push, or pull-request mutation unless the user's current request
+  explicitly asks for those actions. A direct request to commit, push, or open
+  a pull request is sufficient confirmation for the actions it names.
+- After confirmation, stage only files that belong to the requested change,
+  create focused commits, push only the task branch, and open the pull request
+  against `main`. Do not include unrelated user changes.
+- Open pull requests as drafts unless the user explicitly requests a
+  ready-for-review pull request. Use a Conventional Commit-style pull-request
+  title suitable for the eventual squash commit, and describe scope, reason,
+  impact, verification, documentation, and remaining risks in the body.
+- Do not merge a pull request, delete a branch, create or move a tag, or publish
+  a release unless the user explicitly requests that action and the required
+  checks and approvals have passed.
+
 ## Implementation-plan delivery approval
+
+- The general Git delivery approval rules above also apply to plan work.
 
 - When an explicit plan specifies a Git branch, that instruction authorizes
   creating and switching to the named branch before implementation without a
