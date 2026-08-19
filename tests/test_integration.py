@@ -213,18 +213,35 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
         ],
         check=True,
     )
+    ffmpeg_help = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-h", "full"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    supports_display_rotation = "-display_rotation" in (
+        f"{ffmpeg_help.stdout}\n{ffmpeg_help.stderr}"
+    )
+    # Newer FFmpeg builds use input-side display rotation. Keep the legacy
+    # metadata fallback for older developer environments.
+    rotation_input_args = (
+        ["-display_rotation:v:0", "90"] if supports_display_rotation else []
+    )
+    rotation_output_args = (
+        [] if supports_display_rotation else ["-metadata:s:v:0", "rotate=90"]
+    )
     subprocess.run(
         [
             "ffmpeg",
             "-hide_banner",
             "-loglevel",
             "error",
+            *rotation_input_args,
             "-i",
             str(base_path),
             "-c",
             "copy",
-            "-metadata:s:v:0",
-            "rotate=90",
+            *rotation_output_args,
             str(input_path),
         ],
         check=True,
