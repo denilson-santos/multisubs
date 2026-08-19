@@ -73,6 +73,12 @@ jobs:
       - name: Run hermetic tests
         run: python -m pytest
 
+      - name: Install FFmpeg for integration tests
+        if: inputs.run_integration && matrix.python-version == '3.10'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+
       - name: Report FFmpeg versions
         if: inputs.run_integration && matrix.python-version == '3.10'
         run: |
