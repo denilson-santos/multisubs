@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 __all__ = ("__version__", "embed_subtitles", "generate_transcriptions")
 
