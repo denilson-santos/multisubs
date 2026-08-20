@@ -174,7 +174,7 @@ The new defaults preserve the former appearance while scaling with the video:
 Roboto, 4% font size, white regular non-italic text, a black background box at
 60% opacity with no extra padding, and a 4% shadow. Layout margins come from the
 selected preset instead of the former raw vertical-margin default. This
-breaking cutover is scheduled for version 2.0.0.
+breaking cutover was released in version 2.0.0.
 
 ### Layout presets
 
@@ -364,8 +364,8 @@ workflow never rebuilds them and does not publish to PyPI.
 
 See [docs/delivery.md](docs/delivery.md) for branch rules, environment settings,
 versioning, staging recovery, release drafts, and rollback guidance. The
-breaking CLI migration is documented above and will also be included in the
-GitHub Release notes when the major version is published.
+breaking CLI migration is documented above and summarized in the
+[v2.0.0 GitHub Release](https://github.com/denilson-santos/multisubs/releases/tag/v2.0.0).
 
 ## Current limitations
 

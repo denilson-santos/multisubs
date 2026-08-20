@@ -34,18 +34,21 @@ This table is the source of truth for the package. Status values follow the
 | 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
-Package progress: 6 of 9 plans done; the breaking CLI cutover is complete, the
-major-version release is in review, and Feature 6 remains the next numbered
-plan.
+Package progress: 6 of 9 plans done; the breaking CLI cutover and major-version
+release are complete, and Feature 6 is the next numbered plan.
 
 ## Delivery-gate status
 
 Delivery gates are tracked separately from feature progress.
 
-| Gate | Status | Depends on | Pull request |
+| Gate | Status | Depends on | Delivery |
 | --- | --- | --- | --- |
 | Breaking CLI cutover | Done | Plans 0–3 | [#29](https://github.com/denilson-santos/multisubs/pull/29) |
-| Major-version release | In review | CLI cutover | [#30](https://github.com/denilson-santos/multisubs/pull/30) |
+| Major-version release | Done | CLI cutover | [#30](https://github.com/denilson-santos/multisubs/pull/30), [v2.0.0](https://github.com/denilson-santos/multisubs/releases/tag/v2.0.0) |
+
+Version 2.0.0 was promoted from staged `main` commit
+`23667649c5baf9d1a64d6d7d266ec6272ccb49ae` without rebuilding through the
+[successful production workflow](https://github.com/denilson-santos/multisubs/actions/runs/32383865271).
 
 ## Target CLI
 
@@ -267,18 +270,11 @@ The cutover pull request must:
 - [x] Mark the change for a major semantic-version release.
 - [x] Verify multisubs --help from a built wheel in a clean environment.
 
-After the cutover is merged into `main`, the `v2.0.0` release becomes eligible;
-Features 6–8 can then ship as backward-compatible `2.x` increments. Do not bump
-the package version, approve a release candidate, create or push the tag, or
-publish the GitHub Release until the user explicitly requests the release.
-
-When authorized, use a separate release pull request to update
-`multisubs.__version__` to `2.0.0`. After it merges, approve and verify its
-staging candidate, then create the annotated `v2.0.0` tag from that exact
-staged `main` commit. Production must promote the staged files without
-rebuilding them. The GitHub Release summarizes the migration and changed
-defaults, links the merged cutover pull request, and records the verification
-matrix.
+The cutover merged through pull request #29. Version 2.0.0 then shipped through
+the separate release pull request #30, an approved staging candidate, and an
+annotated tag on that exact staged `main` commit. Production promoted the staged
+files without rebuilding them. Features 6–8 can ship as backward-compatible
+`2.x` increments.
 
 ## Pull-request description template
 
