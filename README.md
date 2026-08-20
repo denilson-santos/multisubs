@@ -316,9 +316,9 @@ twine check dist/*
 ## Contributing and releases
 
 The repository follows GitHub Flow: create a short-lived branch from `main`,
-open a pull request back to `main`, and merge it with squash after the required
-`Development / development-gate` check passes. The `dev` branch is retired and
-is not an integration target.
+open a pull request back to `main`, and merge it with a merge commit, squash, or
+rebase after the required `Development / development-gate` check passes. The
+`dev` branch is retired and is not an integration target.
 
 Each merge to `main` creates a staging candidate after manual approval. Staging
 runs the hermetic and FFmpeg/libass suites, installs the built wheel in a clean

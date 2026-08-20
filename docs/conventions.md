@@ -351,8 +351,9 @@ Do not run a command from this list merely because it appears here if the corres
 ### Commits and pull requests
 
 - Must follow GitHub Flow: branch from `main`, open the pull request against
-  `main`, satisfy `Development / development-gate`, squash merge, and remove the
-  merged remote branch. Long-lived environment branches are not used.
+  `main`, satisfy `Development / development-gate`, merge with one of the
+  repository's enabled methods, and remove the merged remote branch. Long-lived
+  environment branches are not used.
 - Must name short-lived branches `<type>/<short-kebab-case-description>`, using
   `feat`, `fix`, `refactor`, `docs`, `test`, `ci`, `build`, or `chore` according
   to the primary purpose of the change.
@@ -362,9 +363,12 @@ Do not run a command from this list merely because it appears here if the corres
 - Should keep each commit coherent and independently reviewable. Separate
   mechanical formatting, structural refactors, behavior, and documentation
   when combining them would obscure the review.
-- Must use a pull-request title suitable for the eventual squash commit and a
-  body that explains the scope, reason, user or developer impact, verification
-  actually performed, documentation changes, and remaining risks.
+- Must use a pull-request title that summarizes the full change and a body that
+  explains the scope, reason, user or developer impact, verification actually
+  performed, documentation changes, and remaining risks.
+- Should choose the merge method deliberately: merge commits preserve branch
+  topology, squash merges collapse the pull request into one commit, and rebase
+  merges preserve individual commits on a linear path.
 - Must include tests or explain why tests are not applicable.
 - Must include documentation updates or explain why no documented behavior changed.
 - Should describe performance, hardware, dependency, and output-contract impact in the pull request when relevant.
