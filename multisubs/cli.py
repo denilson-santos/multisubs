@@ -11,14 +11,22 @@ from pathlib import Path
 
 from . import __version__
 from .config import (
-    DEFAULT_STYLE,
+    BACKDROP_CHOICES,
+    DEFAULT_BACKDROP,
+    DEFAULT_BACKDROP_COLOR,
+    DEFAULT_BACKDROP_SIZE,
+    DEFAULT_BOLD,
+    DEFAULT_FONT,
+    DEFAULT_FONT_SIZE,
+    DEFAULT_ITALIC,
+    DEFAULT_SHADOW_SIZE,
+    DEFAULT_TEXT_COLOR,
     LAYOUT_PRESET_CHOICES,
     LAYOUT_PRESETS,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     parse_relative_length,
-    parse_style_option,
     validate_subtitle_config,
 )
 from .errors import ArtifactError, MultisubsError, ValidationError
@@ -118,6 +126,56 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    appearance_group = parser.add_argument_group(
+        "Subtitle appearance",
+        "Semantic appearance controls; colors use #RRGGBB or #RRGGBBAA.",
+    )
+    appearance_group.add_argument(
+        "--font",
+        default=None,
+        metavar="NAME",
+        help=f"Font family (default: {DEFAULT_FONT}).",
+    )
+    appearance_group.add_argument(
+        "--text-color",
+        default=None,
+        metavar="COLOR",
+        help=f"Subtitle text color (default: {DEFAULT_TEXT_COLOR}).",
+    )
+    appearance_group.add_argument(
+        "--bold",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=f"Enable or disable bold text (default: {DEFAULT_BOLD}).",
+    )
+    appearance_group.add_argument(
+        "--italic",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=f"Enable or disable italic text (default: {DEFAULT_ITALIC}).",
+    )
+    appearance_group.add_argument(
+        "--backdrop",
+        choices=BACKDROP_CHOICES,
+        default=None,
+        help=(
+            "Subtitle backdrop: none, outline, or box "
+            f"(default: {DEFAULT_BACKDROP.value})."
+        ),
+    )
+    appearance_group.add_argument(
+        "--backdrop-color",
+        default=None,
+        metavar="COLOR",
+        help=f"Outline, box, and shadow color (default: {DEFAULT_BACKDROP_COLOR}).",
+    )
+    appearance_group.add_argument(
+        "--fonts-dir",
+        default=None,
+        metavar="DIR",
+        help="Directory containing additional fonts for FFmpeg/libass.",
+    )
+
     relative_group = parser.add_argument_group(
         "Relative layout units",
         "Use percentages or pixels; bare numbers are not accepted.",
@@ -125,16 +183,18 @@ def build_parser() -> argparse.ArgumentParser:
     for option, help_text in (
         (
             "--font-size",
-            "Font size as a percentage of the shorter render edge or pixels.",
+            "Font size as a percentage of the shorter render edge or pixels "
+            f"(default: {DEFAULT_FONT_SIZE.replace('%', '%%')}).",
         ),
         (
             "--backdrop-size",
             "Backdrop/outline size as a percentage of the resolved font size "
-            "or pixels.",
+            f"or pixels (default: {DEFAULT_BACKDROP_SIZE.replace('%', '%%')}).",
         ),
         (
             "--shadow-size",
-            "Shadow size as a percentage of the resolved font size or pixels.",
+            "Shadow size as a percentage of the resolved font size or pixels "
+            f"(default: {DEFAULT_SHADOW_SIZE.replace('%', '%%')}).",
         ),
         (
             "--margin-left",
@@ -186,18 +246,6 @@ def build_parser() -> argparse.ArgumentParser:
         help=("Subtitle-box anchor for custom coordinates (default: bottom-center)."),
     )
 
-    style_group = parser.add_argument_group(
-        "Styling",
-        "ASS style overrides. Colors use &H followed by 6 or 8 hexadecimal digits.",
-    )
-    for key, value in DEFAULT_STYLE.items():
-        style_group.add_argument(
-            f"--style-{key.replace('_', '-')}",
-            type=_style_argument_type(key),
-            default=None,
-            metavar=key.upper(),
-            help=f"Default: {value}",
-        )
     return parser
 
 
@@ -224,16 +272,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def _style_argument_type(key: str) -> Callable[[str], str | int]:
-    def parse(raw_value: str) -> str | int:
-        try:
-            return parse_style_option(key, raw_value)
-        except (ValidationError, ValueError) as exc:
-            raise argparse.ArgumentTypeError(str(exc)) from exc
-
-    return parse
-
-
 def _relative_length_argument_type(raw_value: str) -> RelativeLength:
     try:
         return parse_relative_length(raw_value)
@@ -255,10 +293,18 @@ def _build_request(
             f"Output path '{args.output_dir}' is a file; provide a directory instead"
         )
 
-    style_options = {
+    appearance_values = {
         key: value
-        for key in DEFAULT_STYLE
-        if (value := getattr(args, f"style_{key}")) is not None
+        for key, value in {
+            "font": args.font,
+            "text_color": args.text_color,
+            "bold": args.bold,
+            "italic": args.italic,
+            "backdrop": args.backdrop,
+            "backdrop_color": args.backdrop_color,
+            "fonts_dir": args.fonts_dir,
+        }.items()
+        if value is not None
     }
     relative_values = {
         key: value
@@ -277,7 +323,8 @@ def _build_request(
     }
     try:
         subtitle_config = validate_subtitle_config(
-            style_options,
+            None,
+            appearance_values=appearance_values,
             position=args.position,
             layout_preset=args.layout,
             relative_values=relative_values,
@@ -381,6 +428,7 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
                 request.language,
                 output_path=video_path,
                 geometry=geometry,
+                fonts_dir=resolved_subtitle_config.appearance.fonts_dir,
                 progress=progress,
             )
         )

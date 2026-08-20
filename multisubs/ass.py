@@ -8,17 +8,20 @@ from numbers import Real
 from pathlib import Path
 from typing import Any
 
-from .config import (
-    subtitle_config_to_style_options,
-    validate_subtitle_config,
-)
+from .config import validate_subtitle_config
 from .errors import ArtifactError
 from .layout import (
     resolve_cue_placement,
     resolve_safe_rectangle,
     resolve_subtitle_config,
 )
-from .models import CuePlacement, SubtitleConfig, SubtitlePosition, VideoGeometry
+from .models import (
+    CuePlacement,
+    SubtitleBackdrop,
+    SubtitleConfig,
+    SubtitlePosition,
+    VideoGeometry,
+)
 from .utils import atomic_write_text
 
 ASS_STYLE_FIELDS = (
@@ -61,7 +64,7 @@ _ASS_ALIGNMENT_BY_POSITION = {
 def write_ass(
     path: Path,
     segments: Sequence[Mapping[str, Any]],
-    subtitle_config: SubtitleConfig | Mapping[str, str | int] | None,
+    subtitle_config: SubtitleConfig | None,
     geometry: VideoGeometry,
     *,
     placements: Sequence[CuePlacement | None] | None = None,
@@ -120,11 +123,76 @@ def write_ass(
 
 def _compile_style(config: SubtitleConfig) -> dict[str, str | int]:
     """Compile semantic layout into the private numeric ASS style fields."""
-    style = subtitle_config_to_style_options(config)
-    style["alignment"] = _ass_alignment_for_position(
-        config.layout.anchor or config.layout.position
+    appearance = config.appearance
+    layout = config.layout
+    backdrop_size = _resolved_style_int(appearance.backdrop_size, "backdrop-size")
+    margin_top = _resolved_style_int(layout.margin_top, "margin-top")
+    margin_bottom = _resolved_style_int(layout.margin_bottom, "margin-bottom")
+    margin_v = (
+        margin_top
+        if layout.position.value.startswith("top-")
+        else margin_bottom
+        if layout.position.value.startswith("bottom-")
+        else min(margin_top, margin_bottom)
     )
-    return style
+    backdrop_color = rgba_to_ass_color(appearance.backdrop_color)
+    return {
+        "font": appearance.font,
+        "font_size": _resolved_style_int(appearance.font_size, "font-size"),
+        "primary_color": rgba_to_ass_color(appearance.text_color),
+        # SecondaryColour is mandatory in a V4+ Style even though multisubs does
+        # not currently emit karaoke tags. Matching PrimaryColour is the neutral
+        # fallback and preserves the former default style.
+        "secondary_color": rgba_to_ass_color(appearance.text_color),
+        "outline_color": backdrop_color,
+        "back_color": backdrop_color,
+        "bold": -1 if appearance.bold else 0,
+        "italic": -1 if appearance.italic else 0,
+        "underline": 0,
+        "strikeout": 0,
+        "scale_x": 100,
+        "scale_y": 100,
+        "spacing": 0,
+        "angle": 0,
+        # libass BorderStyle 4 creates one box for the whole cue, matching the
+        # backdrop used by multisubs before the semantic CLI cutover.
+        "border_style": 4 if appearance.backdrop is SubtitleBackdrop.BOX else 1,
+        "outline_weight": (
+            0 if appearance.backdrop is SubtitleBackdrop.NONE else backdrop_size
+        ),
+        "shadow_weight": _resolved_style_int(appearance.shadow_size, "shadow-size"),
+        "alignment": _ass_alignment_for_position(layout.anchor or layout.position),
+        "margin_l": _resolved_style_int(layout.margin_left, "margin-left"),
+        "margin_r": _resolved_style_int(layout.margin_right, "margin-right"),
+        "margin_v": margin_v,
+    }
+
+
+def rgba_to_ass_color(value: str) -> str:
+    """Convert #RRGGBB[AA] into ASS &HAABBGGRR notation."""
+    if (
+        not isinstance(value, str)
+        or len(value) not in {7, 9}
+        or not value.startswith("#")
+    ):
+        raise ArtifactError("ASS colors require #RRGGBB or #RRGGBBAA notation")
+    try:
+        red = int(value[1:3], 16)
+        green = int(value[3:5], 16)
+        blue = int(value[5:7], 16)
+        conventional_alpha = int(value[7:9], 16) if len(value) == 9 else 255
+    except ValueError as exc:
+        raise ArtifactError("ASS colors require hexadecimal digits") from exc
+    ass_alpha = 255 - conventional_alpha
+    return f"&H{ass_alpha:02X}{blue:02X}{green:02X}{red:02X}"
+
+
+def _resolved_style_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ArtifactError(
+            f"{field} must be resolved against video geometry before ASS compilation"
+        )
+    return value
 
 
 def serialize_ass_placement(placement: CuePlacement) -> str:

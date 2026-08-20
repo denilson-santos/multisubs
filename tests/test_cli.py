@@ -10,6 +10,7 @@ from multisubs.models import (
     RelativeLength,
     RunArtifacts,
     RunRequest,
+    SubtitleBackdrop,
     SubtitleLayoutPreset,
     TranscriptDocument,
     TranscriptionPaths,
@@ -83,7 +84,7 @@ def test_translation_restriction_is_rejected_before_processing(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_oversized_style_argument_is_argparse_error(tmp_path: Path):
+def test_invalid_semantic_color_is_argparse_error(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
 
@@ -92,15 +93,17 @@ def test_oversized_style_argument_is_argparse_error(tmp_path: Path):
             [
                 "-i",
                 str(input_path),
-                "--style-font-size",
-                str(10**400),
+                "--text-color",
+                "white",
             ]
         )
 
     assert error.value.code == 2
 
 
-def test_build_request_adapts_style_flags_and_named_position(tmp_path: Path):
+def test_build_request_accepts_semantic_appearance_and_named_position(
+    tmp_path: Path,
+):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
@@ -108,8 +111,16 @@ def test_build_request_adapts_style_flags_and_named_position(tmp_path: Path):
         [
             "-i",
             str(input_path),
-            "--style-font-size",
-            "22",
+            "--font",
+            "Inter",
+            "--font-size",
+            "22px",
+            "--text-color",
+            "#abcdef80",
+            "--bold",
+            "--italic",
+            "--backdrop",
+            "box",
             "--position",
             "top-right",
         ]
@@ -117,7 +128,12 @@ def test_build_request_adapts_style_flags_and_named_position(tmp_path: Path):
 
     request = cli._build_request(args, parser)
 
-    assert request.subtitle_config.appearance.font_size == 22
+    assert request.subtitle_config.appearance.font == "Inter"
+    assert request.subtitle_config.appearance.font_size == parse_relative_length("22px")
+    assert request.subtitle_config.appearance.text_color == "#ABCDEF80"
+    assert request.subtitle_config.appearance.bold is True
+    assert request.subtitle_config.appearance.italic is True
+    assert request.subtitle_config.appearance.backdrop is SubtitleBackdrop.BOX
     assert request.subtitle_config.layout.position.value == "top-right"
     assert request.subtitle_config.layout_preset is SubtitleLayoutPreset.AUTO
 
@@ -235,28 +251,24 @@ def test_custom_coordinate_conflicts_fail_before_runtime(tmp_path: Path, argumen
     assert error.value.code == 2
 
 
-def test_relative_layout_values_override_temporary_style_adapter(
-    tmp_path: Path,
-):
+def test_removed_style_options_are_rejected(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
-    args = parser.parse_args(
-        [
-            "-i",
-            str(input_path),
-            "--style-font-size",
-            "22",
-            "--font-size",
-            "4.5%",
-        ]
-    )
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["-i", str(input_path), "--style-font-size", "22"])
 
-    request = cli._build_request(args, parser)
+    assert error.value.code == 2
 
-    font_size = request.subtitle_config.appearance.font_size
-    assert isinstance(font_size, RelativeLength)
-    assert font_size.original == "4.5%"
+
+def test_help_exposes_semantic_options_without_ass_style_flags():
+    help_text = cli.build_parser().format_help()
+
+    assert "--font NAME" in help_text
+    assert "--text-color COLOR" in help_text
+    assert "--bold, --no-bold" in help_text
+    assert "--backdrop {none,outline,box}" in help_text
+    assert "--style-" not in help_text
 
 
 @pytest.mark.parametrize("value", ["14", "-1px", "1e2px"])
@@ -391,9 +403,18 @@ def test_run_request_cleans_private_work_dir_after_default_success(
         return paths.as_tuple()
 
     def fake_render(
-        source, subtitle, destination, lang, *, output_path, geometry, progress
+        source,
+        subtitle,
+        destination,
+        lang,
+        *,
+        output_path,
+        geometry,
+        fonts_dir,
+        progress,
     ):
         assert geometry is GEOMETRY
+        assert fonts_dir is None
         Path(output_path).write_bytes(b"video")
         return str(output_path)
 

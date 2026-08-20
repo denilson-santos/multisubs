@@ -20,27 +20,28 @@ class RelativeLength:
     original: str
 
 
+class SubtitleBackdrop(str, Enum):
+    """Supported semantic background treatments for subtitle text."""
+
+    NONE = "none"
+    OUTLINE = "outline"
+    BOX = "box"
+
+
 @dataclass(frozen=True)
 class SubtitleAppearance:
-    """Validated ASS appearance values hidden behind the typed pipeline."""
+    """Validated semantic appearance values passed through the pipeline."""
 
     font: str
     font_size: int | RelativeLength
-    primary_color: str
-    secondary_color: str
-    outline_color: str
-    back_color: str
-    bold: int
-    italic: int
-    underline: int
-    strikeout: int
-    scale_x: int
-    scale_y: int
-    spacing: int
-    angle: int
-    border_style: int
-    outline_weight: int | RelativeLength
-    shadow_weight: int | RelativeLength
+    text_color: str
+    bold: bool
+    italic: bool
+    backdrop: SubtitleBackdrop
+    backdrop_color: str
+    backdrop_size: int | RelativeLength
+    shadow_size: int | RelativeLength
+    fonts_dir: Path | None = None
 
 
 class SubtitlePosition(str, Enum):
