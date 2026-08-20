@@ -35,7 +35,7 @@ This table is the source of truth for the package. Status values follow the
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
 Package progress: 6 of 9 plans done; the breaking CLI cutover is complete, the
-major-version release is in progress, and Feature 6 remains the next numbered
+major-version release is in review, and Feature 6 remains the next numbered
 plan.
 
 ## Delivery-gate status
@@ -45,7 +45,7 @@ Delivery gates are tracked separately from feature progress.
 | Gate | Status | Depends on | Pull request |
 | --- | --- | --- | --- |
 | Breaking CLI cutover | Done | Plans 0–3 | [#29](https://github.com/denilson-santos/multisubs/pull/29) |
-| Major-version release | In progress | CLI cutover | — |
+| Major-version release | In review | CLI cutover | [#30](https://github.com/denilson-santos/multisubs/pull/30) |
 
 ## Target CLI
 
