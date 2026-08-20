@@ -24,13 +24,13 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 2. Produce a new video with hard subtitles rendered into its image.
 3. Preserve machine-readable and editable subtitle artifacts on request.
 4. Support source-language selection, transcription, and translation to English.
-5. Provide basic ASS style control from the command line.
+5. Provide format-independent subtitle appearance and layout control from the command line.
 6. Avoid overwriting a user's existing files.
 
 ## User journey
 
 1. The user installs the package and FFmpeg.
-2. The user invokes multisubs with an input video and optional language, task, model, output directory, and style options.
+2. The user invokes multisubs with an input video and optional language, task, model, output directory, appearance, and layout options.
 3. The tool transcribes and aligns speech, constructs subtitle cues, and creates JSON, SRT, and ASS files.
 4. FFmpeg burns the ASS file into a copy of the input video.
 5. The user receives the rendered video and, when requested, the subtitle artifacts in a predictable directory layout.
@@ -83,7 +83,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 4. A non-retained successful run leaves the rendered video and JSON transcript while removing its intermediate SRT and ASS files.
 5. A translation request using turbo or an English-only model is rejected before transcription begins.
 6. The JSON output contains metadata and timed subtitle segments.
-7. A user can change an exposed style option or choose a named position and see it reflected in the generated ASS style definition and rendered video.
+7. A user can change an exposed semantic appearance option or choose a named position and see it reflected in the generated ASS style definition and rendered video without providing ASS field names, numeric codes, or ASS color syntax.
 8. Invalid input exits non-zero without loading a model, and a failed render does not publish a partial final video.
 9. A transient model or alignment connection failure is retried automatically, while a deterministic loading failure is surfaced without unnecessary retries.
 10. Landscape, portrait, square, rotated, and non-square-pixel inputs use an ASS canvas matching the dimensions seen by the autorotated FFmpeg render graph.
