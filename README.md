@@ -173,8 +173,8 @@ subtitle appearance model.
 The new defaults preserve the former appearance while scaling with the video:
 Roboto, 4% font size, white regular non-italic text, a black background box at
 60% opacity with no extra padding, and a 4% shadow. Layout margins come from the
-selected preset instead of the former raw vertical-margin default. This cutover
-requires the next major semantic version.
+selected preset instead of the former raw vertical-margin default. This
+breaking cutover is scheduled for version 2.0.0.
 
 ### Layout presets
 
