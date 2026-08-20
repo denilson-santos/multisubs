@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from types import MappingProxyType
 
 from .errors import ValidationError
@@ -13,6 +13,7 @@ from .models import (
     LayoutPreset,
     RelativeLength,
     SubtitleAppearance,
+    SubtitleBackdrop,
     SubtitleConfig,
     SubtitleLayout,
     SubtitleLayoutPreset,
@@ -76,50 +77,13 @@ MODELS = (
     "turbo",
 )
 
-DEFAULT_STYLE: dict[str, str | int] = {
-    "font": "Roboto",
-    "font_size": 43,
-    "primary_color": "&H00FFFFFF",
-    "secondary_color": "&H00FFFFFF",
-    "outline_color": "&H66000000",
-    "back_color": "&H66000000",
-    "bold": 0,
-    "italic": 0,
-    "underline": 0,
-    "strikeout": 0,
-    "scale_x": 100,
-    "scale_y": 100,
-    "spacing": 0,
-    "angle": 0,
-    "border_style": 4,
-    "outline_weight": 0,
-    "shadow_weight": 2,
-    "margin_l": 0,
-    "margin_r": 0,
-    "margin_v": 35,
-}
-
 POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
 DEFAULT_ANCHOR = SubtitlePosition.BOTTOM_CENTER
 LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
+BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
 
-_COLOR_FIELDS = {
-    "primary_color",
-    "secondary_color",
-    "outline_color",
-    "back_color",
-}
-_BOOLEAN_FIELDS = {"bold", "italic", "underline", "strikeout"}
-_POSITIVE_FIELDS = {"font_size", "scale_x", "scale_y"}
-_NON_NEGATIVE_FIELDS = {
-    "outline_weight",
-    "shadow_weight",
-    "margin_l",
-    "margin_r",
-    "margin_v",
-}
-_COLOR_PATTERN = re.compile(r"^&H(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
+_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
 _RELATIVE_LENGTH_PATTERN = re.compile(
     r"^(?P<number>(?:0|[1-9][0-9]{0,5})(?:\.[0-9]{1,3})?)"
     r"(?P<unit>%|px)$"
@@ -144,6 +108,16 @@ _LAYOUT_OVERRIDE_FIELDS = frozenset(
         "margin_bottom",
     }
 )
+
+DEFAULT_FONT = "Roboto"
+DEFAULT_FONT_SIZE = "4%"
+DEFAULT_TEXT_COLOR = "#FFFFFF"
+DEFAULT_BOLD = False
+DEFAULT_ITALIC = False
+DEFAULT_BACKDROP = SubtitleBackdrop.BOX
+DEFAULT_BACKDROP_COLOR = "#00000099"
+DEFAULT_BACKDROP_SIZE = "0px"
+DEFAULT_SHADOW_SIZE = "4%"
 
 
 def parse_relative_length(raw_value: str) -> RelativeLength:
@@ -243,44 +217,10 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
 )
 
 
-def parse_style_option(key: str, raw_value: str) -> str | int:
-    """Parse and validate one CLI style value without depending on argparse."""
-    if key not in DEFAULT_STYLE:
-        raise ValueError(f"Unknown style option: {key}")
-
-    value: str | int
-    if isinstance(DEFAULT_STYLE[key], int):
-        try:
-            value = int(raw_value)
-        except ValueError as exc:
-            raise ValueError(f"{key.replace('_', '-')} must be an integer") from exc
-    else:
-        value = raw_value
-
-    return _validate_style_value(key, value)
-
-
-def validate_style_options(
-    style_options: Mapping[str, str | int] | None,
-) -> dict[str, str | int]:
-    """Return complete, ASS-safe styling with defaults applied."""
-    style = DEFAULT_STYLE.copy()
-    if not style_options:
-        return style
-
-    unknown = set(style_options).difference(DEFAULT_STYLE)
-    if unknown:
-        names = ", ".join(sorted(unknown))
-        raise ValidationError(f"Unknown style option(s): {names}")
-
-    for key, value in style_options.items():
-        style[key] = _validate_style_value(key, value)
-    return style
-
-
 def validate_subtitle_config(
-    value: SubtitleConfig | Mapping[str, str | int] | None,
+    value: SubtitleConfig | None,
     *,
+    appearance_values: Mapping[str, object] | None = None,
     position: SubtitlePosition | str | None = None,
     layout_preset: SubtitleLayoutPreset | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
@@ -288,16 +228,21 @@ def validate_subtitle_config(
     position_y: RelativeLength | str | None = None,
     anchor: SubtitlePosition | str | None = None,
 ) -> SubtitleConfig:
-    """Return typed subtitle configuration from typed or legacy style input."""
+    """Return a complete, validated semantic subtitle configuration."""
     resolved_position = parse_position(position) if position is not None else None
     resolved_preset = (
         parse_layout_preset(layout_preset) if layout_preset is not None else None
     )
     resolved_anchor = parse_position(anchor) if anchor is not None else None
     if isinstance(value, SubtitleConfig):
-        if relative_values or position_x is not None or position_y is not None:
+        if (
+            appearance_values
+            or relative_values
+            or position_x is not None
+            or position_y is not None
+        ):
             raise ValidationError(
-                "relative values cannot override an existing subtitle configuration"
+                "values cannot override an existing subtitle configuration"
             )
         if resolved_position is not None and resolved_position != value.layout.position:
             raise ValidationError(
@@ -316,7 +261,28 @@ def validate_subtitle_config(
             )
         _validate_typed_subtitle_config(value)
         return value
-    style = validate_style_options(value)
+    if value is not None:
+        raise ValidationError(
+            "raw ASS style mappings are no longer supported; use SubtitleConfig"
+        )
+
+    appearance_overrides = dict(appearance_values or {})
+    known_appearance_fields = {
+        "font",
+        "text_color",
+        "bold",
+        "italic",
+        "backdrop",
+        "backdrop_color",
+        "fonts_dir",
+    }
+    unknown_appearance_fields = set(appearance_overrides).difference(
+        known_appearance_fields
+    )
+    if unknown_appearance_fields:
+        names = ", ".join(sorted(unknown_appearance_fields))
+        raise ValidationError(f"Unknown appearance value(s): {names}")
+
     parsed_relative_values = _validate_relative_values(relative_values)
     for field, raw_value in (
         ("position_x", position_x),
@@ -344,122 +310,60 @@ def validate_subtitle_config(
         )
     if resolved_anchor is not None and not has_custom_coordinates:
         raise ValidationError("anchor requires both position-x and position-y")
-    style_keys = set(value) if value else set()
     layout_overrides = set()
     if resolved_position is not None:
         layout_overrides.add("position")
-    if "margin_l" in style_keys:
-        layout_overrides.add("margin_left")
-    if "margin_r" in style_keys:
-        layout_overrides.add("margin_right")
-    if "margin_v" in style_keys:
-        layout_overrides.update({"margin_top", "margin_bottom"})
     layout_overrides.update(
         field for field in parsed_relative_values if field in _LAYOUT_OVERRIDE_FIELDS
     )
-    return _subtitle_config_from_validated_style(
-        style,
-        position=resolved_position or DEFAULT_POSITION,
-        layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
-        layout_overrides=frozenset(layout_overrides),
-        relative_values=parsed_relative_values,
-        anchor=(resolved_anchor or DEFAULT_ANCHOR) if has_custom_coordinates else None,
-    )
-
-
-def subtitle_config_to_style_options(
-    config: SubtitleConfig,
-) -> dict[str, str | int]:
-    """Convert typed configuration into the temporary ASS style mapping."""
-    appearance = config.appearance
-    layout = config.layout
-    font_size = _resolved_style_int(appearance.font_size, "font-size")
-    outline_weight = _resolved_style_int(appearance.outline_weight, "backdrop-size")
-    shadow_weight = _resolved_style_int(appearance.shadow_weight, "shadow-size")
-    margin_left = _resolved_style_int(layout.margin_left, "margin-left")
-    margin_right = _resolved_style_int(layout.margin_right, "margin-right")
-    margin_top = _resolved_style_int(layout.margin_top, "margin-top")
-    margin_bottom = _resolved_style_int(layout.margin_bottom, "margin-bottom")
-    margin_v = (
-        margin_top
-        if layout.position.value.startswith("top-")
-        else margin_bottom
-        if layout.position.value.startswith("bottom-")
-        else min(margin_top, margin_bottom)
-    )
-    return validate_style_options(
-        {
-            "font": appearance.font,
-            "font_size": font_size,
-            "primary_color": appearance.primary_color,
-            "secondary_color": appearance.secondary_color,
-            "outline_color": appearance.outline_color,
-            "back_color": appearance.back_color,
-            "bold": appearance.bold,
-            "italic": appearance.italic,
-            "underline": appearance.underline,
-            "strikeout": appearance.strikeout,
-            "scale_x": appearance.scale_x,
-            "scale_y": appearance.scale_y,
-            "spacing": appearance.spacing,
-            "angle": appearance.angle,
-            "border_style": appearance.border_style,
-            "outline_weight": outline_weight,
-            "shadow_weight": shadow_weight,
-            "margin_l": margin_left,
-            "margin_r": margin_right,
-            "margin_v": margin_v,
-        }
-    )
-
-
-def _subtitle_config_from_validated_style(
-    style: Mapping[str, str | int],
-    *,
-    position: SubtitlePosition,
-    layout_preset: SubtitleLayoutPreset = SubtitleLayoutPreset.AUTO,
-    layout_overrides: frozenset[str] = frozenset(),
-    relative_values: Mapping[str, RelativeLength] | None = None,
-    anchor: SubtitlePosition | None = None,
-) -> SubtitleConfig:
-    relative_values = relative_values or {}
-    return SubtitleConfig(
+    config = SubtitleConfig(
         appearance=SubtitleAppearance(
-            font=str(style["font"]),
-            font_size=relative_values.get("font_size", int(style["font_size"])),
-            primary_color=str(style["primary_color"]),
-            secondary_color=str(style["secondary_color"]),
-            outline_color=str(style["outline_color"]),
-            back_color=str(style["back_color"]),
-            bold=int(style["bold"]),
-            italic=int(style["italic"]),
-            underline=int(style["underline"]),
-            strikeout=int(style["strikeout"]),
-            scale_x=int(style["scale_x"]),
-            scale_y=int(style["scale_y"]),
-            spacing=int(style["spacing"]),
-            angle=int(style["angle"]),
-            border_style=int(style["border_style"]),
-            outline_weight=relative_values.get(
-                "outline_weight", int(style["outline_weight"])
+            font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
+            font_size=parsed_relative_values.get(
+                "font_size", parse_relative_length(DEFAULT_FONT_SIZE)
             ),
-            shadow_weight=relative_values.get(
-                "shadow_weight", int(style["shadow_weight"])
+            text_color=_validate_color(
+                appearance_overrides.get("text_color", DEFAULT_TEXT_COLOR),
+                "text-color",
             ),
+            bold=_validate_boolean(
+                appearance_overrides.get("bold", DEFAULT_BOLD), "bold"
+            ),
+            italic=_validate_boolean(
+                appearance_overrides.get("italic", DEFAULT_ITALIC), "italic"
+            ),
+            backdrop=_validate_backdrop(
+                appearance_overrides.get("backdrop", DEFAULT_BACKDROP)
+            ),
+            backdrop_color=_validate_color(
+                appearance_overrides.get("backdrop_color", DEFAULT_BACKDROP_COLOR),
+                "backdrop-color",
+            ),
+            backdrop_size=parsed_relative_values.get(
+                "outline_weight", parse_relative_length(DEFAULT_BACKDROP_SIZE)
+            ),
+            shadow_size=parsed_relative_values.get(
+                "shadow_weight", parse_relative_length(DEFAULT_SHADOW_SIZE)
+            ),
+            fonts_dir=_coerce_fonts_dir(appearance_overrides.get("fonts_dir")),
         ),
         layout=SubtitleLayout(
-            position=position,
-            margin_left=relative_values.get("margin_left", int(style["margin_l"])),
-            margin_right=relative_values.get("margin_right", int(style["margin_r"])),
-            margin_top=relative_values.get("margin_top", int(style["margin_v"])),
-            margin_bottom=relative_values.get("margin_bottom", int(style["margin_v"])),
-            position_x=relative_values.get("position_x"),
-            position_y=relative_values.get("position_y"),
-            anchor=anchor,
+            position=resolved_position or DEFAULT_POSITION,
+            margin_left=parsed_relative_values.get("margin_left", 0),
+            margin_right=parsed_relative_values.get("margin_right", 0),
+            margin_top=parsed_relative_values.get("margin_top", 0),
+            margin_bottom=parsed_relative_values.get("margin_bottom", 0),
+            position_x=parsed_relative_values.get("position_x"),
+            position_y=parsed_relative_values.get("position_y"),
+            anchor=(resolved_anchor or DEFAULT_ANCHOR)
+            if has_custom_coordinates
+            else None,
         ),
-        layout_preset=layout_preset,
-        layout_overrides=layout_overrides,
+        layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
+        layout_overrides=frozenset(layout_overrides),
     )
+    _validate_typed_subtitle_config(config)
+    return config
 
 
 def parse_position(value: SubtitlePosition | str) -> SubtitlePosition:
@@ -582,26 +486,17 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError(f"Unknown layout override(s): {names}")
     if preset is not config.layout_preset:
         raise ValidationError("layout preset must use a supported preset value")
-    style_values: dict[str, str | int] = {
-        "font": config.appearance.font,
-        "primary_color": config.appearance.primary_color,
-        "secondary_color": config.appearance.secondary_color,
-        "outline_color": config.appearance.outline_color,
-        "back_color": config.appearance.back_color,
-        "bold": config.appearance.bold,
-        "italic": config.appearance.italic,
-        "underline": config.appearance.underline,
-        "strikeout": config.appearance.strikeout,
-        "scale_x": config.appearance.scale_x,
-        "scale_y": config.appearance.scale_y,
-        "spacing": config.appearance.spacing,
-        "angle": config.appearance.angle,
-        "border_style": config.appearance.border_style,
-    }
+    _validate_font(config.appearance.font)
+    _validate_color(config.appearance.text_color, "text-color")
+    _validate_boolean(config.appearance.bold, "bold")
+    _validate_boolean(config.appearance.italic, "italic")
+    _validate_backdrop(config.appearance.backdrop)
+    _validate_color(config.appearance.backdrop_color, "backdrop-color")
+    _coerce_fonts_dir(config.appearance.fonts_dir)
     relative_fields = {
         "font_size": config.appearance.font_size,
-        "outline_weight": config.appearance.outline_weight,
-        "shadow_weight": config.appearance.shadow_weight,
+        "outline_weight": config.appearance.backdrop_size,
+        "shadow_weight": config.appearance.shadow_size,
         "margin_left": config.layout.margin_left,
         "margin_right": config.layout.margin_right,
         "margin_top": config.layout.margin_top,
@@ -610,18 +505,13 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     for field, value in relative_fields.items():
         if isinstance(value, RelativeLength):
             _validate_relative_length(value, field)
-        else:
-            style_key = {
-                "font_size": "font_size",
-                "outline_weight": "outline_weight",
-                "shadow_weight": "shadow_weight",
-                "margin_left": "margin_l",
-                "margin_right": "margin_r",
-                "margin_top": "margin_v",
-                "margin_bottom": "margin_v",
-            }[field]
-            style_values[style_key] = value
-    validate_style_options(style_values)
+        elif isinstance(value, bool) or not isinstance(value, int):
+            raise ValidationError(
+                f"{field.replace('_', '-')} must be an integer or relative length"
+            )
+        elif value < 0 or (field == "font_size" and value == 0):
+            comparator = "greater than zero" if field == "font_size" else "non-negative"
+            raise ValidationError(f"{field.replace('_', '-')} must be {comparator}")
 
     for field, value in {
         "position_x": config.layout.position_x,
@@ -639,48 +529,45 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
             )
 
 
-def _resolved_style_int(value: int | RelativeLength, field: str) -> int:
-    if isinstance(value, RelativeLength):
-        raise ValidationError(
-            f"{field} must be resolved against video geometry before ASS compilation"
-        )
+def _validate_font(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError("font must not be empty")
+    if any(character in value for character in (",", "\r", "\n")):
+        raise ValidationError("font cannot contain commas or line breaks")
     return value
 
 
-def _validate_style_value(key: str, value: str | int) -> str | int:
-    if key == "font":
-        if not isinstance(value, str) or not value.strip():
-            raise ValidationError("style-font must not be empty")
-        if any(character in value for character in (",", "\r", "\n")):
-            raise ValidationError(
-                "style-font cannot contain commas or line breaks for ASS output"
-            )
-        return value
-
-    if key in _COLOR_FIELDS:
-        if not isinstance(value, str) or not _COLOR_PATTERN.fullmatch(value):
-            raise ValidationError(
-                f"style-{key.replace('_', '-')} must be an ASS hexadecimal color "
-                "such as &H00FFFFFF"
-            )
-        return value
-
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValidationError(f"style-{key.replace('_', '-')} must be an integer")
-    try:
-        finite = math.isfinite(value)
-    except OverflowError as exc:
-        raise ValidationError(f"style-{key.replace('_', '-')} must be finite") from exc
-    if not finite:
-        raise ValidationError(f"style-{key.replace('_', '-')} must be finite")
-    if key in _BOOLEAN_FIELDS and value not in {0, 1}:
-        raise ValidationError(f"style-{key.replace('_', '-')} must be 0 or 1")
-    if key in _POSITIVE_FIELDS and value <= 0:
+def _validate_color(value: object, field: str) -> str:
+    if not isinstance(value, str) or not _COLOR_PATTERN.fullmatch(value):
         raise ValidationError(
-            f"style-{key.replace('_', '-')} must be greater than zero"
+            f"{field} must use #RRGGBB or #RRGGBBAA hexadecimal notation"
         )
-    if key in _NON_NEGATIVE_FIELDS and value < 0:
-        raise ValidationError(f"style-{key.replace('_', '-')} cannot be negative")
-    if key == "border_style" and value not in {1, 3, 4}:
-        raise ValidationError("style-border-style must be one of 1, 3, or 4")
+    return value.upper()
+
+
+def _validate_boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValidationError(f"{field} must be enabled or disabled")
     return value
+
+
+def _validate_backdrop(value: object) -> SubtitleBackdrop:
+    if isinstance(value, SubtitleBackdrop):
+        return value
+    if isinstance(value, str):
+        try:
+            return SubtitleBackdrop(value)
+        except ValueError:
+            pass
+    raise ValidationError("backdrop must be one of: " + ", ".join(BACKDROP_CHOICES))
+
+
+def _coerce_fonts_dir(value: object) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, (str, Path)):
+        raise ValidationError("fonts-dir must be a directory path")
+    path = Path(value).expanduser().resolve(strict=False)
+    if not path.exists() or not path.is_dir():
+        raise ValidationError(f"Fonts directory not found at '{value}'")
+    return path

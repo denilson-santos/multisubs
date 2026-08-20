@@ -64,7 +64,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep command-line orchestration in multisubs/cli.py.
 - Must keep model loading, transcription, alignment, cue construction, and subtitle-file writing in multisubs/transcriber.py.
 - Must keep FFmpeg rendering concerns in multisubs/subtitler.py.
-- Must keep default subtitle-style values in multisubs/config.py.
+- Must keep semantic subtitle appearance defaults in multisubs/config.py.
 - Must keep generic collision-safe path helpers in multisubs/utils.py.
 - Should add a focused module when a responsibility no longer fits these boundaries instead of growing cli.py into a second pipeline implementation.
 - Must avoid circular imports and import-time model loading, filesystem writes, network access, or FFmpeg execution.
@@ -198,12 +198,13 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
 - Must pass subtitle appearance and layout through typed configuration objects.
-  DEFAULT_STYLE may remain only as a temporary adapter until the planned CLI
-  cutover; ASS field ordering and conversion belong in the ASS serializer.
+  Public inputs use semantic names and conventional color notation; ASS field
+  ordering, fixed internal defaults, color conversion, and numeric codes belong
+  only in the ASS serializer.
 - Must not mutate a layout preset during a run. Preset definitions and their
   nested layout values must remain immutable so separate invocations cannot
   influence one another.
-- Must validate style values that can produce invalid ASS or unsafe filter input. Treat colors, font names, alignment, margins, and numeric values as user input.
+- Must validate appearance and layout values that can produce invalid ASS or unsafe filter input. Treat colors, font names, positions, margins, and numeric values as user input.
 - Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.
 

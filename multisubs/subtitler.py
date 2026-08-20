@@ -290,6 +290,7 @@ def embed_subtitles(
     *,
     output_path: str | Path | None = None,
     geometry: VideoGeometry | None = None,
+    fonts_dir: str | Path | None = None,
     progress: ProgressReporter = None,
 ) -> str:
     """Render an ASS subtitle file into a copied video and return its path.
@@ -300,6 +301,7 @@ def embed_subtitles(
     source_path = _require_file(input_path, "Input video")
     subtitle_path = _require_file(ass_path, "ASS subtitle file")
     resolved_geometry = geometry or probe_video_geometry(source_path)
+    resolved_fonts_dir = _require_directory(fonts_dir, "Fonts directory")
     destination_dir = _normalise_output_dir(output_dir)
     final_path = _choose_output_path(source_path, destination_dir, lang, output_path)
     temporary_path = _temporary_media_path(final_path)
@@ -314,6 +316,7 @@ def embed_subtitles(
                 subtitle_path,
                 temporary_path,
                 resolved_geometry,
+                resolved_fonts_dir,
             )
             output_stream.run(
                 overwrite_output=True, capture_stdout=True, capture_stderr=True
@@ -354,6 +357,15 @@ def embed_subtitles(
 def _require_file(path: str | Path, label: str) -> Path:
     candidate = Path(path).expanduser().resolve(strict=False)
     if not candidate.exists() or not candidate.is_file():
+        raise ValidationError(f"{label} not found at '{path}'")
+    return candidate
+
+
+def _require_directory(path: str | Path | None, label: str) -> Path | None:
+    if path is None:
+        return None
+    candidate = Path(path).expanduser().resolve(strict=False)
+    if not candidate.exists() or not candidate.is_dir():
         raise ValidationError(f"{label} not found at '{path}'")
     return candidate
 
@@ -421,13 +433,18 @@ def _build_output_stream(
     ass_path: Path,
     output_path: Path,
     geometry: VideoGeometry,
+    fonts_dir: Path | None = None,
 ) -> Any:
     """Build an autorotated graph using the stream and canvas selected by probe."""
     input_stream = ffmpeg.input(str(input_path), autorotate=1)
+    filter_options = {
+        "filename": str(ass_path),
+        "original_size": geometry.original_size,
+    }
+    if fonts_dir is not None:
+        filter_options["fontsdir"] = str(fonts_dir)
     video_stream = input_stream[str(geometry.stream_index)].filter(
-        "subtitles",
-        filename=str(ass_path),
-        original_size=geometry.original_size,
+        "subtitles", **filter_options
     )
     audio_stream = input_stream["a?"]
     return ffmpeg.output(video_stream, audio_stream, str(output_path), acodec="copy")

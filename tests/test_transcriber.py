@@ -252,14 +252,14 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "bottom": 65,
         },
         "requested": {
-            "font_size": "43px",
+            "font_size": "4%",
             "backdrop_size": "0px",
-            "shadow_size": "2px",
+            "shadow_size": "4%",
             "margins": {
                 "left": "0px",
                 "right": "0px",
-                "top": "35px",
-                "bottom": "35px",
+                "top": "0px",
+                "bottom": "0px",
             },
         },
         "resolved": {
@@ -333,8 +333,8 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     assert rendering["requested"]["margins"] == {
         "left": "8%",
         "right": "8%",
-        "top": "35px",
-        "bottom": "35px",
+        "top": "0px",
+        "bottom": "0px",
     }
     assert rendering["resolved"]["font_size"] == 49
     assert rendering["resolved"]["margins"] == {

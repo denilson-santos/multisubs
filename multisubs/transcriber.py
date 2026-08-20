@@ -16,9 +16,6 @@ from typing import Any, cast
 
 from .ass import write_ass
 from .config import (
-    DEFAULT_STYLE as _DEFAULT_STYLE,
-)
-from .config import (
     MODELS as _MODELS,
 )
 from .config import validate_subtitle_config
@@ -72,16 +69,13 @@ _RETRYABLE_MODEL_ERROR_MARKERS = (
 ProgressReporter = Callable[[str], None] | None
 _SKIP_JSON_VALUE = object()
 
-# Keep shared configuration constants available from the transcriber while
-# their canonical definitions remain in config.py.
-DEFAULT_STYLE = _DEFAULT_STYLE
 MODELS = _MODELS
 
 
 def generate_transcriptions(
     input_path: str | Path,
     output_dir: str | Path,
-    style_options: SubtitleConfig | Mapping[str, str | int] | None = None,
+    style_options: SubtitleConfig | None = None,
     lang: str = "en",
     task: str = "transcribe",
     model_name: str = "turbo",
@@ -227,7 +221,7 @@ def transcribe_video(
 def write_transcription_artifacts(
     document: TranscriptDocument,
     output_dir: str | Path,
-    subtitle_config: SubtitleConfig | Mapping[str, str | int] | None = None,
+    subtitle_config: SubtitleConfig | None = None,
     *,
     geometry: VideoGeometry | None = None,
     resolved_subtitle_config: SubtitleConfig | None = None,
@@ -821,10 +815,10 @@ def _write_json(
                         subtitle_config.appearance.font_size
                     ),
                     "backdrop_size": _format_requested_length(
-                        subtitle_config.appearance.outline_weight
+                        subtitle_config.appearance.backdrop_size
                     ),
                     "shadow_size": _format_requested_length(
-                        subtitle_config.appearance.shadow_weight
+                        subtitle_config.appearance.shadow_size
                     ),
                     "margins": {
                         "left": _format_requested_length(requested_layout.margin_left),
@@ -839,8 +833,8 @@ def _write_json(
                 },
                 "resolved": {
                     "font_size": resolved_subtitle_config.appearance.font_size,
-                    "backdrop_size": resolved_subtitle_config.appearance.outline_weight,
-                    "shadow_size": resolved_subtitle_config.appearance.shadow_weight,
+                    "backdrop_size": resolved_subtitle_config.appearance.backdrop_size,
+                    "shadow_size": resolved_subtitle_config.appearance.shadow_size,
                     "margins": {
                         "left": resolved_layout.margin_left,
                         "right": resolved_layout.margin_right,

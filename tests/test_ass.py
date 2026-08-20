@@ -5,13 +5,16 @@ import pytest
 
 from multisubs.ass import (
     _ass_alignment_for_position,
+    _compile_style,
     escape_ass_text,
     format_ass_time,
+    rgba_to_ass_color,
     serialize_ass_placement,
     write_ass,
 )
-from multisubs.config import DEFAULT_STYLE, validate_subtitle_config
+from multisubs.config import validate_subtitle_config
 from multisubs.errors import ArtifactError
+from multisubs.layout import resolve_subtitle_config
 from multisubs.models import CuePlacement, SubtitlePosition, VideoGeometry
 
 GEOMETRY = VideoGeometry(
@@ -27,9 +30,8 @@ GEOMETRY = VideoGeometry(
 )
 
 
-def test_write_ass_preserves_style_contract_and_escapes_dialogue(tmp_path: Path):
+def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     path = tmp_path / "captions.ass"
-    legacy_path = tmp_path / "legacy-captions.ass"
     segments = [
         {
             "id": 0,
@@ -40,11 +42,9 @@ def test_write_ass_preserves_style_contract_and_escapes_dialogue(tmp_path: Path)
         }
     ]
 
-    write_ass(path, segments, validate_subtitle_config(DEFAULT_STYLE), GEOMETRY)
-    write_ass(legacy_path, segments, DEFAULT_STYLE, GEOMETRY)
+    write_ass(path, segments, validate_subtitle_config(None), GEOMETRY)
 
     content = path.read_text(encoding="utf-8")
-    assert content == legacy_path.read_text(encoding="utf-8")
     assert "ScriptType: v4.00+" in content
     assert (
         "ScriptType: v4.00+\n"
@@ -53,11 +53,52 @@ def test_write_ass_preserves_style_contract_and_escapes_dialogue(tmp_path: Path)
         "ScaledBorderAndShadow: yes\n"
         "WrapStyle: 0\n"
     ) in content
-    assert "Style: Default,Roboto,43" in content
+    assert (
+        "Style: Default,Roboto,43,&H00FFFFFF,&H00FFFFFF,&H66000000,"
+        "&H66000000,0,0,0,0,100,100,0,0,4,0,2,2,86,86,154,1"
+    ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert "0:00:00.00,0:01:01.24" in content
     assert "\\{mundo\\}" in content
     assert "\\N字幕" in content
+
+
+@pytest.mark.parametrize(
+    ("rgba", "ass"),
+    [
+        ("#112233", "&H00332211"),
+        ("#112233FF", "&H00332211"),
+        ("#11223300", "&HFF332211"),
+        ("#11223380", "&H7F332211"),
+    ],
+)
+def test_rgba_color_conversion_uses_bgr_and_inverted_alpha(rgba, ass):
+    assert rgba_to_ass_color(rgba) == ass
+
+
+@pytest.mark.parametrize(
+    ("backdrop", "border_style", "outline_weight"),
+    [("none", 1, 0), ("outline", 1, 3), ("box", 4, 3)],
+)
+def test_semantic_backdrops_compile_to_private_ass_fields(
+    backdrop, border_style, outline_weight
+):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "bold": True,
+            "italic": True,
+            "backdrop": backdrop,
+        },
+        relative_values={"outline_weight": "6%"},
+    )
+
+    style = _compile_style(resolve_subtitle_config(config, GEOMETRY))
+
+    assert style["border_style"] == border_style
+    assert style["outline_weight"] == outline_weight
+    assert style["bold"] == -1
+    assert style["italic"] == -1
 
 
 @pytest.mark.parametrize("value", [-1, float("nan"), float("inf"), True, "1"])

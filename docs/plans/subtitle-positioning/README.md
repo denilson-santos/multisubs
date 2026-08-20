@@ -13,9 +13,9 @@ The new interface must let a user position subtitles without knowing ASS field
 names or numeric alignment codes. Layout must remain proportional across
 landscape, portrait, square, 720p, 1080p, and 4K videos.
 
-The current dynamically generated --style-* interface will be removed. This is
-a deliberate breaking CLI change. Internal ASS fields remain an implementation
-detail.
+The dynamically generated --style-* interface is removed by the breaking CLI
+cutover. This is a deliberate compatibility break; internal ASS fields remain
+an implementation detail.
 
 ## Plan status
 
@@ -34,7 +34,8 @@ This table is the source of truth for the package. Status values follow the
 | 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
-Package progress: 6 of 9 plans done; Feature 6 is the next unblocked plan.
+Package progress: 6 of 9 plans done; the breaking CLI cutover is in review,
+and Feature 6 remains the next numbered plan.
 
 ## Delivery-gate status
 
@@ -42,8 +43,8 @@ Delivery gates are tracked separately from feature progress.
 
 | Gate | Status | Depends on | Pull request |
 | --- | --- | --- | --- |
-| Breaking CLI cutover | Planned | Plans 0–3 | — |
-| Major-version release | Planned | Plans 0–8 and CLI cutover | — |
+| Breaking CLI cutover | In review | Plans 0–3 | [#29](https://github.com/denilson-santos/multisubs/pull/29) |
+| Major-version release | Planned | CLI cutover | — |
 
 ## Target CLI
 
@@ -51,13 +52,13 @@ Appearance:
 
 ~~~
 --font Roboto
---font-size 4.5%
+--font-size 4%
 --text-color '#FFFFFF'
 --bold
 --italic
---backdrop outline
---backdrop-color '#000000B3'
---backdrop-size 6%
+--backdrop box
+--backdrop-color '#00000099'
+--backdrop-size 0px
 --shadow-size 4%
 --fonts-dir ./fonts
 ~~~
@@ -259,17 +260,24 @@ Base: main
 
 The cutover pull request must:
 
-- Remove the temporary adapter and obsolete tests.
-- Update every public CLI example.
-- Document the old-to-new option mapping and changed defaults.
-- Mark the change for a major semantic-version release.
-- Verify multisubs --help from a built wheel in a clean environment.
+- [x] Remove the temporary adapter and obsolete tests.
+- [x] Update every public CLI example.
+- [x] Document the old-to-new option mapping and changed defaults.
+- [x] Mark the change for a major semantic-version release.
+- [x] Verify multisubs --help from a built wheel in a clean environment.
 
-After all package plans and the cutover are merged into `main`, approve the
-staging candidate and create the matching major-version tag. The production
-workflow must promote the staged files without rebuilding them; the GitHub
-Release summarizes migrations, links the merged feature pull requests, records
-the verification matrix, and contains the major-version release notes.
+After the cutover is merged into `main`, the `v2.0.0` release becomes eligible;
+Features 6–8 can then ship as backward-compatible `2.x` increments. Do not bump
+the package version, approve a release candidate, create or push the tag, or
+publish the GitHub Release until the user explicitly requests the release.
+
+When authorized, use a separate release pull request to update
+`multisubs.__version__` to `2.0.0`. After it merges, approve and verify its
+staging candidate, then create the annotated `v2.0.0` tag from that exact
+staged `main` commit. Production must promote the staged files without
+rebuilding them. The GitHub Release summarizes the migration and changed
+defaults, links the merged cutover pull request, and records the verification
+matrix.
 
 ## Pull-request description template
 

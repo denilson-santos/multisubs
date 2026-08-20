@@ -74,17 +74,19 @@ multisubs \
   --output-dir ./output
 ~~~
 
-Customize subtitle styling:
+Customize subtitle appearance and layout:
 
 ~~~
 multisubs \
   -i ./video.mp4 \
   -l pt \
   -o ./output \
-  --style-font "Roboto" \
-  --style-font-size 18 \
-  --style-bold 1 \
-  --style-margin-v 30
+  --font "Roboto" \
+  --font-size 4.5% \
+  --text-color '#FFFFFF' \
+  --bold \
+  --backdrop outline \
+  --margin-bottom 8%
 ~~~
 
 ## Command reference
@@ -97,8 +99,22 @@ multisubs \
 | -t, --task TASK | transcribe | Either transcribe or translate. Translation output is always English. |
 | -m, --model MODEL | turbo | Whisper model: tiny.en, tiny, base.en, base, small.en, small, medium.en, medium, large, or turbo. |
 | -k, --keep-transcriptions | off | Retain JSON, SRT, and ASS files in a structured output directory. |
+| --font NAME | Roboto | Select the subtitle font family. |
+| --font-size LENGTH | 4% | Set font size relative to the shorter render edge or in PlayRes pixels. |
+| --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
+| --bold, --no-bold | off | Enable or disable bold text. |
+| --italic, --no-italic | off | Enable or disable italic text. |
+| --backdrop KIND | box | Select none, outline, or box. |
+| --backdrop-color COLOR | #00000099 | Set outline, box, and shadow color. |
+| --backdrop-size LENGTH | 0px | Set outline/box padding relative to resolved font size or in pixels. |
+| --shadow-size LENGTH | 4% | Set shadow size relative to resolved font size or in pixels. |
+| --fonts-dir DIR | — | Supply additional fonts to FFmpeg/libass. |
 | --layout PRESET | auto | Select auto, landscape, portrait, square, vertical-social, upper-third, or centered subtitle layout. |
 | --position POSITION | preset value | Override the selected layout's semantic position. |
+| --margin-left LENGTH | preset value | Override the left safe-area margin. |
+| --margin-right LENGTH | preset value | Override the right safe-area margin. |
+| --margin-top LENGTH | preset value | Override the top safe-area margin. |
+| --margin-bottom LENGTH | preset value | Override the bottom safe-area margin. |
 | --position-x LENGTH | — | Attach a custom anchor to an X coordinate measured from the left edge. |
 | --position-y LENGTH | — | Attach a custom anchor to a Y coordinate measured from the top edge. |
 | --anchor POSITION | bottom-center for custom coordinates | Select the subtitle-box anchor used with `--position-x` and `--position-y`. |
@@ -116,28 +132,49 @@ it, ja, ka, ko, lv, ml, nl, nn, no, pl, pt, ro, ru, sk, sl, sv, te, tl,
 tr, uk, ur, vi, zh
 ~~~
 
-### Style options
+### Appearance options
 
-Every exposed default ASS appearance value can be overridden with a --style-*
-flag. The defaults live in [multisubs/config.py](multisubs/config.py).
+Appearance uses explicit, format-independent options. Colors use conventional
+red-green-blue order and conventional alpha (`00` transparent, `FF` opaque);
+conversion to ASS BGR order and inverted alpha happens only during ASS
+serialization. Quote colors in shells because `#` can start a comment:
 
-| Area | Options |
+~~~
+--text-color '#F8FAFC' --backdrop-color '#0F172AB3'
+~~~
+
+`--backdrop none` disables the outline/box, `outline` draws an edge around the
+glyphs, and `box` draws one libass background box around the complete cue using
+the selected color and padding.
+The shadow remains independently controlled by `--shadow-size`. `--fonts-dir`
+must name an existing directory and is passed to libass only when supplied.
+
+### Migration from `--style-*`
+
+The raw ASS options were removed in a breaking CLI cutover. Use these semantic
+replacements:
+
+| Removed option | Replacement |
 | --- | --- |
-| Font and colors | --style-font, --style-font-size, --style-primary-color, --style-secondary-color, --style-outline-color, --style-back-color |
-| Text treatment | --style-bold, --style-italic, --style-underline, --style-strikeout |
-| Size and position | --style-scale-x, --style-scale-y, --style-spacing, --style-angle, --style-margin-l, --style-margin-r, --style-margin-v |
-| Border and shadow | --style-border-style, --style-outline-weight, --style-shadow-weight |
+| `--style-font` | `--font` |
+| `--style-font-size` | `--font-size` with an explicit `%` or `px` suffix |
+| `--style-primary-color` | `--text-color` using `#RRGGBB[AA]` |
+| `--style-bold`, `--style-italic` | `--bold`/`--no-bold`, `--italic`/`--no-italic` |
+| `--style-outline-color`, `--style-back-color` | `--backdrop-color` |
+| `--style-border-style` | `--backdrop none`, `outline`, or `box` |
+| `--style-outline-weight`, `--style-shadow-weight` | `--backdrop-size`, `--shadow-size` |
+| `--style-margin-l`, `--style-margin-r`, `--style-margin-v` | `--margin-left`, `--margin-right`, `--margin-top`, `--margin-bottom` |
 
-Color values are passed through to ASS. Quote values containing shell-significant characters, for example:
+`--style-secondary-color`, `--style-underline`, `--style-strikeout`,
+`--style-scale-x`, `--style-scale-y`, `--style-spacing`, and `--style-angle`
+have no replacement because they expose ASS internals outside the supported
+subtitle appearance model.
 
-~~~
---style-primary-color '&H00FFFFFF'
-~~~
-
-Style values are validated before model loading. Colors must use ASS hexadecimal
-notation (`&H` followed by 6 or 8 hexadecimal digits), numeric values must be
-finite and in their supported ranges, and font names cannot contain commas or
-line breaks.
+The new defaults preserve the former appearance while scaling with the video:
+Roboto, 4% font size, white regular non-italic text, a black background box at
+60% opacity with no extra padding, and a 4% shadow. Layout margins come from the
+selected preset instead of the former raw vertical-margin default. This cutover
+requires the next major semantic version.
 
 ### Layout presets
 
@@ -211,9 +248,7 @@ multisubs -i ./video.mp4 --font-size 4.5% --margin-left 8% \
 Bare numbers, signs, exponent notation, and excessive precision are rejected.
 Percentages are rounded deterministically to the nearest PlayRes pixel, with
 half values rounded up. Geometry-dependent validation runs after ffprobe and
-before WhisperX. During the transition to the final layout CLI, matching
-semantic options take precedence over their temporary `--style-*` adapter
-values.
+before WhisperX.
 
 ### Exact subtitle coordinates
 
@@ -328,7 +363,9 @@ promotes those exact files to a manually approved GitHub Release; the release
 workflow never rebuilds them and does not publish to PyPI.
 
 See [docs/delivery.md](docs/delivery.md) for branch rules, environment settings,
-versioning, staging recovery, release drafts, and rollback guidance.
+versioning, staging recovery, release drafts, and rollback guidance. The
+breaking CLI migration is documented above and will also be included in the
+GitHub Release notes when the major version is published.
 
 ## Current limitations
 

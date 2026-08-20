@@ -50,14 +50,19 @@ geometry.
 
 ## Defaults
 
-Proposed appearance baseline:
+The relative-units implementation staged a provisional appearance baseline.
+The final CLI-cutover calibration preserves the former default look with
+resolution-independent values:
 
-- font-size: 4.5% of the shorter edge;
-- backdrop-size: 6% of the resolved font size;
+- font-size: 4% of the shorter edge;
+- backdrop: one background box around the complete cue;
+- backdrop-size: 0px of additional padding;
 - shadow-size: 4% of the resolved font size.
 
-Layout defaults come from presets. Values must be visually calibrated in the
-integration matrix before being frozen as the public defaults.
+A 1920x1080 canvas is only the calibration reference: on its 1080px shorter
+edge, these values resolve to the former 43px font, 0px box padding, and 2px
+shadow. At runtime, relative values are recalculated from each video's resolved
+render geometry. Layout defaults continue to come from presets.
 
 ## Parser and data model
 

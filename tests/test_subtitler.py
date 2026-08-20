@@ -71,6 +71,32 @@ def test_subtitle_filter_is_structured_and_escapes_special_paths(tmp_path: Path)
     assert "-autorotate" in command
 
 
+def test_subtitle_filter_includes_fonts_directory_only_when_supplied(
+    tmp_path: Path,
+):
+    source = tmp_path / "video.mp4"
+    subtitle = tmp_path / "captions.ass"
+    output = tmp_path / "output.mp4"
+    fonts_dir = tmp_path / "custom fonts"
+
+    with_fonts = " ".join(
+        ffmpeg.compile(
+            _build_output_stream(
+                ffmpeg, source, subtitle, output, _geometry(), fonts_dir
+            )
+        )
+    )
+    without_fonts = " ".join(
+        ffmpeg.compile(
+            _build_output_stream(ffmpeg, source, subtitle, output, _geometry())
+        )
+    )
+
+    assert "fontsdir=" in with_fonts
+    assert "custom fonts" in with_fonts
+    assert "fontsdir=" not in without_fonts
+
+
 def test_probe_parser_normalizes_landscape_geometry_and_duration():
     geometry = _parse_probe_payload(_payload([_video_stream()]))
 

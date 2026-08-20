@@ -41,19 +41,19 @@ flowchart LR
 | --- | --- | --- |
 | multisubs/cli.py | Defines the console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | main() |
 | multisubs/transcriber.py | Loads WhisperX, transcribes audio, aligns words, builds readable cues, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
-| multisubs/ass.py | Serializes ASS headers, typed style configuration, timestamps, and safely escaped dialogue text. | write_ass() |
+| multisubs/ass.py | Compiles semantic appearance into private ASS fields and serializes headers, timestamps, placement overrides, and safely escaped dialogue text. | write_ass(), rgba_to_ass_color() |
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream. | probe_video_geometry(), embed_subtitles() |
-| multisubs/config.py | Defines supported choices, immutable layout preset sources, and validates the typed subtitle configuration while temporarily adapting the existing ASS-style CLI. | SUPPORTED_LANGUAGES, MODELS, LAYOUT_PRESETS, validate_subtitle_config() |
+| multisubs/config.py | Defines supported choices, semantic appearance defaults, immutable layout preset sources, and validates typed subtitle configuration. | SUPPORTED_LANGUAGES, MODELS, LAYOUT_PRESETS, validate_subtitle_config() |
 | multisubs/layout.py | Classifies autorotated geometry, merges preset and explicit layout fields, resolves unit-bearing lengths, and validates the subtitle-safe rectangle on the probed canvas. | classify_layout_preset(), resolve_relative_length(), resolve_subtitle_config(), resolve_safe_rectangle() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
-| multisubs/models.py | Defines typed request, unit-bearing subtitle configuration, immutable layout preset values, video geometry, per-cue placement, semantic transcript, and artifact value objects. | RelativeLength, CuePlacement, LayoutPreset, RunRequest, SubtitleConfig, SubtitleLayoutPreset, VideoGeometry, TranscriptDocument, RunArtifacts, TranscriptionPaths |
+| multisubs/models.py | Defines typed request, unit-bearing subtitle configuration, semantic backdrop and layout choices, immutable layout preset values, video geometry, per-cue placement, semantic transcript, and artifact value objects. | RelativeLength, CuePlacement, LayoutPreset, RunRequest, SubtitleBackdrop, SubtitleConfig, SubtitleLayoutPreset, VideoGeometry, TranscriptDocument, RunArtifacts, TranscriptionPaths |
 | multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
 
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, all style and unit values are valid, the layout preset is supported, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing semantic options are stored as RelativeLength values; existing --style-* values remain a temporary adapter pending the planned CLI cutover. Custom X/Y coordinates must be supplied as a pair and cannot be combined with --position.
+2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, semantic colors and appearance values are valid, every unit value has an explicit suffix, the layout preset is supported, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values; raw ASS style mappings and `--style-*` options are not accepted. Custom X/Y coordinates must be supplied as a pair and cannot be combined with --position.
 3. For a translation task, the CLI rejects turbo and English-only model names before model loading.
 4. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() classifies --layout auto from the autorotated render aspect ratio, merges the selected immutable preset with explicit field overrides, converts every known unit-bearing field once against that geometry, and validates the resulting safe rectangle. resolve_cue_placement() then resolves custom coordinates against the PlayRes canvas and rejects anchors that cannot fit inside the safe rectangle before WhisperX is loaded.
 5. The geometry policy follows explicitly enabled FFmpeg autorotation: 0° and 180° retain the coded axes; 90° and 270° swap the render axes and invert the sample-aspect-ratio axes. Legacy rotate tags are normalized from their sign convention to the display-matrix convention. Contradictory metadata is rejected.
@@ -61,8 +61,8 @@ flowchart LR
 7. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
 8. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
 9. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies duration and text-length limits as fallbacks.
-10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates preset merging, unit resolution, custom-placement validation, and safe-rectangle validation to layout.py, then delegates ASS serialization to ass.py. The ASS compiler maps the semantic position to a private alignment code, emits generated per-cue \\an/\\pos tags for custom coordinates, and safely escapes dialogue text separately. The JSON artifact preserves only JSON-compatible aligned-word metadata plus requested and resolved preset names, requested unit strings, resolved PlayRes values, position or custom coordinates, and the safe rectangle used for rendering.
-11. embed_subtitles() selects the same probed stream, explicitly enables autorotation, and supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter. Available audio streams are copied into a temporary rendered output when present.
+10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates preset merging, unit resolution, custom-placement validation, and safe-rectangle validation to layout.py, then delegates ASS serialization to ass.py. The ASS compiler converts conventional RGBA colors to ASS BGR/inverted-alpha values, maps semantic backdrop and position choices to private ASS fields, emits generated per-cue \\an/\\pos tags for custom coordinates, and safely escapes dialogue text separately. The JSON artifact preserves only JSON-compatible aligned-word metadata plus requested and resolved preset names, requested unit strings, resolved PlayRes values, position or custom coordinates, and the safe rectangle used for rendering.
+11. embed_subtitles() selects the same probed stream, explicitly enables autorotation, supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter, and supplies fontsdir only when a validated custom fonts directory was requested. Available audio streams are copied into a temporary rendered output when present.
 12. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain transcription artifacts in that directory for diagnosis, while the renderer removes its partial temporary media.
 
 ## Subtitle-cue construction
@@ -116,8 +116,8 @@ The JSON artifact has this high-level shape:
         "bottom": 154
       },
       "requested": {
-        "font_size": "4.5%",
-        "backdrop_size": "6%",
+        "font_size": "4%",
+        "backdrop_size": "0px",
         "shadow_size": "4%",
         "margins": {
           "left": "8%",
@@ -127,8 +127,8 @@ The JSON artifact has this high-level shape:
         }
       },
       "resolved": {
-        "font_size": 49,
-        "backdrop_size": 3,
+        "font_size": 43,
+        "backdrop_size": 0,
         "shadow_size": 2,
         "margins": {
           "left": 86,
@@ -167,9 +167,8 @@ The JSON artifact has this high-level shape:
 ### SRT and ASS
 
 SRT is generated from cue start time, end time, and wrapped text. ASS contains a
-Default style compiled from SubtitleConfig. The existing DEFAULT_STYLE mapping
-is accepted only through a temporary compatibility adapter. The public
-`--layout` value is stored on SubtitleConfig and resolved to a concrete preset
+Default style compiled from semantic `SubtitleConfig` values. Raw ASS style
+mappings are rejected. The public `--layout` value is stored on SubtitleConfig and resolved to a concrete preset
 in layout.py. The public `--position` value is stored on SubtitleLayout and
 mapped to the private ASS alignment field only inside ass.py. Explicit position
 and margin fields override only their matching preset fields. RelativeLength
@@ -181,7 +180,16 @@ Percentages use Decimal half-up rounding; pixel values refer to the PlayRes
 canvas. layout.py validates that all four resolved margins leave a positive safe
 rectangle on the autorotated canvas, that custom anchors fit inside that
 rectangle, and that resolved font, backdrop, and shadow values remain bounded.
-ass.py converts line breaks to ASS's \N syntax in dialogue events and escapes
+ass.py converts `#RRGGBB[AA]` colors, backdrop kinds, boolean text treatments,
+and semantic positions into the required private ASS fields. The `box` backdrop
+uses libass `BorderStyle=4`, which draws one background box for the complete
+cue. The required ASS `SecondaryColour` field follows the semantic text color
+until a separate karaoke/highlight color is introduced. `OutlineColour` and
+`BackColour` both follow the one semantic backdrop color. Underline and
+strikeout remain disabled; scale stays at 100%, spacing and angle at zero, and
+encoding at 1 because those ASS internals are outside the public appearance
+model. ass.py converts line
+breaks to ASS's \N syntax in dialogue events and escapes
 subtitle-derived braces and backslashes separately from generated override tags
 so they cannot become unintended controls. Every generated ASS declares
 ScriptType, PlayResX, PlayResY, ScaledBorderAndShadow, and WrapStyle in a stable

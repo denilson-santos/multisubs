@@ -11,6 +11,7 @@ from .errors import ValidationError
 from .models import (
     CuePlacement,
     RelativeLength,
+    SubtitleBackdrop,
     SubtitleConfig,
     SubtitleLayout,
     SubtitleLayoutPreset,
@@ -68,7 +69,6 @@ def resolve_subtitle_config(
     """Resolve all geometry-dependent subtitle lengths exactly once."""
     from .config import (
         DEFAULT_POSITION,
-        DEFAULT_STYLE,
         get_layout_preset,
         validate_subtitle_config,
     )
@@ -85,13 +85,13 @@ def resolve_subtitle_config(
         raise ValidationError("font-size must resolve to a value greater than zero")
 
     outline_weight = resolve_relative_length(
-        validated.appearance.outline_weight,
+        validated.appearance.backdrop_size,
         font_size,
         field="backdrop-size",
         maximum=font_size,
     )
     shadow_weight = resolve_relative_length(
-        validated.appearance.shadow_weight,
+        validated.appearance.shadow_size,
         font_size,
         field="shadow-size",
         maximum=font_size,
@@ -105,12 +105,7 @@ def resolve_subtitle_config(
     layout_overrides = _effective_layout_overrides(
         validated,
         default_position=DEFAULT_POSITION,
-        default_margins=(
-            DEFAULT_STYLE["margin_l"],
-            DEFAULT_STYLE["margin_r"],
-            DEFAULT_STYLE["margin_v"],
-            DEFAULT_STYLE["margin_v"],
-        ),
+        default_margins=(0, 0, 0, 0),
     )
     layout = validated.layout
     merged_layout = SubtitleLayout(
@@ -194,8 +189,8 @@ def resolve_subtitle_config(
     resolved_appearance = replace(
         validated.appearance,
         font_size=font_size,
-        outline_weight=outline_weight,
-        shadow_weight=shadow_weight,
+        backdrop_size=outline_weight,
+        shadow_size=shadow_weight,
     )
     resolved = SubtitleConfig(
         appearance=resolved_appearance,
@@ -343,8 +338,12 @@ def _validated_cue_placement(
         placement,
         safe_rectangle,
         font_size=resolved.appearance.font_size,
-        outline_weight=resolved.appearance.outline_weight,
-        shadow_weight=resolved.appearance.shadow_weight,
+        outline_weight=(
+            0
+            if resolved.appearance.backdrop is SubtitleBackdrop.NONE
+            else resolved.appearance.backdrop_size
+        ),
+        shadow_weight=resolved.appearance.shadow_size,
     )
     return placement
 

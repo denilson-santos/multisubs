@@ -318,9 +318,11 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         )
         geometry = probe_video_geometry(input_path)
         config = validate_subtitle_config(
-            {"outline_weight": 0, "shadow_weight": 0},
+            None,
             relative_values={
                 "font_size": "10%",
+                "outline_weight": "0px",
+                "shadow_weight": "0px",
                 "margin_top": "10%",
                 "margin_bottom": "10%",
             },
@@ -379,9 +381,11 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         normalized_bounds.append((center_x, rendered_glyph_height / height, bottom_gap))
 
         fixed_config = validate_subtitle_config(
-            {"outline_weight": 0, "shadow_weight": 0},
+            None,
             relative_values={
                 "font_size": "18px",
+                "outline_weight": "0px",
+                "shadow_weight": "0px",
                 "margin_top": "12px",
                 "margin_bottom": "12px",
             },
@@ -545,8 +549,15 @@ def test_named_positions_render_inside_expected_frame_thirds(tmp_path: Path):
         output_path = tmp_path / f"{position.value}.mp4"
         geometry = probe_video_geometry(input_path)
         config = validate_subtitle_config(
-            {"font_size": 18, "margin_l": 10, "margin_r": 10, "margin_v": 10},
+            None,
             position=position,
+            relative_values={
+                "font_size": "18px",
+                "margin_left": "10px",
+                "margin_right": "10px",
+                "margin_top": "10px",
+                "margin_bottom": "10px",
+            },
         )
         write_ass(
             subtitle_path,

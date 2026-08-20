@@ -43,11 +43,18 @@ GEOMETRY = VideoGeometry(
 )
 def test_named_positions_share_the_configured_safe_rectangle(position, expected):
     config = validate_subtitle_config(
-        {"margin_l": 40, "margin_r": 40, "margin_v": 15},
+        None,
         position=position,
+        relative_values={
+            "margin_left": "40px",
+            "margin_right": "40px",
+            "margin_top": "15px",
+            "margin_bottom": "15px",
+        },
     )
 
-    rectangle = resolve_safe_rectangle(GEOMETRY, config.layout)
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    rectangle = resolve_safe_rectangle(GEOMETRY, resolved.layout)
 
     assert (
         rectangle.left,
@@ -61,18 +68,18 @@ def test_named_positions_share_the_configured_safe_rectangle(position, expected)
 @pytest.mark.parametrize(
     "options",
     [
-        {"margin_l": 1920, "margin_r": 1, "margin_v": 15},
-        {"margin_l": 1, "margin_r": 1, "margin_v": 1080},
+        {"margin_left": "1920px", "margin_right": "1px"},
+        {"margin_top": "1080px", "margin_bottom": "1px"},
     ],
 )
 def test_margins_that_remove_the_safe_rectangle_are_rejected(options):
-    config = validate_subtitle_config(options)
+    config = validate_subtitle_config(None, relative_values=options)
 
     with pytest.raises(
         ValidationError,
         match="leave no usable safe rectangle",
     ):
-        resolve_safe_rectangle(GEOMETRY, config.layout)
+        resolve_subtitle_config(config, GEOMETRY)
 
 
 def test_unknown_position_is_rejected_before_layout_resolution():
@@ -115,8 +122,8 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
     assert resolved.appearance.font_size == 49
-    assert resolved.appearance.outline_weight == 3
-    assert resolved.appearance.shadow_weight == 2
+    assert resolved.appearance.backdrop_size == 3
+    assert resolved.appearance.shadow_size == 2
     assert resolved.layout.margin_left == 154
     assert resolved.layout.margin_right == 72
     assert resolved.layout.margin_top == 54
@@ -214,8 +221,15 @@ def test_custom_percentage_coordinates_support_canvas_edges(
     position_x, position_y, anchor, expected
 ):
     config = validate_subtitle_config(
-        {"margin_l": 0, "margin_r": 0, "margin_v": 0},
-        relative_values={"position_x": position_x, "position_y": position_y},
+        None,
+        relative_values={
+            "margin_left": "0px",
+            "margin_right": "0px",
+            "margin_top": "0px",
+            "margin_bottom": "0px",
+            "position_x": position_x,
+            "position_y": position_y,
+        },
         anchor=anchor,
     )
 
