@@ -90,8 +90,8 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
   against `main`. Do not include unrelated user changes.
 - Open pull requests as drafts unless the user explicitly requests a
   ready-for-review pull request. Use a Conventional Commit-style pull-request
-  title suitable for the eventual squash commit, and describe scope, reason,
-  impact, verification, documentation, and remaining risks in the body.
+  title that summarizes the full change, and describe scope, reason, impact,
+  verification, documentation, and remaining risks in the body.
 - Do not merge a pull request, delete a branch, create or move a tag, or publish
   a release unless the user explicitly requests that action and the required
   checks and approvals have passed.
@@ -119,8 +119,8 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
   branches from an updated `main` branch.
 - Open every implementation pull request against `main`; `dev` is not an
   integration target.
-- Use squash merge after `Development / development-gate` passes and delete the
-  merged remote branch.
+- Use merge commit, squash, or rebase after
+  `Development / development-gate` passes, then delete the merged remote branch.
 - Treat `development`, `staging`, and `production` as GitHub environments, not
   branches. Follow [docs/delivery.md](docs/delivery.md) for promotion and release
   rules.

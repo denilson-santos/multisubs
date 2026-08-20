@@ -3,9 +3,10 @@
 ## GitHub Flow
 
 `main` is the only long-lived branch. Create a short-lived branch from the
-latest `main`, open a pull request back to `main`, and squash merge it after the
-required `Development / development-gate` check succeeds. Delete the merged
-remote branch automatically.
+latest `main`, open a pull request back to `main`, and merge it with a merge
+commit, squash, or rebase after the required
+`Development / development-gate` check succeeds. Delete the merged remote
+branch automatically.
 
 `development`, `staging`, and `production` are GitHub environments. They do not
 have corresponding Git branches:
@@ -13,7 +14,7 @@ have corresponding Git branches:
 | Environment | Source | Approval | Result |
 | --- | --- | --- | --- |
 | development | Pull request to `main` | None | Required quality gate |
-| staging | Merge commit in `main` or an explicit full SHA contained in `main` | `denilson-santos`; self-review allowed | Attested wheel, sdist, and checksums retained for 90 days |
+| staging | Commit in `main` or an explicit full SHA contained in `main` | `denilson-santos`; self-review allowed | Attested wheel, sdist, and checksums retained for 90 days |
 | production | Stable version tag, or manual rehearsal from a staged SHA | `denilson-santos`; self-review allowed | GitHub Release for a tag; no publication during rehearsal |
 
 Do not merge new work into `dev`. During the one-time migration, first merge the
@@ -49,16 +50,16 @@ on its bootstrap pull request.
 
 Repository merge settings:
 
-- Enable squash merge only.
+- Enable merge commits, squash merges, and rebase merges.
 - Enable branch updates and automatic deletion of merged head branches.
-- Leave merge commits and rebase merges disabled.
 
 Active `main` ruleset:
 
 - Require a pull request and `Development / development-gate`.
 - Require the branch to be current before merge and require conversation
   resolution.
-- Require linear history; block force pushes and branch deletion.
+- Allow merge, squash, and rebase without requiring linear history; block force
+  pushes and branch deletion.
 - Require zero approving reviews while the repository has only one maintainer.
 
 Environment settings:
