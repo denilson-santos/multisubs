@@ -10,7 +10,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | --- | --- | ---: | --- | --- |
 | Subtitle positioning | In progress | 6/9 | Adaptive line wrapping | [Open dashboard](subtitle-positioning/README.md) |
 | Karaoke subtitles | Planned | 0/1 | Word-timed highlighting | [Open dashboard](karaoke-subtitles/README.md) |
-| Delivery automation | In review | 0/1 | GitHub Flow and environment pipelines | [Open dashboard](delivery-automation/README.md) |
+| Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

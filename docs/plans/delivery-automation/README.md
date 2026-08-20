@@ -1,6 +1,6 @@
 # Delivery automation roadmap
 
-Status: In review
+Status: Done
 
 This package migrates multisubs from a long-lived `dev` integration branch to
 GitHub Flow and promotes one verified commit through GitHub environments.
@@ -9,9 +9,9 @@ GitHub Flow and promotes one verified commit through GitHub environments.
 
 | Order | Plan | Status | Depends on | Branch or pull request |
 | --- | --- | --- | --- | --- |
-| 0 | [GitHub Flow and environment pipelines](00-github-flow-and-environment-pipelines.md) | In review | Final `dev` to `main` reconciliation | [PR #17](https://github.com/denilson-santos/multisubs/pull/17) |
+| 0 | [GitHub Flow and environment pipelines](00-github-flow-and-environment-pipelines.md) | Done | Final `dev` to `main` reconciliation | [PR #17](https://github.com/denilson-santos/multisubs/pull/17) |
 
-Package progress: 0 of 1 plans done; Plan 0 is in review.
+Package progress: 1 of 1 plans done; delivery automation is complete.
 
 ## Delivery order
 
