@@ -1,6 +1,6 @@
 # Plan 0: GitHub Flow and environment pipelines
 
-Status: In review
+Status: Done
 
 Pull request: [#17](https://github.com/denilson-santos/multisubs/pull/17)
 
@@ -79,7 +79,7 @@ rehearsals from a staged SHA.
 - [x] Rebase onto the reconciled `main`.
 - [x] Obtain delivery approval, commit, push, open the pull request, and record
       its link.
-- [ ] Configure GitHub settings, approve staging, run production rehearsal, and
+- [x] Configure GitHub settings, approve staging, run production rehearsal, and
       retire merged remote branches.
 
 ## Unit tests
