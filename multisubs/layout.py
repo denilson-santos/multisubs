@@ -378,9 +378,7 @@ def resolve_ass_horizontal_margins(
     safe_rectangle = resolve_safe_rectangle(geometry, layout)
     max_width = _require_resolved_layout_int(layout.max_width, "max-width")
     placement = _validated_cue_placement(config, geometry)
-    anchor_width = _anchor_width(
-        placement.anchor, placement.position_x, safe_rectangle
-    )
+    anchor_width = _anchor_width(placement.anchor, placement.position_x, safe_rectangle)
     width_budget = max(1, min(safe_rectangle.width, max_width, anchor_width))
     if placement.anchor.value.endswith("left"):
         region_left = placement.position_x
