@@ -1,6 +1,8 @@
 # Feature 6: adaptive line wrapping
 
-Status: In progress
+Status: In review
+
+Pull request: [#33](https://github.com/denilson-santos/multisubs/pull/33)
 
 Depends on:
 
