@@ -178,6 +178,8 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
             "8%",
             "--margin-right",
             "72px",
+            "--max-width",
+            "84%",
         ]
     )
 
@@ -193,6 +195,7 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
     assert isinstance(margin_right, RelativeLength)
     assert margin_left.unit == "%"
     assert margin_right.original == "72px"
+    assert request.subtitle_config.layout.max_width == parse_relative_length("84%")
 
 
 def test_build_request_accepts_custom_coordinates_and_default_anchor(
