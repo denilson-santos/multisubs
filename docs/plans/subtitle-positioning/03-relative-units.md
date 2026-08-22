@@ -40,13 +40,22 @@ resolution helpers rather than being duplicated in this feature.
 
 | Field | Percent basis |
 | --- | --- |
-| margin-left, margin-right, max-width, position-x | Render width |
-| margin-top, margin-bottom, position-y | Render height |
+| margin-left, margin-right | Render width |
+| margin-top, margin-bottom | Render height |
+| max-width, position-x | Safe-area width after horizontal margins |
+| position-y | Safe-area height after vertical margins |
 | font-size | Shorter render edge |
 | backdrop-size, shadow-size | Resolved font size |
 
-Pixel values refer to the PlayRes canvas, which is defined to match render
-geometry.
+Pixel margin and appearance values refer to PlayRes units. Pixel custom
+coordinates are offsets from the safe area's left/top origin; their final ASS
+placement is then expressed in PlayRes coordinates.
+
+This two-stage basis is a decision amendment implemented with
+[Feature 6](06-adaptive-line-wrapping.md). It removes the former duplicate
+subtraction in which preset `max-width` percentages repeated the side margins.
+This plan remains Done because its parser, rounding, and unit model are reused;
+Feature 6 owns the changed resolution order.
 
 ## Defaults
 
@@ -92,8 +101,8 @@ Use one documented rounding function consistently.
 
 ### Pixel coordinates
 
-- X: 0 through render width.
-- Y: 0 through render height.
+- X: 0 through safe-area width.
+- Y: 0 through safe-area height.
 
 ### Margins
 
@@ -148,7 +157,7 @@ All geometry-dependent validation happens after FFprobe and before WhisperX.
 - Missing unit.
 - Negative values.
 - NaN, infinity, oversized numbers, and excessive precision.
-- 0%, 100%, and exact canvas-edge coordinates.
+- 0%, 100%, and exact safe-area-edge coordinates.
 - Landscape, portrait, square, 720p, 1080p, and 4K conversion.
 - Margin sums that eliminate the safe rectangle.
 - Maximum width larger than the safe area.

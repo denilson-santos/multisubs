@@ -45,6 +45,7 @@ flowchart LR
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream. | probe_video_geometry(), embed_subtitles() |
 | multisubs/config.py | Defines supported choices, semantic appearance defaults, immutable layout preset sources, and validates typed subtitle configuration. | SUPPORTED_LANGUAGES, MODELS, LAYOUT_PRESETS, validate_subtitle_config() |
 | multisubs/layout.py | Classifies autorotated geometry, merges preset and explicit layout fields, resolves unit-bearing lengths, and validates the subtitle-safe rectangle on the probed canvas. | classify_layout_preset(), resolve_relative_length(), resolve_subtitle_config(), resolve_safe_rectangle() |
+| multisubs/text_measurement.py | Resolves custom or fontconfig faces, measures glyph advances with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
 | multisubs/models.py | Defines typed request, unit-bearing subtitle configuration, semantic backdrop and layout choices, immutable layout preset values, video geometry, per-cue placement, semantic transcript, and artifact value objects. | RelativeLength, CuePlacement, LayoutPreset, RunRequest, SubtitleBackdrop, SubtitleConfig, SubtitleLayoutPreset, VideoGeometry, TranscriptDocument, RunArtifacts, TranscriptionPaths |
@@ -55,13 +56,13 @@ flowchart LR
 1. The console script declared in pyproject.toml calls cli.main().
 2. The CLI parses options and verifies that the selected source language has a default WhisperX alignment model, the input exists, the output path is not an existing file, semantic colors and appearance values are valid, every unit value has an explicit suffix, the layout preset is supported, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values; raw ASS style mappings and `--style-*` options are not accepted. Custom X/Y coordinates must be supplied as a pair and cannot be combined with --position.
 3. For a translation task, the CLI rejects turbo and English-only model names before model loading.
-4. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() classifies --layout auto from the autorotated render aspect ratio, merges the selected immutable preset with explicit field overrides, converts every known unit-bearing field once against that geometry, and validates the resulting safe rectangle. resolve_cue_placement() then resolves custom coordinates against the PlayRes canvas and rejects anchors that cannot fit inside the safe rectangle before WhisperX is loaded.
+4. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() classifies --layout auto from the autorotated render aspect ratio, merges the selected immutable preset with explicit field overrides, resolves margins against the render axes, builds the safe rectangle, and only then resolves maximum width and custom X/Y offsets against that rectangle. resolve_cue_placement() maps a named position or safe-area-local custom coordinate to a final PlayRes anchor and rejects placements that cannot fit inside the safe rectangle before WhisperX is loaded.
 5. The geometry policy follows explicitly enabled FFmpeg autorotation: 0° and 180° retain the coded axes; 90° and 270° swap the render axes and invert the sample-aspect-ratio axes. Legacy rotate tags are normalized from their sign convention to the display-matrix convention. Contradictory metadata is rejected.
 6. The CLI reports the resolved dimensions, semantic position, and concrete layout preset, then creates a private temporary work directory inside the output directory.
 7. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
 8. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
-9. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies duration and text-length limits as fallbacks.
-10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates preset merging, unit resolution, custom-placement validation, and safe-rectangle validation to layout.py, then delegates ASS serialization to ass.py. The ASS compiler converts conventional RGBA colors to ASS BGR/inverted-alpha values, maps semantic backdrop and position choices to private ASS fields, emits generated per-cue \\an/\\pos tags for custom coordinates, and safely escapes dialogue text separately. The JSON artifact preserves only JSON-compatible aligned-word metadata plus requested and resolved preset names, requested unit strings, resolved PlayRes values, position or custom coordinates, and the safe rectangle used for rendering.
+9. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. The resolved layout then creates display cues from semantic cues using the safe rectangle, max-width, font size, backdrop/shadow allowance, and preset max-lines value. The text-measurement boundary first searches the validated custom font directory, then queries fontconfig where available, measures a resolved face with Pillow/RAQM, and otherwise uses its explicit Unicode estimate. Complete cues that fit remain unbroken; required two- or three-line layouts use global partition scoring rather than greedy first-line filling.
+10. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates preset merging, unit resolution, placement validation, and safe-rectangle validation to layout.py, then delegates ASS serialization to ass.py. The ASS compiler converts conventional RGBA colors to ASS BGR/inverted-alpha values, maps semantic backdrop and position choices to private ASS fields, emits generated per-cue \\an/\\pos tags for both named and custom placement, and safely escapes dialogue text separately. The JSON artifact preserves only JSON-compatible aligned-word metadata plus requested and resolved preset names, requested unit strings, resolved PlayRes values, position or custom coordinates, and the safe rectangle used for rendering.
 11. embed_subtitles() selects the same probed stream, explicitly enables autorotation, supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter, and supplies fontsdir only when a validated custom fonts directory was requested. Available audio streams are copied into a temporary rendered output when present.
 12. After rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed runs retain transcription artifacts in that directory for diagnosis, while the renderer removes its partial temporary media.
 
@@ -71,8 +72,27 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
 
 - It joins adjacent WhisperX word streams so an ASR segment boundary does not force a poor subtitle break.
 - It emits a cue at a sentence end or a pause of at least 0.45 seconds when possible.
-- It targets no more than 6 seconds and 84 characters per cue.
-- It wraps text to two lines with a preferred line length of 42 characters. A small overflow is allowed when it preserves a better phrase boundary.
+- It targets no more than 6 seconds per semantic cue; width no longer uses a
+  fixed character count.
+- It calculates a PlayRes width budget from the resolved safe rectangle, preset
+  or explicit max-width, font size, backdrop/shadow allowance, and horizontal
+  anchor. Percentage `max-width` uses the safe width after margins; `100%`
+  therefore means all remaining width. The effective budget cannot expand past
+  either that ceiling or the width available from the anchor.
+- It measures a concrete face with Pillow when `--fonts-dir` or fontconfig can
+  resolve the family/style that libass will use. RAQM applies direction and
+  language shaping when available. Otherwise it reports and records a
+  Unicode-category estimate with calibrated proportional-width factors.
+- It keeps a complete cue on one line whenever its measured width fits. A
+  required two- or three-line break uses bounded global scoring: semantic class,
+  overflow, avoidable orphan lines, raggedness, then deterministic source order.
+- It prefers a new timed cue over an unintended third visual line when aligned
+  word boundaries are available. Semantic sentence, clause, and pause priorities
+  remain higher than line balancing.
+- It emits intentional visual line breaks to SRT and ASS. A coarse segment
+  without word timestamps is wrapped lexically without inventing new timings.
+- A long indivisible token remains intact and may overflow the approximate width
+  budget; transcript content is never removed or mutated.
 - If word timestamps are unavailable for a WhisperX segment, it flushes pending aligned words and uses that segment's coarse start and end times as a safe fallback.
 
 These rules reside in multisubs/transcriber.py and should be changed with focused tests once a test suite is introduced.
@@ -124,7 +144,8 @@ The JSON artifact has this high-level shape:
           "right": "8%",
           "top": "5%",
           "bottom": "8%"
-        }
+        },
+        "max_width": null
       },
       "resolved": {
         "font_size": 43,
@@ -135,7 +156,28 @@ The JSON artifact has this high-level shape:
           "right": 86,
           "top": 96,
           "bottom": 154
-        }
+        },
+        "max_width": 908,
+        "max_lines": 2
+      },
+      "wrapping": {
+        "safe_width": 908,
+        "max_width": 908,
+        "anchor_width": 908,
+        "width_budget": 908,
+        "font_size": 43,
+        "backdrop_size": 0,
+        "shadow_size": 2,
+        "max_lines": 2
+      },
+      "text_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Regular",
+        "font_source": "fontconfig",
+        "shaping": "raqm",
+        "metric_size": 36
       },
       "safe_rectangle": {
         "left": 86,
@@ -144,6 +186,12 @@ The JSON artifact has this high-level shape:
         "bottom": 1766,
         "width": 908,
         "height": 1670
+      },
+      "resolved_coordinates": {
+        "x": 540,
+        "y": 1766,
+        "anchor": "bottom-center",
+        "coordinate_space": "playres"
       }
     }
   },
@@ -162,24 +210,29 @@ The JSON artifact has this high-level shape:
 }
 ~~~
 
-`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX. Its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records the geometry, requested and resolved layout presets, semantic position or custom coordinates, resolved margins, and safe rectangle used for both ASS generation and the FFmpeg filter; container_duration is null when ffprobe cannot report it. Unit-bearing fields add `rendering.requested` strings and `rendering.resolved` PlayRes values without storing generated ASS or raw command lines. Custom placement adds `requested_coordinates` with the original X/Y strings and anchor, plus `resolved_coordinates` with integer PlayRes coordinates and anchor.
+`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX. Its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records the geometry, requested and resolved layout presets, semantic position or custom coordinates, resolved margins, maximum width and line count, the safe rectangle used for ASS generation and the FFmpeg filter, and the reproducibility inputs used by adaptive wrapping. The `wrapping` object records safe width, configured maximum, anchor-limited width, effective width budget, resolved font and decoration sizes, and max-lines. `text_measurement` records `font-metrics` or `unicode-estimate`, requested and resolved family/style names, font source, and shaping mode. Unresolved values are null, font substitutions remain visible, and absolute local font paths are never serialized. The metadata does not claim exact equivalence with final libass shaping or store generated ASS or raw command lines. `container_duration` is null when ffprobe cannot report it. Unit-bearing fields add `rendering.requested` strings and `rendering.resolved` PlayRes values. Every layout adds `resolved_coordinates` with integer PlayRes coordinates, anchor, and `coordinate_space: playres`. Custom placement also adds `requested_coordinates` with the original X/Y strings, anchor, and `coordinate_space: safe-area`.
 
 ### SRT and ASS
 
-SRT is generated from cue start time, end time, and wrapped text. ASS contains a
+SRT is generated from cue start time, end time, and layout-aware wrapped text. ASS contains a
 Default style compiled from semantic `SubtitleConfig` values. Raw ASS style
 mappings are rejected. The public `--layout` value is stored on SubtitleConfig and resolved to a concrete preset
 in layout.py. The public `--position` value is stored on SubtitleLayout and
-mapped to the private ASS alignment field only inside ass.py. Explicit position
-and margin fields override only their matching preset fields. RelativeLength
-values are resolved once in layout.py using render width, render height, or the
-shorter edge according to their field. Custom `--position-x` and
-`--position-y` values use render width and height respectively; their anchor is
-converted to a private ASS alignment and serialized with `\\pos` per cue.
-Percentages use Decimal half-up rounding; pixel values refer to the PlayRes
-canvas. layout.py validates that all four resolved margins leave a positive safe
-rectangle on the autorotated canvas, that custom anchors fit inside that
-rectangle, and that resolved font, backdrop, and shadow values remain bounded.
+mapped to the corresponding anchor point of the resolved safe rectangle.
+Explicit position and margin fields override only their matching preset fields.
+RelativeLength margins use render width or height, font size uses the shorter
+render edge, and decoration sizes use the resolved font size. Percentage
+`max-width`, `--position-x`, and `--position-y` values are resolved only after
+the margins, using safe-area width or height; pixel coordinates are local
+offsets from the safe area's left/top origin. Both named and custom placements
+are converted to private ASS alignment plus `\\pos` event overrides.
+Percentages use Decimal half-up rounding. Resolved lengths use PlayRes pixels;
+custom pixel coordinates are safe-area-local offsets before their translation
+to final PlayRes points. layout.py validates that all four resolved margins leave a positive safe
+rectangle on the autorotated canvas, that every anchor and its minimum extent
+fit inside that rectangle, and that resolved font, backdrop, and shadow values
+remain bounded. It limits wrapping to the smaller of `max-width` and the
+horizontal capacity available from the resolved anchor.
 ass.py converts `#RRGGBB[AA]` colors, backdrop kinds, boolean text treatments,
 and semantic positions into the required private ASS fields. The `box` backdrop
 uses libass `BorderStyle=4`, which draws one background box for the complete
@@ -194,7 +247,7 @@ subtitle-derived braces and backslashes separately from generated override tags
 so they cannot become unintended controls. Every generated ASS declares
 ScriptType, PlayResX, PlayResY, ScaledBorderAndShadow, and WrapStyle in a stable
 order. PlayRes matches the autorotated render dimensions. SRT retains text and
-timing only; it cannot represent custom positioning.
+timing only; it cannot represent named or custom positioning.
 
 ## Output layouts
 
@@ -222,6 +275,29 @@ selects the recorded stream index, explicitly enables FFmpeg autorotation, uses
 the render dimensions as libass original_size, and requests copying of any
 available audio streams. Probe and FFmpeg failures preserve their original cause
 behind an actionable project error.
+
+### Pillow and font providers
+
+Pillow is a direct runtime dependency used only by the text-measurement
+boundary. It loads a validated TrueType/OpenType face and returns advance widths
+in PlayRes pixels; the standard library and existing dependencies do not expose
+equivalent shaping-aware font metrics. Because libass asks FreeType for a
+real-dimension size while Pillow starts from an EM-oriented size, the measurer
+normalizes Pillow's ascent plus descent to the resolved ASS font size and records
+the resulting `metric_size`. The package uses the MIT-CMU license, is
+actively maintained, supports the project's Python 3.10-3.13 range, and
+publishes platform wheels. Typical wheels add several megabytes to an
+environment, but Pillow is already present transitively in common WhisperX
+installations; declaring it directly makes the relied-upon API explicit.
+
+Custom font resolution inspects only supported files directly inside
+`--fonts-dir` and matches their internal family/style metadata. On hosts with
+fontconfig, `fc-match` is invoked with a bounded argument-vector subprocess and
+its returned regular file is validated. Other providers are not guessed. Font
+objects and up to 4096 repeated text measurements are cached in memory for one
+artifact-writing run; transcript strings are not persisted by the cache.
+Pillow and libass can differ in shaping, hinting, and fallback, so libass remains
+the render authority and integration tests use an explicit tolerance.
 
 ## Design constraints
 

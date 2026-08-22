@@ -58,6 +58,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should use a lock file or platform-specific constraints files for reproducible development and CI environments. Torch wheels often differ by operating system, Python version, CUDA version, and CPU/GPU build, so one universal lock file may not be sufficient.
 - Should audit dependency updates for release notes, known vulnerabilities, wheel availability, and model/runtime compatibility before merging.
 - Must not use unpinned Git URLs, arbitrary download scripts, or implicit latest-version installs in CI or release instructions.
+- Must treat Pillow as the text-measurement boundary rather than reimplementing
+  TrueType/OpenType parsing. Font resolution must remain bounded and must not
+  serialize machine-specific font paths or persist transcript text in caches.
 
 ## Project structure and module boundaries
 
@@ -129,6 +132,10 @@ Update a higher-level document when a proposed change intentionally modifies the
   exponent notation, and preserve the original requested string for metadata.
 - Must resolve percentages only after normalized video geometry is available,
   using the field's documented axis or reference value.
+- Must resolve margins against the render axes first, then resolve percentage
+  maximum width and custom X/Y coordinates against the resulting safe-area
+  width or height. Treat custom pixel coordinates as offsets from the safe
+  area's left/top origin and record the final PlayRes placement separately.
 - Must use one deterministic rounding policy for every relative length and
   perform combined safe-area validation after all fields are resolved.
 - Must keep unresolved unit values out of ASS serialization; the ASS writer
@@ -179,6 +186,10 @@ Update a higher-level document when a proposed change intentionally modifies the
 ### Cue construction
 
 - Must preserve the product's readability policy: semantic boundaries such as sentence endings and meaningful pauses take priority over arbitrary hard splits. See [architecture.md](architecture.md#subtitle-cue-construction).
+- Must derive visual wrapping from the resolved safe rectangle, maximum width,
+  font/decorative bounds, and Unicode display-width estimates rather than a
+  fixed character count. The estimator is approximate; libass remains
+  authoritative for final font shaping and indivisible tokens may overflow.
 - Must keep cue timestamps in chronological order, with end at or after start; a rendered cue should normally have a strictly positive duration.
 - Should keep thresholds, such as maximum duration and line length, centralized as named constants or documented configuration rather than scattering literal values.
 - Should test punctuation, long sentences, pauses, one-word overflow, missing word timings, and exact threshold boundaries whenever cue logic changes.

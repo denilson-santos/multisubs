@@ -42,12 +42,19 @@ The default is auto.
 
 | Preset | Position | Left/right | Vertical inset | Max width | Max lines |
 | --- | --- | --- | --- | --- | ---: |
-| landscape | bottom-center | 6% / 6% | bottom 6% | 88% | 2 |
-| portrait | bottom-center | 8% / 8% | bottom 8% | 84% | 2 |
-| square | bottom-center | 7% / 7% | bottom 7% | 86% | 2 |
-| vertical-social | bottom-center | asymmetric safe area | larger bottom inset | remaining safe width | 2 |
-| upper-third | top-center | 6% / 6% | top 8% | 88% | 2 |
-| centered | center | 8% / 8% | centered | 84% | 2 |
+| landscape | bottom-center | 6% / 6% | bottom 6% | 100% of safe width | 2 |
+| portrait | bottom-center | 8% / 8% | bottom 8% | 100% of safe width | 2 |
+| square | bottom-center | 7% / 7% | bottom 7% | 100% of safe width | 2 |
+| vertical-social | bottom-center | asymmetric safe area | larger bottom inset | 100% of safe width | 2 |
+| upper-third | top-center | 6% / 6% | top 8% | 100% of safe width | 2 |
+| centered | center | 8% / 8% | centered | 100% of safe width | 2 |
+
+Decision amendment implemented with
+[Feature 6](06-adaptive-line-wrapping.md): every preset uses `max-width: 100%`
+relative to its already-inset safe area. The earlier render-width percentages
+were numerically equivalent to subtracting the side margins, but duplicated
+that policy and stopped being equivalent after a user changed a margin. The
+preset identities, safe-area values, and this plan's Done status are unchanged.
 
 The vertical-social values must be calibrated with documented generic overlay
 guides. The preset must not claim compatibility guarantees for a named social

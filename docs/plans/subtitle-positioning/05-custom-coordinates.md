@@ -29,8 +29,8 @@ bottom-center.
 
 ## Coordinate meaning
 
-- position-x is measured from the left edge.
-- position-y is measured from the top edge.
+- position-x is measured from the safe area's left edge.
+- position-y is measured from the safe area's top edge.
 - anchor identifies the point on the subtitle box attached to that coordinate.
 - The anchor uses the same nine public names as --position.
 
@@ -40,8 +40,14 @@ Example:
 --position-x 50% --position-y 86% --anchor bottom-center
 ~~~
 
-This places the bottom-center of the subtitle box at 50% of frame width and 86%
-of frame height.
+This places the bottom-center of the subtitle box at 50% of safe-area width and
+86% of safe-area height, then translates that point to PlayRes coordinates.
+
+This safe-area-local coordinate contract is a decision amendment implemented
+with [Feature 6](06-adaptive-line-wrapping.md). Margins act as the containing
+rectangle: changing them changes the origin and percentage bases without
+changing the public option names. This plan remains Done; Feature 6 owns the
+cross-feature width and placement refinement.
 
 ## CLI conflict rules
 
@@ -59,16 +65,18 @@ FFprobe and before WhisperX.
 
 ## ASS implementation
 
-Generate an internal event override:
+Generate an internal event override after adding the safe-area origin. For the
+default 1920x1080 landscape safe area, `50%`/`86%` resolves to:
 
 ~~~
-{\an2\pos(960,929)}
+{\an2\pos(960,873)}
 ~~~
 
 Rules:
 
 - Convert public anchor to private ASS alignment.
-- Convert coordinates through the resolved PlayRes canvas.
+- Resolve coordinates locally through the safe rectangle, then translate them
+  to the PlayRes canvas.
 - Build generated tags in a dedicated serializer.
 - Escape transcription text separately.
 - Concatenate generated tags only after both pieces are independently valid.
@@ -82,6 +90,8 @@ contract change.
 
 - max-width controls visual line wrapping around the anchored subtitle.
 - Margins define the allowed safe rectangle.
+- The effective width is the smaller of max-width and the horizontal capacity
+  from the resolved anchor to the relevant safe-area edge or edges.
 - By default, reject an anchor outside the safe rectangle.
 - An explicit future allow-offscreen switch would require a separate product
   decision; do not silently permit clipping.
@@ -108,7 +118,7 @@ contract change.
 - Default and explicit anchors.
 - All nine anchors.
 - Coordinates at 0% and 100%.
-- Coordinates outside the canvas.
+- Coordinates outside the safe-area width or height.
 - Conflict with named position.
 - Anchor without coordinates.
 - Text containing braces, backslashes, commas, newlines, Unicode, and fake ASS
