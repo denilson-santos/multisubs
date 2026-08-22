@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import unicodedata
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from typing import cast
@@ -15,8 +16,10 @@ from .models import (
     SubtitleConfig,
     SubtitleLayout,
     SubtitleLayoutPreset,
+    SubtitlePosition,
     VideoGeometry,
 )
+from .text_measurement import TextMeasurer, build_text_measurer
 
 _MAX_FONT_SIZE_PIXELS = 512
 _LANDSCAPE_ASPECT_THRESHOLD = Fraction(11, 10)
@@ -137,9 +140,19 @@ def resolve_subtitle_config(
         position_x=layout.position_x,
         position_y=layout.position_y,
         anchor=layout.anchor,
+        max_width=(
+            layout.max_width
+            if "max_width" in layout_overrides
+            else preset_layout.max_width
+        ),
+        max_lines=(
+            layout.max_lines
+            if "max_lines" in layout_overrides
+            else preset_layout.max_lines
+        ),
     )
-    resolved_layout = SubtitleLayout(
-        position=merged_layout.position,
+    resolved_margin_layout = replace(
+        merged_layout,
         margin_left=resolve_relative_length(
             merged_layout.margin_left,
             geometry.render_width,
@@ -164,12 +177,16 @@ def resolve_subtitle_config(
             field="margin-bottom",
             maximum=geometry.render_height,
         ),
+    )
+    safe_rectangle = resolve_safe_rectangle(geometry, resolved_margin_layout)
+    resolved_layout = replace(
+        resolved_margin_layout,
         position_x=(
             resolve_relative_length(
                 merged_layout.position_x,
-                geometry.render_width,
+                safe_rectangle.width,
                 field="position-x",
-                maximum=geometry.render_width,
+                maximum=safe_rectangle.width,
             )
             if merged_layout.position_x is not None
             else None
@@ -177,14 +194,21 @@ def resolve_subtitle_config(
         position_y=(
             resolve_relative_length(
                 merged_layout.position_y,
-                geometry.render_height,
+                safe_rectangle.height,
                 field="position-y",
-                maximum=geometry.render_height,
+                maximum=safe_rectangle.height,
             )
             if merged_layout.position_y is not None
             else None
         ),
         anchor=merged_layout.anchor,
+        max_width=resolve_relative_length(
+            _require_resolved_layout_length(merged_layout.max_width, "max-width"),
+            safe_rectangle.width,
+            field="max-width",
+            maximum=safe_rectangle.width,
+        ),
+        max_lines=_require_max_lines(merged_layout.max_lines),
     )
     resolved_appearance = replace(
         validated.appearance,
@@ -215,6 +239,161 @@ def classify_layout_preset(geometry: VideoGeometry) -> SubtitleLayoutPreset:
     return SubtitleLayoutPreset.SQUARE
 
 
+@dataclass(frozen=True)
+class WrappingMetrics:
+    """Resolved geometry and font inputs used by adaptive subtitle wrapping."""
+
+    safe_width: int
+    max_width: int
+    anchor_width: int
+    width_budget: int
+    font_size: int
+    backdrop_size: int
+    shadow_size: int
+    max_lines: int
+    anchor: SubtitlePosition
+    anchor_x: int
+    text_measurer: TextMeasurer = field(repr=False, compare=False)
+
+    @property
+    def decoration_width(self) -> int:
+        """Return the horizontal outline/shadow allowance in PlayRes pixels."""
+        return 2 * (self.backdrop_size + self.shadow_size)
+
+
+def resolve_wrapping_metrics(
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    *,
+    language: str | None = None,
+    text_measurer: TextMeasurer | None = None,
+) -> WrappingMetrics:
+    """Resolve the geometry-aware inputs used by adaptive cue wrapping."""
+    resolved = resolve_subtitle_config(config, geometry)
+    return _build_wrapping_metrics(
+        resolved,
+        geometry,
+        language=language,
+        text_measurer=text_measurer,
+    )
+
+
+def _build_wrapping_metrics(
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    *,
+    language: str | None,
+    text_measurer: TextMeasurer | None,
+) -> WrappingMetrics:
+    layout = config.layout
+    safe_rectangle = resolve_safe_rectangle(geometry, layout)
+    max_width = _require_resolved_layout_int(layout.max_width, "max-width")
+    if max_width <= 0:
+        raise ValidationError("max-width must resolve to a value greater than zero")
+    max_lines = _require_max_lines(layout.max_lines)
+    placement = _validated_cue_placement(config, geometry)
+    anchor = placement.anchor
+    anchor_x = placement.position_x
+    anchor_width = _anchor_width(anchor, anchor_x, safe_rectangle)
+    width_budget = max(1, min(safe_rectangle.width, max_width, anchor_width))
+    return WrappingMetrics(
+        safe_width=safe_rectangle.width,
+        max_width=max_width,
+        anchor_width=anchor_width,
+        width_budget=width_budget,
+        font_size=_require_resolved_layout_int(
+            config.appearance.font_size, "font-size"
+        ),
+        backdrop_size=(
+            0
+            if config.appearance.backdrop is SubtitleBackdrop.NONE
+            else _require_resolved_layout_int(
+                config.appearance.backdrop_size, "backdrop-size"
+            )
+        ),
+        shadow_size=_require_resolved_layout_int(
+            config.appearance.shadow_size, "shadow-size"
+        ),
+        max_lines=max_lines,
+        anchor=anchor,
+        anchor_x=anchor_x,
+        text_measurer=text_measurer
+        or build_text_measurer(config.appearance, language=language),
+    )
+
+
+def estimate_text_width(text: str, metrics: WrappingMetrics) -> float:
+    """Measure a line's PlayRes width including its visual decorations."""
+    return metrics.text_measurer.measure(text) + metrics.decoration_width
+
+
+def unicode_display_width(text: str) -> int:
+    """Return a conservative terminal-like display width for Unicode text."""
+    width = 0
+    for cluster in _grapheme_clusters(text):
+        if not cluster or all(
+            unicodedata.category(char) in {"Mn", "Me", "Cf"} for char in cluster
+        ):
+            continue
+        if any(_is_wide_character(char) for char in cluster):
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def _grapheme_clusters(text: str) -> list[str]:
+    clusters: list[str] = []
+    current = ""
+    for character in text:
+        category = unicodedata.category(character)
+        if current and (
+            category in {"Mn", "Me", "Cf"}
+            or character in {"\ufe0e", "\ufe0f"}
+            or current.endswith("\u200d")
+        ):
+            current += character
+            continue
+        if current:
+            clusters.append(current)
+        current = character
+    if current:
+        clusters.append(current)
+    return clusters
+
+
+def _is_wide_character(character: str) -> bool:
+    if unicodedata.east_asian_width(character) in {"W", "F"}:
+        return True
+    codepoint = ord(character)
+    return 0x1F000 <= codepoint <= 0x1FAFF or 0x2600 <= codepoint <= 0x27BF
+
+
+def resolve_ass_horizontal_margins(
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+) -> tuple[int, int]:
+    """Express the effective anchored line region as private ASS margins."""
+    layout = config.layout
+    safe_rectangle = resolve_safe_rectangle(geometry, layout)
+    max_width = _require_resolved_layout_int(layout.max_width, "max-width")
+    placement = _validated_cue_placement(config, geometry)
+    anchor_width = _anchor_width(
+        placement.anchor, placement.position_x, safe_rectangle
+    )
+    width_budget = max(1, min(safe_rectangle.width, max_width, anchor_width))
+    if placement.anchor.value.endswith("left"):
+        region_left = placement.position_x
+        region_right = region_left + width_budget
+    elif placement.anchor.value.endswith("right"):
+        region_right = placement.position_x
+        region_left = region_right - width_budget
+    else:
+        region_left = placement.position_x - width_budget // 2
+        region_right = region_left + width_budget
+    return region_left, geometry.render_width - region_right
+
+
 def _effective_layout_overrides(
     config: SubtitleConfig,
     *,
@@ -223,24 +402,29 @@ def _effective_layout_overrides(
 ) -> frozenset[str]:
     """Return explicit fields, inferring legacy typed replacements when needed."""
     overrides = set(config.layout_overrides)
-    if overrides or config.layout_preset is not SubtitleLayoutPreset.AUTO:
+    if overrides:
         return frozenset(overrides)
 
     layout = config.layout
-    if layout.position != default_position:
-        overrides.add("position")
-    for field, default_value in zip(
-        (
-            "margin_left",
-            "margin_right",
-            "margin_top",
-            "margin_bottom",
-        ),
-        default_margins,
-        strict=True,
-    ):
-        if getattr(layout, field) != default_value:
-            overrides.add(field)
+    if config.layout_preset is SubtitleLayoutPreset.AUTO:
+        if layout.position != default_position:
+            overrides.add("position")
+        for field, default_value in zip(
+            (
+                "margin_left",
+                "margin_right",
+                "margin_top",
+                "margin_bottom",
+            ),
+            default_margins,
+            strict=True,
+        ):
+            if getattr(layout, field) != default_value:
+                overrides.add(field)
+    if layout.max_width is not None:
+        overrides.add("max_width")
+    if layout.max_lines is not None:
+        overrides.add("max_lines")
     return frozenset(overrides)
 
 
@@ -300,13 +484,8 @@ def resolve_safe_rectangle(
 def resolve_cue_placement(
     config: SubtitleConfig,
     geometry: VideoGeometry,
-) -> CuePlacement | None:
-    """Resolve and validate one custom placement for every visual cue.
-
-    Named positions remain encoded in the ASS style and return ``None``. Custom
-    coordinates are represented as generated per-event overrides so the
-    transcript text never shares a serialization path with ASS control tags.
-    """
+) -> CuePlacement:
+    """Resolve a named or custom safe-area placement for every visual cue."""
     resolved = resolve_subtitle_config(config, geometry)
     return _validated_cue_placement(resolved, geometry)
 
@@ -314,26 +493,33 @@ def resolve_cue_placement(
 def _validated_cue_placement(
     resolved: SubtitleConfig,
     geometry: VideoGeometry,
-) -> CuePlacement | None:
+) -> CuePlacement:
     """Build a placement from a geometry-resolved configuration."""
     layout = resolved.layout
-    if layout.position_x is None and layout.position_y is None:
-        return None
-    if layout.position_x is None or layout.position_y is None:
-        raise ValidationError("position-x and position-y must be supplied together")
-    if layout.anchor is None:
-        raise ValidationError("custom coordinates require an anchor")
-    if not isinstance(layout.position_x, int) or not isinstance(layout.position_y, int):
-        raise ValidationError(
-            "custom coordinates must be resolved against video geometry first"
-        )
-
     safe_rectangle = resolve_safe_rectangle(geometry, layout)
-    placement = CuePlacement(
-        anchor=layout.anchor,
-        position_x=layout.position_x,
-        position_y=layout.position_y,
-    )
+    if layout.position_x is None and layout.position_y is None:
+        anchor = layout.position
+        placement = CuePlacement(
+            anchor=anchor,
+            position_x=_named_horizontal_coordinate(anchor, safe_rectangle),
+            position_y=_named_vertical_coordinate(anchor, safe_rectangle),
+        )
+    else:
+        if layout.position_x is None or layout.position_y is None:
+            raise ValidationError("position-x and position-y must be supplied together")
+        if layout.anchor is None:
+            raise ValidationError("custom coordinates require an anchor")
+        if not isinstance(layout.position_x, int) or not isinstance(
+            layout.position_y, int
+        ):
+            raise ValidationError(
+                "custom coordinates must be resolved against video geometry first"
+            )
+        placement = CuePlacement(
+            anchor=layout.anchor,
+            position_x=safe_rectangle.left + layout.position_x,
+            position_y=safe_rectangle.top + layout.position_y,
+        )
     _validate_cue_placement_bounds(
         placement,
         safe_rectangle,
@@ -429,3 +615,60 @@ def _resolved_layout_int(value: int | RelativeLength, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValidationError(f"{field} must be an integer")
     return value
+
+
+def _require_resolved_layout_length(
+    value: int | RelativeLength | None, field: str
+) -> int | RelativeLength:
+    if value is None:
+        raise ValidationError(f"{field} must be supplied by the selected layout")
+    return value
+
+
+def _require_resolved_layout_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(
+            f"{field} must be resolved against video geometry before use"
+        )
+    return value
+
+
+def _require_max_lines(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value not in {1, 2, 3}:
+        raise ValidationError("max-lines must resolve to an integer from 1 to 3")
+    return value
+
+
+def _named_horizontal_coordinate(
+    position: SubtitlePosition,
+    safe_rectangle: SafeRectangle,
+) -> int:
+    if position.value.endswith("left"):
+        return safe_rectangle.left
+    if position.value.endswith("right"):
+        return safe_rectangle.right
+    return safe_rectangle.left + safe_rectangle.width // 2
+
+
+def _named_vertical_coordinate(
+    position: SubtitlePosition,
+    safe_rectangle: SafeRectangle,
+) -> int:
+    if position.value.startswith("top-"):
+        return safe_rectangle.top
+    if position.value.startswith("bottom-"):
+        return safe_rectangle.bottom
+    return safe_rectangle.top + safe_rectangle.height // 2
+
+
+def _anchor_width(
+    anchor: SubtitlePosition,
+    anchor_x: int,
+    safe_rectangle: SafeRectangle,
+) -> int:
+    value = anchor.value
+    if value.endswith("left"):
+        return safe_rectangle.right - anchor_x
+    if value.endswith("right"):
+        return anchor_x - safe_rectangle.left
+    return 2 * min(anchor_x - safe_rectangle.left, safe_rectangle.right - anchor_x)

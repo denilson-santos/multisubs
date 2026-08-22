@@ -72,7 +72,7 @@ class SubtitleLayoutPreset(str, Enum):
 
 @dataclass(frozen=True)
 class SubtitleLayout:
-    """Validated semantic layout values before relative-unit resolution."""
+    """Layout values; resolved custom coordinates are safe-area-local offsets."""
 
     position: SubtitlePosition
     margin_left: int | RelativeLength
@@ -82,6 +82,8 @@ class SubtitleLayout:
     position_x: int | RelativeLength | None = None
     position_y: int | RelativeLength | None = None
     anchor: SubtitlePosition | None = None
+    max_width: int | RelativeLength | None = None
+    max_lines: int | None = None
 
     @property
     def has_custom_coordinates(self) -> bool:
