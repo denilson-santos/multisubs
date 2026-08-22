@@ -6,10 +6,12 @@ import json
 import math
 import sys
 import time
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from fractions import Fraction
+from functools import cache
 from numbers import Real
 from pathlib import Path
 from typing import Any, cast
@@ -21,9 +23,12 @@ from .config import (
 from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
 from .layout import (
+    WrappingMetrics,
+    estimate_text_width,
     resolve_cue_placement,
     resolve_safe_rectangle,
     resolve_subtitle_config,
+    resolve_wrapping_metrics,
 )
 from .models import (
     RelativeLength,
@@ -34,12 +39,9 @@ from .models import (
     TranscriptionPaths,
     VideoGeometry,
 )
+from .text_measurement import TextMeasurer
 from .utils import atomic_write_text, find_unique_stem
 
-MAX_CHARS_PER_LINE = 42
-MAX_CHARS_PER_CUE = MAX_CHARS_PER_LINE * 2
-MAX_LINE_OVERFLOW = 6
-MIN_CHARS_PER_LINE = 15
 MAX_CUE_DURATION = 6.0
 PAUSE_BREAK_THRESHOLD = 0.45
 MODEL_LOAD_ATTEMPTS = 3
@@ -240,6 +242,15 @@ def write_transcription_artifacts(
     )
     resolve_cue_placement(resolved_config, geometry)
     _validate_subtitle_segments(document.segments)
+    display_segments, wrapping_metrics = layout_subtitle_cues(
+        document.segments,
+        resolved_config,
+        geometry,
+        language=document.language,
+    )
+    measurement_diagnostic = wrapping_metrics.text_measurer.diagnostic
+    if measurement_diagnostic is not None:
+        _report(progress, measurement_diagnostic)
     paths = _choose_transcription_paths(
         destination_dir,
         document.source_path.stem,
@@ -249,7 +260,7 @@ def write_transcription_artifacts(
     _write_json(
         paths.json_path,
         full_text=document.full_text,
-        segments=document.segments,
+        segments=display_segments,
         file_name=document.source_path.stem,
         lang=document.language,
         input_path=document.source_path,
@@ -258,13 +269,14 @@ def write_transcription_artifacts(
         subtitle_config=config,
         resolved_subtitle_config=resolved_config,
         geometry=geometry,
+        wrapping_metrics=wrapping_metrics,
     )
     _report(progress, "Completed JSON transcript.")
 
-    _write_srt(paths.srt_path, document.segments)
+    _write_srt(paths.srt_path, display_segments)
     _report(progress, "Completed SRT transcript.")
 
-    write_ass(paths.ass_path, document.segments, resolved_config, geometry)
+    write_ass(paths.ass_path, display_segments, resolved_config, geometry)
     _report(progress, "Completed ASS transcript.")
     return paths.as_tuple()
 
@@ -465,7 +477,7 @@ def _choose_transcription_paths(
 def _build_subtitle_segments(
     aligned_segments: Sequence[object],
 ) -> list[dict[str, Any]]:
-    """Build readable cues from WhisperX word timestamps and coarse fallbacks."""
+    """Build semantic cues from WhisperX word timestamps and coarse fallbacks."""
     cues: list[dict[str, Any]] = []
     pending_words: list[dict[str, Any]] = []
 
@@ -603,10 +615,7 @@ def _append_words_cue(
 
 
 def _cue_exceeds_limits(words: Sequence[Mapping[str, Any]]) -> bool:
-    return (
-        len(_words_to_text(words)) > MAX_CHARS_PER_CUE
-        or _words_duration(words) > MAX_CUE_DURATION
-    )
+    return _words_duration(words) > MAX_CUE_DURATION
 
 
 def _words_duration(words: Sequence[Mapping[str, Any]]) -> float:
@@ -625,13 +634,8 @@ def _find_best_cue_break(words: Sequence[Mapping[str, Any]]) -> int:
 
     def key(index: int) -> tuple[int, float]:
         prefix = words[:index]
-        character_distance = abs(MAX_CHARS_PER_CUE - len(_words_to_text(prefix)))
         duration_distance = abs(MAX_CUE_DURATION - _words_duration(prefix))
-        distance = (
-            character_distance / MAX_CHARS_PER_CUE
-            + duration_distance / MAX_CUE_DURATION
-        )
-        return (_boundary_priority(words, index), -distance)
+        return (_boundary_priority(words, index), -duration_distance)
 
     return max(candidates, key=key)
 
@@ -655,14 +659,67 @@ def _append_cue(
             "id": len(cues),
             "start": start,
             "end": end,
-            "text": _wrap_subtitle_text(normalised_text, words),
+            "text": normalised_text,
             "words": [dict(word) for word in words],
         }
     )
 
 
 def _words_to_text(words: Sequence[Mapping[str, Any]]) -> str:
-    return " ".join(str(word["word"]).strip() for word in words).strip()
+    return _join_text_parts(str(word["word"]).strip() for word in words)
+
+
+def _join_text_parts(parts: Sequence[str] | Any) -> str:
+    """Join word-like parts without inserting spaces into CJK or emoji text."""
+    result = ""
+    for raw_part in parts:
+        part = str(raw_part).strip()
+        if not part:
+            continue
+        if result and _needs_text_separator(result[-1], part[0]):
+            result += " "
+        result += part
+    return result.strip()
+
+
+def _needs_text_separator(previous: str, next_character: str) -> bool:
+    if (
+        next_character in ".,!?;:%)]}»、。，！？；：》」』】〉》"
+        or previous in "([{«「『【〈《"
+    ):
+        return False
+    if _is_cjk_or_emoji(previous) and _is_cjk_or_emoji(next_character):
+        return False
+    return True
+
+
+def _is_cjk_or_emoji(character: str) -> bool:
+    codepoint = ord(character)
+    return (
+        unicodedata.east_asian_width(character) in {"W", "F"}
+        or 0x1F000 <= codepoint <= 0x1FAFF
+        or 0x2600 <= codepoint <= 0x27BF
+    )
+
+
+def _grapheme_clusters(text: str) -> list[str]:
+    clusters: list[str] = []
+    current = ""
+    for character in text:
+        category = unicodedata.category(character)
+        if current and (
+            category in {"Mn", "Me", "Cf"}
+            or character in {"\ufe0e", "\ufe0f"}
+            or current.endswith("\u200d")
+        ):
+            current += character
+            continue
+        if current:
+            clusters.append(current)
+        current = character
+    if current:
+        clusters.append(current)
+    return clusters
 
 
 def _ends_sentence(word: str) -> bool:
@@ -702,45 +759,343 @@ def _normalise_display_text(text: str) -> str:
     return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
 
 
+def layout_subtitle_cues(
+    segments: Sequence[Mapping[str, Any]],
+    resolved_config: SubtitleConfig,
+    geometry: VideoGeometry,
+    *,
+    language: str | None = None,
+    text_measurer: TextMeasurer | None = None,
+) -> tuple[list[dict[str, Any]], WrappingMetrics]:
+    """Create display cues from semantic cues using resolved layout metrics."""
+    metrics = resolve_wrapping_metrics(
+        resolved_config,
+        geometry,
+        language=language,
+        text_measurer=text_measurer,
+    )
+    display_cues: list[dict[str, Any]] = []
+    for segment in segments:
+        semantic_text = segment.get("semantic_text", segment.get("text", ""))
+        if not isinstance(semantic_text, str):
+            continue
+        semantic_text = _normalise_display_text(semantic_text)
+        if not semantic_text:
+            continue
+        raw_words = segment.get("words", [])
+        words = (
+            [dict(word) for word in raw_words if isinstance(word, Mapping)]
+            if isinstance(raw_words, Sequence)
+            and not isinstance(raw_words, (str, bytes))
+            else []
+        )
+        if words:
+            groups = _split_words_for_layout(words, metrics)
+            for group in groups:
+                group_text = _words_to_text(group)
+                _append_display_cue(
+                    display_cues,
+                    group_text,
+                    float(group[0]["start"]),
+                    float(group[-1]["end"]),
+                    group,
+                    metrics,
+                )
+            continue
+
+        _append_display_cue(
+            display_cues,
+            semantic_text,
+            float(segment["start"]),
+            float(segment["end"]),
+            [],
+            metrics,
+        )
+
+    for index, cue in enumerate(display_cues):
+        cue["id"] = index
+    return display_cues, metrics
+
+
+def _split_words_for_layout(
+    words: Sequence[Mapping[str, Any]],
+    metrics: WrappingMetrics,
+) -> list[list[dict[str, Any]]]:
+    remaining = [dict(word) for word in words]
+    groups: list[list[dict[str, Any]]] = []
+    while remaining:
+        text = _words_to_text(remaining)
+        if _line_count(text, remaining, metrics) <= metrics.max_lines:
+            groups.append(remaining)
+            break
+        if len(remaining) == 1:
+            groups.append(remaining)
+            break
+        break_at = _find_best_layout_break(remaining, metrics)
+        if break_at <= 0 or break_at >= len(remaining):
+            break_at = 1
+        groups.append(remaining[:break_at])
+        remaining = remaining[break_at:]
+    return groups
+
+
+def _find_best_layout_break(
+    words: Sequence[Mapping[str, Any]],
+    metrics: WrappingMetrics,
+) -> int:
+    candidates = [
+        index
+        for index in range(1, len(words))
+        if _line_count(_words_to_text(words[:index]), words[:index], metrics)
+        <= metrics.max_lines
+    ]
+    if not candidates:
+        return 1
+
+    def key(index: int) -> tuple[int, int, float, int]:
+        prefix = words[:index]
+        width = estimate_text_width(_words_to_text(prefix), metrics)
+        orphan_penalty = int(index == 1 or len(words) - index == 1)
+        return (
+            _boundary_priority(words, index),
+            -orphan_penalty,
+            -abs(metrics.width_budget - width),
+            index,
+        )
+
+    return max(candidates, key=key)
+
+
+def _append_display_cue(
+    cues: list[dict[str, Any]],
+    semantic_text: str,
+    start: float,
+    end: float,
+    words: Sequence[Mapping[str, Any]],
+    metrics: WrappingMetrics,
+) -> None:
+    if end < start or start < 0:
+        raise TranscriptionError("Subtitle cue has invalid timestamps")
+    display_text = _wrap_subtitle_text(semantic_text, words, metrics=metrics)
+    cues.append(
+        {
+            "id": len(cues),
+            "start": start,
+            "end": end,
+            "text": display_text,
+            "semantic_text": semantic_text,
+            "display_text": display_text,
+            "words": [dict(word) for word in words],
+        }
+    )
+
+
+def _line_count(
+    text: str,
+    words: Sequence[Mapping[str, Any]] | None,
+    metrics: WrappingMetrics,
+) -> int:
+    lines, fits = _layout_text_lines(text, words, metrics)
+    return len(lines) if fits else metrics.max_lines + 1
+
+
 def _wrap_subtitle_text(
     text: str,
     words: Sequence[Mapping[str, Any]] | None = None,
+    *,
+    metrics: WrappingMetrics,
 ) -> str:
-    """Wrap one cue to at most two visual lines at a semantic boundary."""
-    if len(text) <= MAX_CHARS_PER_LINE:
-        return text
+    """Wrap one cue using the resolved PlayRes width budget."""
+    lines, _ = _layout_text_lines(text, words, metrics)
+    return "\n".join(lines)
 
-    if words:
-        line_words = [word for word in words if str(word.get("word", "")).strip()]
-    else:
-        line_words = [{"word": word} for word in text.split()]
-    if len(line_words) < 2:
-        return text
 
-    def key(index: int) -> tuple[int, int, int, int, int, int]:
-        left = _words_to_text(line_words[:index])
-        right = _words_to_text(line_words[index:])
-        left_overflow = max(0, len(left) - MAX_CHARS_PER_LINE)
-        right_overflow = max(0, len(right) - MAX_CHARS_PER_LINE)
-        hard_overflow = max(0, left_overflow - MAX_LINE_OVERFLOW) + max(
-            0, right_overflow - MAX_LINE_OVERFLOW
-        )
-        shortest_line = min(len(left), len(right))
-        short_line_penalty = max(0, MIN_CHARS_PER_LINE - shortest_line) ** 2
-        return (
-            hard_overflow,
-            short_line_penalty,
-            left_overflow + right_overflow,
-            -len(left),
-            -_boundary_priority(line_words, index),
-            abs(len(left) - len(right)),
-        )
+def _layout_text_lines(
+    text: str,
+    words: Sequence[Mapping[str, Any]] | None,
+    metrics: WrappingMetrics,
+) -> tuple[list[str], bool]:
+    normalised = _normalise_display_text(text)
+    if not normalised:
+        return [], True
+    units, compact, source_words = _text_units(normalised, words)
+    if len(units) < 2:
+        return [normalised], True
 
-    break_at = min(range(1, len(line_words)), key=key)
-    return (
-        f"{_words_to_text(line_words[:break_at])}\n"
-        f"{_words_to_text(line_words[break_at:])}"
+    def join(parts: Sequence[str]) -> str:
+        return "".join(parts) if compact else _join_text_parts(parts)
+
+    if estimate_text_width(join(units), metrics) <= metrics.width_budget:
+        return [normalised], True
+    if metrics.max_lines <= 1:
+        return [normalised], False
+    return _partition_text_units(
+        units,
+        join,
+        metrics,
+        source_words=source_words,
     )
+
+
+def _text_units(
+    text: str,
+    words: Sequence[Mapping[str, Any]] | None,
+) -> tuple[list[str], bool, list[Mapping[str, Any]] | None]:
+    if words:
+        source_words = [word for word in words if str(word.get("word", "")).strip()]
+        return (
+            [str(word.get("word", "")).strip() for word in source_words],
+            False,
+            source_words,
+        )
+    if any(character.isspace() for character in text):
+        return text.split(), False, None
+    clusters = _grapheme_clusters(text)
+    if len(clusters) > 1 and any(_is_cjk_or_emoji(cluster[0]) for cluster in clusters):
+        return clusters, True, None
+    return [text], True, None
+
+
+def _partition_text_units(
+    units: Sequence[str],
+    join: Callable[[Sequence[str]], str],
+    metrics: WrappingMetrics,
+    *,
+    source_words: Sequence[Mapping[str, Any]] | None,
+) -> tuple[list[str], bool]:
+    unit_count = len(units)
+
+    @cache
+    def line(start: int, end: int) -> tuple[str, float]:
+        value = join(units[start:end])
+        return value, estimate_text_width(value, metrics)
+
+    @cache
+    def partitions(
+        start: int,
+        lines_left: int,
+        allow_overflow: bool,
+    ) -> tuple[tuple[int, ...], ...]:
+        if lines_left == 1:
+            _, width = line(start, unit_count)
+            if allow_overflow or _line_fits(
+                width,
+                unit_count=unit_count - start,
+                budget=metrics.width_budget,
+            ):
+                return ((unit_count,),)
+            return ()
+
+        results: list[tuple[int, ...]] = []
+        final_start = unit_count - lines_left + 1
+        for end in range(start + 1, final_start + 1):
+            _, width = line(start, end)
+            if not allow_overflow and not _line_fits(
+                width,
+                unit_count=end - start,
+                budget=metrics.width_budget,
+            ):
+                continue
+            for tail in partitions(end, lines_left - 1, allow_overflow):
+                results.append((end, *tail))
+        return tuple(results)
+
+    for line_count in range(2, metrics.max_lines + 1):
+        candidates = partitions(0, line_count, False)
+        if candidates:
+            best = min(
+                candidates,
+                key=lambda endings: _partition_score(
+                    endings,
+                    line,
+                    unit_count,
+                    metrics.width_budget,
+                    units,
+                    source_words,
+                ),
+            )
+            return _partition_lines(best, line), True
+
+    candidates = partitions(0, metrics.max_lines, True)
+    if not candidates:
+        return [join(units)], False
+    best = min(
+        candidates,
+        key=lambda endings: _partition_score(
+            endings,
+            line,
+            unit_count,
+            metrics.width_budget,
+            units,
+            source_words,
+        ),
+    )
+    return _partition_lines(best, line), False
+
+
+def _line_fits(width: float, *, unit_count: int, budget: int) -> bool:
+    return width <= budget or unit_count == 1
+
+
+def _partition_lines(
+    endings: Sequence[int],
+    line: Callable[[int, int], tuple[str, float]],
+) -> list[str]:
+    result: list[str] = []
+    start = 0
+    for end in endings:
+        result.append(line(start, end)[0])
+        start = end
+    return result
+
+
+def _partition_score(
+    endings: Sequence[int],
+    line: Callable[[int, int], tuple[str, float]],
+    unit_count: int,
+    width_budget: int,
+    units: Sequence[str],
+    source_words: Sequence[Mapping[str, Any]] | None,
+) -> tuple[int, float, float, int, float, float, tuple[int, ...]]:
+    starts = (0, *endings[:-1])
+    widths = [line(start, end)[1] for start, end in zip(starts, endings, strict=True)]
+    counts = [end - start for start, end in zip(starts, endings, strict=True)]
+    priorities = [
+        _display_boundary_priority(units, source_words, end) for end in endings[:-1]
+    ]
+    overflows = [max(0.0, width - width_budget) for width in widths]
+    orphan_count = (
+        sum(count == 1 for count in counts) if unit_count > len(counts) else 0
+    )
+    widest = max(widths)
+    shortest = min(widths)
+    short_line_penalty = max(0.0, widest * 0.35 - shortest)
+    raggedness = sum((widest - width) ** 2 for width in widths)
+    semantic_penalty = sum(3 - priority for priority in priorities)
+    return (
+        semantic_penalty,
+        max(overflows),
+        sum(overflows),
+        orphan_count,
+        short_line_penalty,
+        raggedness,
+        tuple(endings),
+    )
+
+
+def _display_boundary_priority(
+    units: Sequence[str],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    index: int,
+) -> int:
+    if source_words is not None and len(source_words) == len(units):
+        return _boundary_priority(source_words, index)
+    previous = units[index - 1]
+    if _ends_sentence(previous):
+        return 3
+    if _ends_clause(previous):
+        return 2
+    return 0
 
 
 def _validate_subtitle_segments(segments: Sequence[Mapping[str, Any]]) -> None:
@@ -770,10 +1125,15 @@ def _write_json(
     subtitle_config: SubtitleConfig,
     resolved_subtitle_config: SubtitleConfig,
     geometry: VideoGeometry,
+    wrapping_metrics: WrappingMetrics | None = None,
 ) -> None:
     requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
     safe_rectangle = resolve_safe_rectangle(geometry, resolved_layout)
+    placement = resolve_cue_placement(resolved_subtitle_config, geometry)
+    wrapping_metrics = wrapping_metrics or resolve_wrapping_metrics(
+        resolved_subtitle_config, geometry
+    )
     custom_coordinates = requested_layout.has_custom_coordinates
     json_data = {
         "schema_version": 1,
@@ -830,6 +1190,7 @@ def _write_json(
                             requested_layout.margin_bottom
                         ),
                     },
+                    "max_width": _format_requested_length(requested_layout.max_width),
                 },
                 "resolved": {
                     "font_size": resolved_subtitle_config.appearance.font_size,
@@ -841,7 +1202,20 @@ def _write_json(
                         "top": resolved_layout.margin_top,
                         "bottom": resolved_layout.margin_bottom,
                     },
+                    "max_width": resolved_layout.max_width,
+                    "max_lines": resolved_layout.max_lines,
                 },
+                "wrapping": {
+                    "safe_width": wrapping_metrics.safe_width,
+                    "max_width": wrapping_metrics.max_width,
+                    "anchor_width": wrapping_metrics.anchor_width,
+                    "width_budget": wrapping_metrics.width_budget,
+                    "font_size": wrapping_metrics.font_size,
+                    "backdrop_size": wrapping_metrics.backdrop_size,
+                    "shadow_size": wrapping_metrics.shadow_size,
+                    "max_lines": wrapping_metrics.max_lines,
+                },
+                "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
                 "safe_rectangle": {
                     "left": safe_rectangle.left,
                     "top": safe_rectangle.top,
@@ -852,9 +1226,18 @@ def _write_json(
                 },
             },
         },
-        "transcription": {"text": full_text, "segments": list(segments)},
+        "transcription": {
+            "text": full_text,
+            "segments": [_serializable_segment(segment) for segment in segments],
+        },
     }
     rendering = json_data["metadata"]["rendering"]
+    rendering["resolved_coordinates"] = {
+        "x": placement.position_x,
+        "y": placement.position_y,
+        "anchor": placement.anchor.value,
+        "coordinate_space": "playres",
+    }
     if custom_coordinates:
         rendering["requested_coordinates"] = {
             "x": _format_requested_length(requested_layout.position_x),
@@ -862,13 +1245,7 @@ def _write_json(
             "anchor": requested_layout.anchor.value
             if requested_layout.anchor is not None
             else None,
-        }
-        rendering["resolved_coordinates"] = {
-            "x": resolved_layout.position_x,
-            "y": resolved_layout.position_y,
-            "anchor": resolved_layout.anchor.value
-            if resolved_layout.anchor is not None
-            else None,
+            "coordinate_space": "safe-area",
         }
     try:
         content = json.dumps(json_data, ensure_ascii=False, indent=2, allow_nan=False)
@@ -883,10 +1260,21 @@ def _format_fraction(value: Fraction) -> str:
     return f"{value.numerator}:{value.denominator}"
 
 
-def _format_requested_length(value: object) -> str:
+def _format_requested_length(value: object) -> str | None:
+    if value is None:
+        return None
     if isinstance(value, RelativeLength):
         return value.original
     return f"{value}px"
+
+
+def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep internal semantic/display helpers out of the JSON contract."""
+    return {
+        key: value
+        for key, value in segment.items()
+        if key not in {"semantic_text", "display_text"}
+    }
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
