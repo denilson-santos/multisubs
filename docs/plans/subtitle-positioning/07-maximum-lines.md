@@ -30,7 +30,8 @@ Excluded:
 - Adding a new content-aware or orientation-specific line-count heuristic outside
   the existing preset-resolution rules.
 - Per-cue or timestamp-range line-count overrides.
-- Exact glyph measurement or font-fallback prediction.
+- A second glyph-measurement or font-fallback implementation; this feature
+  reuses the resolved-font measurement contract from Feature 6.
 - Rewriting, truncating, hyphenating, or shrinking text to make it fit.
 
 ## Public interface
@@ -99,7 +100,9 @@ two-line user outcome, while `--max-lines 1` requests single-line captions.
 
 ### FFmpeg and dependencies
 
-- Do not add a runtime dependency or change the FFmpeg filter boundary.
+- Do not add another runtime dependency or change the FFmpeg filter boundary;
+  reuse Feature 6's direct measurement dependency, resolver, metadata, and
+  Unicode-estimate fallback.
 - Expect the one-line setting to produce more cues for dense speech. Document
   and measure that effect without changing WhisperX model behavior.
 
@@ -111,8 +114,9 @@ two-line user outcome, while `--max-lines 1` requests single-line captions.
   the selected preset.
 - Ensure the adaptive cue-layout stage receives the resolved line limit rather
   than reading a module constant or CLI namespace.
-- Reuse the width estimator and semantic split selection from Feature 6. Do not
-  add a second character-count-based wrapping path for single-line mode.
+- Reuse the font-aware measurer, Unicode-estimate fallback, global partition
+  scorer, and semantic split selection from Feature 6. Do not add a second
+  character-count-based wrapping path for single-line mode.
 - Keep semantic cues and rendered display cues distinguishable when one semantic
   group must become several timed cues.
 - Include requested and resolved values in reproducibility metadata and progress
@@ -147,6 +151,8 @@ two-line user outcome, while `--max-lines 1` requests single-line captions.
   oversized cue at a timed semantic boundary.
 - Confirm two-line mode preserves the established default output.
 - Exercise three-line mode and exact width thresholds.
+- Reuse controlled-font fixtures to prove the line limit is enforced against
+  the same measured width used by Feature 6.
 - Preserve punctuation and pause priorities when a line limit forces a split.
 - Preserve normalized semantic content, word order, IDs, and chronological
   timestamps across additional cues.
@@ -218,8 +224,9 @@ Base: main
 
 The pull request must link this plan, distinguish inherited and explicit values,
 show the one-line user outcome in landscape and portrait media, and document the
-missing-timing and indivisible-token limitations. It must state that no new
-dependency, FFmpeg policy, or output-layout change is introduced.
+missing-timing and indivisible-token limitations. It must state that Feature 7
+adds no dependency beyond Feature 6's measurer and introduces no FFmpeg policy
+or output-layout change.
 
 Before requesting review:
 

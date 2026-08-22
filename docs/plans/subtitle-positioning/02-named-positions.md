@@ -64,6 +64,13 @@ The numeric value must be private to the ASS compiler.
 Left and right are physical screen directions. They are not language-relative
 start and end values.
 
+Decision amendment implemented with
+[Feature 6](06-adaptive-line-wrapping.md): a named position now resolves to the
+matching point of the complete safe rectangle and is emitted with private ASS
+`\an` plus `\pos`. This replaces reliance on style alignment/margins alone and
+makes center placement exact when opposite margins differ. The public
+`--position` interface and this plan's Done status are unchanged.
+
 ## Implementation
 
 - Add a SubtitlePosition enum or equivalent closed type.
@@ -71,7 +78,7 @@ start and end values.
 - Map the position to an internal anchor and ASS alignment.
 - Resolve the safe rectangle before compiling ASS.
 - Store the position on SubtitleLayout, not SubtitleAppearance.
-- Use the ASS style alignment for a global static position.
+- Resolve the global named position to an explicit safe-area anchor point.
 - Keep per-event generated override support available for custom coordinates.
 - Include requested and resolved position in rendering metadata.
 

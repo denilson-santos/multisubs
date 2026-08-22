@@ -96,6 +96,7 @@ _RELATIVE_FIELDS = {
     "margin_right",
     "margin_top",
     "margin_bottom",
+    "max_width",
     "position_x",
     "position_y",
 }
@@ -106,6 +107,8 @@ _LAYOUT_OVERRIDE_FIELDS = frozenset(
         "margin_right",
         "margin_top",
         "margin_bottom",
+        "max_width",
+        "max_lines",
     }
 )
 
@@ -156,6 +159,8 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_right=_preset_length("6%"),
                 margin_top=_preset_length("0%"),
                 margin_bottom=_preset_length("6%"),
+                max_width=_preset_length("100%"),
+                max_lines=2,
             ),
         ),
         SubtitleLayoutPreset.PORTRAIT: LayoutPreset(
@@ -167,6 +172,8 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_right=_preset_length("8%"),
                 margin_top=_preset_length("0%"),
                 margin_bottom=_preset_length("8%"),
+                max_width=_preset_length("100%"),
+                max_lines=2,
             ),
         ),
         SubtitleLayoutPreset.SQUARE: LayoutPreset(
@@ -178,6 +185,8 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_right=_preset_length("7%"),
                 margin_top=_preset_length("0%"),
                 margin_bottom=_preset_length("7%"),
+                max_width=_preset_length("100%"),
+                max_lines=2,
             ),
         ),
         SubtitleLayoutPreset.VERTICAL_SOCIAL: LayoutPreset(
@@ -189,6 +198,8 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_right=_preset_length("12%"),
                 margin_top=_preset_length("8%"),
                 margin_bottom=_preset_length("16%"),
+                max_width=_preset_length("100%"),
+                max_lines=2,
             ),
         ),
         SubtitleLayoutPreset.UPPER_THIRD: LayoutPreset(
@@ -200,6 +211,8 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_right=_preset_length("6%"),
                 margin_top=_preset_length("8%"),
                 margin_bottom=_preset_length("0%"),
+                max_width=_preset_length("100%"),
+                max_lines=2,
             ),
         ),
         SubtitleLayoutPreset.CENTERED: LayoutPreset(
@@ -211,6 +224,8 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_right=_preset_length("8%"),
                 margin_top=_preset_length("8%"),
                 margin_bottom=_preset_length("8%"),
+                max_width=_preset_length("100%"),
+                max_lines=2,
             ),
         ),
     }
@@ -227,6 +242,7 @@ def validate_subtitle_config(
     position_x: RelativeLength | str | None = None,
     position_y: RelativeLength | str | None = None,
     anchor: SubtitlePosition | str | None = None,
+    max_lines: int | None = None,
 ) -> SubtitleConfig:
     """Return a complete, validated semantic subtitle configuration."""
     resolved_position = parse_position(position) if position is not None else None
@@ -240,6 +256,7 @@ def validate_subtitle_config(
             or relative_values
             or position_x is not None
             or position_y is not None
+            or max_lines is not None
         ):
             raise ValidationError(
                 "values cannot override an existing subtitle configuration"
@@ -316,6 +333,11 @@ def validate_subtitle_config(
     layout_overrides.update(
         field for field in parsed_relative_values if field in _LAYOUT_OVERRIDE_FIELDS
     )
+    if max_lines is not None:
+        parsed_max_lines = parse_max_lines(max_lines)
+        layout_overrides.add("max_lines")
+    else:
+        parsed_max_lines = None
     config = SubtitleConfig(
         appearance=SubtitleAppearance(
             font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
@@ -358,6 +380,8 @@ def validate_subtitle_config(
             anchor=(resolved_anchor or DEFAULT_ANCHOR)
             if has_custom_coordinates
             else None,
+            max_width=parsed_relative_values.get("max_width"),
+            max_lines=parsed_max_lines,
         ),
         layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
         layout_overrides=frozenset(layout_overrides),
@@ -396,6 +420,15 @@ def parse_layout_preset(
         raise ValidationError(
             "layout must be one of: " + ", ".join(LAYOUT_PRESET_CHOICES)
         ) from exc
+
+
+def parse_max_lines(value: object) -> int:
+    """Validate the internal one-, two-, or three-line cue limit."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError("max-lines must be an integer from 1 to 3")
+    if value not in {1, 2, 3}:
+        raise ValidationError("max-lines must be an integer from 1 to 3")
+    return value
 
 
 def get_layout_preset(value: SubtitleLayoutPreset | str) -> LayoutPreset:
@@ -501,8 +534,11 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         "margin_right": config.layout.margin_right,
         "margin_top": config.layout.margin_top,
         "margin_bottom": config.layout.margin_bottom,
+        "max_width": config.layout.max_width,
     }
     for field, value in relative_fields.items():
+        if value is None and field == "max_width":
+            continue
         if isinstance(value, RelativeLength):
             _validate_relative_length(value, field)
         elif isinstance(value, bool) or not isinstance(value, int):
@@ -512,6 +548,9 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         elif value < 0 or (field == "font_size" and value == 0):
             comparator = "greater than zero" if field == "font_size" else "non-negative"
             raise ValidationError(f"{field.replace('_', '-')} must be {comparator}")
+
+    if config.layout.max_lines is not None:
+        parse_max_lines(config.layout.max_lines)
 
     for field, value in {
         "position_x": config.layout.position_x,

@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 from dataclasses import replace
@@ -15,6 +16,99 @@ from multisubs.subtitler import (
     probe_video_geometry,
     validate_ffmpeg_support,
 )
+from multisubs.transcriber import layout_subtitle_cues
+
+
+@pytest.mark.integration
+def test_resolved_font_measurement_tracks_libass_bounds(tmp_path: Path):
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    input_path = tmp_path / "font-metrics-input.mp4"
+    subtitle_path = tmp_path / "font-metrics.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=1920x1080:d=0.2",
+            "-t",
+            "0.2",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font": "Roboto", "backdrop": "none"},
+        relative_values={
+            "font_size": "43px",
+            "shadow_weight": "0px",
+            "margin_left": "0%",
+            "margin_right": "0%",
+            "max_width": "100%",
+        },
+    )
+    resolved = resolve_subtitle_config(config, geometry)
+    text = (
+        "divulgou um vídeo nas redes sociais agradecendo o apoio recebido nos "
+        "últimos dias."
+    )
+    display, metrics = layout_subtitle_cues(
+        [{"id": 0, "start": 0.0, "end": 0.2, "text": text, "words": []}],
+        resolved,
+        geometry,
+        language="pt",
+    )
+    if (
+        metrics.text_measurer.info.mode != "font-metrics"
+        or metrics.text_measurer.info.resolved_font != "Roboto"
+    ):
+        pytest.skip("A controlled Roboto face is not available through fontconfig")
+
+    measured_width = metrics.text_measurer.measure(text)
+    assert measured_width < metrics.width_budget
+    assert display[0]["text"] == text
+
+    write_ass(subtitle_path, display, config, geometry)
+    output_path = Path(
+        embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
+    )
+    bbox = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(output_path),
+            "-vf",
+            "bbox=min_val=32",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    matches = re.findall(r"x1:\d+ x2:\d+ y1:\d+ y2:\d+ w:(\d+)", bbox.stderr)
+    assert matches, bbox.stderr
+    rendered_width = int(matches[-1])
+    tolerance = max(40.0, measured_width * 0.08)
+    assert abs(rendered_width - measured_width) <= tolerance
 
 
 @pytest.mark.integration
@@ -78,6 +172,64 @@ def test_ffmpeg_libass_render_round_trip(tmp_path: Path):
     )
 
     output_path = Path(embed_subtitles(input_path, subtitle_path, tmp_path, "en"))
+
+    assert output_path.exists()
+    assert output_path.stat().st_size > 0
+
+
+@pytest.mark.integration
+def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("FFmpeg is not installed")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    input_path = tmp_path / "adaptive-input.mp4"
+    subtitle_path = tmp_path / "adaptive.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x180:d=0.4",
+            "-t",
+            "0.4",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_width": "40%", "font_size": "8px"},
+    )
+    resolved = resolve_subtitle_config(config, geometry)
+    semantic = [
+        {
+            "id": 0,
+            "start": 0.0,
+            "end": 0.4,
+            "text": "A long subtitle cue follows the resolved width budget",
+            "words": [],
+        }
+    ]
+    display, metrics = layout_subtitle_cues(semantic, resolved, geometry)
+
+    assert metrics.width_budget == 113
+    assert display[0]["text"].count("\n") <= metrics.max_lines - 1
+    write_ass(subtitle_path, display, config, geometry)
+    output_path = Path(
+        embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
+    )
 
     assert output_path.exists()
     assert output_path.stat().st_size > 0

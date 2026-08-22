@@ -12,6 +12,7 @@ from multisubs.config import (
     SUPPORTED_LANGUAGES,
     get_layout_preset,
     parse_layout_preset,
+    parse_max_lines,
     parse_position,
     parse_relative_length,
     validate_subtitle_config,
@@ -110,6 +111,24 @@ def test_default_position_is_bottom_center_and_choices_are_named():
     assert parse_position("top-right") is SubtitlePosition.TOP_RIGHT
 
 
+def test_max_width_and_internal_max_lines_are_typed_layout_values():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_width": "72%"},
+        max_lines=1,
+    )
+
+    assert config.layout.max_width == parse_relative_length("72%")
+    assert config.layout.max_lines == 1
+    assert config.layout_overrides == frozenset({"max_width", "max_lines"})
+
+
+@pytest.mark.parametrize("value", [0, 4, -1, True, "2"])
+def test_parse_max_lines_rejects_values_outside_internal_range(value):
+    with pytest.raises(ValidationError, match="max-lines"):
+        parse_max_lines(value)
+
+
 def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
     assert LAYOUT_PRESET_CHOICES == tuple(
         preset.value for preset in SubtitleLayoutPreset
@@ -126,6 +145,7 @@ def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
     for preset in LAYOUT_PRESETS.values():
         assert preset.layout.position in SubtitlePosition
         assert preset.description
+        assert preset.layout.max_width == parse_relative_length("100%")
     with pytest.raises(TypeError):
         cast(Any, LAYOUT_PRESETS)[SubtitleLayoutPreset.LANDSCAPE] = get_layout_preset(
             "square"

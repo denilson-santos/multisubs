@@ -11,6 +11,7 @@ from typing import Any
 from .config import validate_subtitle_config
 from .errors import ArtifactError
 from .layout import (
+    resolve_ass_horizontal_margins,
     resolve_cue_placement,
     resolve_safe_rectangle,
     resolve_subtitle_config,
@@ -71,9 +72,8 @@ def write_ass(
 ) -> None:
     """Write safe ASS dialogue on the probed, autorotated video canvas.
 
-    ``placements`` is an internal per-cue contract. When omitted, a custom
-    coordinate configuration produces one resolved placement for every cue;
-    named positions continue to use the compiled style alignment.
+    ``placements`` is an internal per-cue contract. When omitted, the named or
+    custom layout resolves to one safe-area placement reused by every cue.
     """
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
@@ -81,7 +81,7 @@ def write_ass(
         validate_subtitle_config(subtitle_config), geometry
     )
     resolve_safe_rectangle(geometry, config.layout)
-    style = _compile_style(config)
+    style = _compile_style(config, geometry)
     default_placement = resolve_cue_placement(config, geometry)
     if placements is not None and len(placements) != len(segments):
         raise ArtifactError("ASS cue placements must match the segment count")
@@ -121,7 +121,10 @@ def write_ass(
     atomic_write_text(path, "\n".join(lines) + "\n")
 
 
-def _compile_style(config: SubtitleConfig) -> dict[str, str | int]:
+def _compile_style(
+    config: SubtitleConfig,
+    geometry: VideoGeometry | None = None,
+) -> dict[str, str | int]:
     """Compile semantic layout into the private numeric ASS style fields."""
     appearance = config.appearance
     layout = config.layout
@@ -136,6 +139,11 @@ def _compile_style(config: SubtitleConfig) -> dict[str, str | int]:
         else min(margin_top, margin_bottom)
     )
     backdrop_color = rgba_to_ass_color(appearance.backdrop_color)
+    if geometry is None:
+        margin_l = _resolved_style_int(layout.margin_left, "margin-left")
+        margin_r = _resolved_style_int(layout.margin_right, "margin-right")
+    else:
+        margin_l, margin_r = resolve_ass_horizontal_margins(config, geometry)
     return {
         "font": appearance.font,
         "font_size": _resolved_style_int(appearance.font_size, "font-size"),
@@ -162,8 +170,8 @@ def _compile_style(config: SubtitleConfig) -> dict[str, str | int]:
         ),
         "shadow_weight": _resolved_style_int(appearance.shadow_size, "shadow-size"),
         "alignment": _ass_alignment_for_position(layout.anchor or layout.position),
-        "margin_l": _resolved_style_int(layout.margin_left, "margin-left"),
-        "margin_r": _resolved_style_int(layout.margin_right, "margin-right"),
+        "margin_l": margin_l,
+        "margin_r": margin_r,
         "margin_v": margin_v,
     }
 

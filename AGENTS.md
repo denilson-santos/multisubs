@@ -21,6 +21,8 @@ Read the relevant project documentation before changing behavior:
 | multisubs/ass.py | ASS header, style, timestamp, dialogue escaping, and serialization. |
 | multisubs/subtitler.py | ffprobe geometry detection and FFmpeg invocation that burns an ASS file into the output video. |
 | multisubs/config.py | Default ASS style values. |
+| multisubs/layout.py | Geometry-aware preset resolution, relative units, safe rectangles, and wrapping budgets. |
+| multisubs/text_measurement.py | Font resolution, Pillow/RAQM width measurement, and Unicode fallback estimation. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
 | multisubs/errors.py | User-actionable error types at module boundaries. |
 | multisubs/models.py | Typed internal request and artifact contracts. |

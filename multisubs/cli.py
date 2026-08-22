@@ -121,8 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=POSITION_CHOICES,
         default=None,
         help=(
-            "Override the preset's semantic position; left and right refer to "
-            "physical screen directions."
+            "Attach the matching subtitle-box anchor to an edge or center of "
+            "the safe area; left and right are physical screen directions."
         ),
     )
 
@@ -212,6 +212,11 @@ def build_parser() -> argparse.ArgumentParser:
             "--margin-bottom",
             "Bottom margin as a percentage of render height or pixels.",
         ),
+        (
+            "--max-width",
+            "Maximum subtitle line width as a percentage of the safe-area width "
+            "or pixels.",
+        ),
     ):
         relative_group.add_argument(
             option,
@@ -223,21 +228,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     coordinate_group = parser.add_argument_group(
         "Custom subtitle coordinates",
-        "Attach the selected anchor to an exact X/Y coordinate; use % or px.",
+        "Attach the selected anchor to an X/Y coordinate inside the safe area; "
+        "use % or px.",
     )
     coordinate_group.add_argument(
         "--position-x",
         type=_relative_length_argument_type,
         default=None,
         metavar="LENGTH",
-        help="Horizontal anchor coordinate measured from the left edge.",
+        help="Horizontal anchor coordinate measured from the safe area's left edge.",
     )
     coordinate_group.add_argument(
         "--position-y",
         type=_relative_length_argument_type,
         default=None,
         metavar="LENGTH",
-        help="Vertical anchor coordinate measured from the top edge.",
+        help="Vertical anchor coordinate measured from the safe area's top edge.",
     )
     coordinate_group.add_argument(
         "--anchor",
@@ -316,6 +322,7 @@ def _build_request(
             "margin_right": args.margin_right,
             "margin_top": args.margin_top,
             "margin_bottom": args.margin_bottom,
+            "max_width": args.max_width,
             "position_x": args.position_x,
             "position_y": args.position_y,
         }.items()
@@ -378,13 +385,14 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
         request.subtitle_config, geometry
     )
     placement = resolve_cue_placement(resolved_subtitle_config, geometry)
-    if placement is None:
+    if resolved_subtitle_config.layout.has_custom_coordinates:
         placement_description = (
-            f"position {resolved_subtitle_config.layout.position.value}"
+            f"anchor {placement.anchor.value} at "
+            f"({placement.position_x}, {placement.position_y})"
         )
     else:
         placement_description = (
-            f"anchor {placement.anchor.value} at "
+            f"position {resolved_subtitle_config.layout.position.value} at "
             f"({placement.position_x}, {placement.position_y})"
         )
     progress(

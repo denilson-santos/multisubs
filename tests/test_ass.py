@@ -58,6 +58,7 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
         "&H66000000,0,0,0,0,100,100,0,0,4,0,2,2,86,86,154,1"
     ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
+    assert r"{\an2\pos(540,1766)}" in content
     assert "0:00:00.00,0:01:01.24" in content
     assert "\\{mundo\\}" in content
     assert "\\N字幕" in content
@@ -148,9 +149,34 @@ def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
     )
 
     content = path.read_text(encoding="utf-8")
-    assert content.count(r"{\an2\pos(540,1651)}") == 2
+    assert content.count(r"{\an2\pos(540,1519)}") == 2
     assert r"{\an9}" not in content
     assert r"Text, \{\\an9\}\\\\value" in content
+
+
+def test_named_center_uses_safe_rectangle_center_with_asymmetric_margins(
+    tmp_path: Path,
+):
+    path = tmp_path / "center.ass"
+    config = validate_subtitle_config(
+        None,
+        position="center",
+        relative_values={
+            "margin_left": "40px",
+            "margin_right": "140px",
+            "margin_top": "100px",
+            "margin_bottom": "300px",
+        },
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "Centered"}],
+        config,
+        GEOMETRY,
+    )
+
+    assert r"{\an5\pos(490,860)}Centered" in path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

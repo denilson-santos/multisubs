@@ -45,9 +45,9 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-4 | The tool must support transcription and translation tasks. Translation output is English. |
 | FR-5 | The tool must reject translation with turbo and English-only Whisper models. |
 | FR-6 | The tool must generate a JSON transcript with metadata, an SRT subtitle file, and an ASS subtitle file before rendering. |
-| FR-7 | Subtitle cues should use word-level alignment when available and favor readable boundaries such as sentence punctuation and meaningful pauses. |
+| FR-7 | Subtitle cues should use word-level alignment when available, favor readable boundaries such as sentence punctuation and meaningful pauses, and adapt visual wrapping to the resolved layout width, resolved-font metrics when available, and line limit without losing transcript content or creating avoidable orphan lines. |
 | FR-8 | The tool must render the ASS subtitles into a new video with FFmpeg. |
-| FR-9 | The user must be able to select a complete subtitle layout preset (`auto`, `landscape`, `portrait`, `square`, `vertical-social`, `upper-third`, or `centered`) and override its appearance and layout through explicit CLI options, including unit-bearing font, backdrop, shadow, and margin values, nine named subtitle positions, or a safe custom X/Y coordinate paired with one of the nine anchors. |
+| FR-9 | The user must be able to select a complete subtitle layout preset (`auto`, `landscape`, `portrait`, `square`, `vertical-social`, `upper-third`, or `centered`) and override its appearance and layout through explicit CLI options, including unit-bearing font, backdrop, shadow, margin, and maximum-width values, nine named subtitle positions, or a safe-area-local custom X/Y coordinate paired with one of the nine anchors. Margins define the safe containing rectangle; percentage maximum width and custom coordinates resolve inside it. |
 | FR-10 | With --keep-transcriptions, the tool must retain JSON, SRT, and ASS files in a subtitles subdirectory next to the rendered video. |
 | FR-11 | Without --keep-transcriptions, a successful run must retain the JSON transcript and remove the temporary SRT and ASS files after rendering. |
 | FR-12 | Generated files and output directories must receive a numeric suffix when a collision would otherwise occur. |
@@ -64,7 +64,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | Traceability | Include a schema version, source path, selected language, task, model, creation time, duration, segment count, and resolved video geometry in the JSON output. |
 | Usability | Show progress for geometry detection, model loading, transcription, alignment, artifact generation, subtitle rendering, and model-load retries. |
 | Safety | Do not overwrite existing output files or directories. |
-| Caption readability | Aim for at most two subtitle lines, with a preferred line length of 42 characters and timing-aware cue splitting. |
+| Caption readability | Aim for at most two subtitle lines using resolved-font metrics with a visible Unicode-estimate fallback, keep a complete fitting cue unbroken, avoid unnecessary one-word final lines, split timed cues when required, and never mutate transcript content when shaping differs. |
 
 ## Out of scope
 
@@ -89,7 +89,9 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 10. Landscape, portrait, square, rotated, and non-square-pixel inputs use an ASS canvas matching the dimensions seen by the autorotated FFmpeg render graph.
 11. Equivalent percentage-based font and margin values produce equivalent normalized subtitle bounds across supported video resolutions, while pixel values remain fixed in the PlayRes canvas.
 12. `--layout auto` classifies the autorotated render canvas using the documented aspect-ratio bands, and explicit position or margin options override only their corresponding preset fields before safe-area validation.
-13. A custom X/Y coordinate uses the autorotated PlayRes canvas, keeps its anchor inside the selected safe rectangle, and appears in generated ASS and JSON metadata without changing SRT text or timing.
+13. A custom X/Y coordinate is resolved locally inside the selected safe rectangle and then converted to the autorotated PlayRes canvas; the anchor stays inside that rectangle and both coordinate spaces appear clearly in generated metadata without changing SRT text or timing.
+14. A cue that fits the width budget with its resolved font remains on one line; when a break is required, equivalent semantic candidates avoid an unnecessary one-word final line, and JSON identifies the resolved font or estimate used.
+15. A `100%` maximum width means the complete width remaining after horizontal margins; the effective wrapping budget is then limited only by that ceiling and the space available from the selected anchor to the safe-area edges.
 
 ## Constraints and risks
 

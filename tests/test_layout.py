@@ -7,12 +7,16 @@ from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import (
     classify_layout_preset,
+    resolve_ass_horizontal_margins,
     resolve_cue_placement,
     resolve_relative_length,
     resolve_safe_rectangle,
     resolve_subtitle_config,
+    resolve_wrapping_metrics,
+    unicode_display_width,
 )
 from multisubs.models import SubtitleLayoutPreset, SubtitlePosition, VideoGeometry
+from multisubs.text_measurement import build_unicode_text_measurer
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -130,7 +134,52 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     assert resolved.layout.margin_bottom == 72
 
 
-def test_custom_coordinates_resolve_against_render_axes():
+def test_layout_presets_resolve_width_and_two_line_baselines():
+    portrait_geometry = replace(
+        GEOMETRY,
+        coded_width=1080,
+        coded_height=1920,
+        render_width=1080,
+        render_height=1920,
+        rotation_degrees=90,
+        display_aspect_ratio=Fraction(9, 16),
+    )
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(None, layout_preset="portrait"),
+        portrait_geometry,
+    )
+
+    assert resolved.layout.max_width == 908
+    assert resolved.layout.max_lines == 2
+    assert isinstance(resolved.appearance.font_size, int)
+    metrics = resolve_wrapping_metrics(
+        resolved,
+        portrait_geometry,
+        text_measurer=build_unicode_text_measurer(
+            resolved.appearance.font,
+            resolved.appearance.font_size,
+        ),
+    )
+    assert metrics.safe_width == 908
+    assert metrics.max_width == 908
+    assert metrics.anchor_width == 908
+    assert metrics.width_budget == 908
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("abc", 3),
+        ("e\u0301", 1),
+        ("字幕", 4),
+        ("🙂", 2),
+    ],
+)
+def test_unicode_display_width_is_conservative_without_string_length(text, expected):
+    assert unicode_display_width(text) == expected
+
+
+def test_custom_coordinates_resolve_against_safe_area_axes():
     config = validate_subtitle_config(
         None,
         relative_values={
@@ -143,25 +192,24 @@ def test_custom_coordinates_resolve_against_render_axes():
     resolved = resolve_subtitle_config(config, GEOMETRY)
     placement = resolve_cue_placement(resolved, GEOMETRY)
 
-    assert resolved.layout.position_x == 960
-    assert resolved.layout.position_y == 929
-    assert placement is not None
-    assert (placement.position_x, placement.position_y) == (960, 929)
+    assert resolved.layout.position_x == 845
+    assert resolved.layout.position_y == 873
+    assert (placement.position_x, placement.position_y) == (960, 873)
     assert placement.anchor is SubtitlePosition.BOTTOM_CENTER
 
 
 @pytest.mark.parametrize(
     ("anchor", "position_x", "position_y"),
     [
-        (SubtitlePosition.TOP_LEFT, "6%", "0%"),
+        (SubtitlePosition.TOP_LEFT, "0%", "0%"),
         (SubtitlePosition.TOP_CENTER, "50%", "0%"),
-        (SubtitlePosition.TOP_RIGHT, "94%", "0%"),
-        (SubtitlePosition.MIDDLE_LEFT, "6%", "50%"),
+        (SubtitlePosition.TOP_RIGHT, "100%", "0%"),
+        (SubtitlePosition.MIDDLE_LEFT, "0%", "50%"),
         (SubtitlePosition.CENTER, "50%", "50%"),
-        (SubtitlePosition.MIDDLE_RIGHT, "94%", "50%"),
-        (SubtitlePosition.BOTTOM_LEFT, "6%", "94%"),
-        (SubtitlePosition.BOTTOM_CENTER, "50%", "94%"),
-        (SubtitlePosition.BOTTOM_RIGHT, "94%", "94%"),
+        (SubtitlePosition.MIDDLE_RIGHT, "100%", "50%"),
+        (SubtitlePosition.BOTTOM_LEFT, "0%", "100%"),
+        (SubtitlePosition.BOTTOM_CENTER, "50%", "100%"),
+        (SubtitlePosition.BOTTOM_RIGHT, "100%", "100%"),
     ],
 )
 def test_all_custom_anchors_resolve_inside_landscape_safe_rectangle(
@@ -175,16 +223,15 @@ def test_all_custom_anchors_resolve_inside_landscape_safe_rectangle(
 
     placement = resolve_cue_placement(config, GEOMETRY)
 
-    assert placement is not None
     assert placement.anchor is anchor
 
 
 @pytest.mark.parametrize(
     ("position_x", "position_y", "message"),
     [
-        ("0%", "86%", "position-x.*outside"),
-        ("50%", "100%", "position-y.*outside"),
-        ("100%", "50%", "position-x.*outside"),
+        ("0%", "86%", "position-x.*no room"),
+        ("50%", "0%", "position-y.*no room"),
+        ("100%", "50%", "position-x.*no room"),
     ],
 )
 def test_custom_anchor_outside_safe_rectangle_is_rejected(
@@ -200,10 +247,10 @@ def test_custom_anchor_outside_safe_rectangle_is_rejected(
         resolve_cue_placement(config, GEOMETRY)
 
 
-def test_custom_pixel_coordinates_are_bounded_by_the_canvas():
+def test_custom_pixel_coordinates_are_bounded_by_the_safe_area():
     config = validate_subtitle_config(
         None,
-        relative_values={"position_x": "1921px", "position_y": "929px"},
+        relative_values={"position_x": "1691px", "position_y": "500px"},
     )
 
     with pytest.raises(ValidationError, match="position-x"):
@@ -235,8 +282,70 @@ def test_custom_percentage_coordinates_support_canvas_edges(
 
     placement = resolve_cue_placement(config, GEOMETRY)
 
-    assert placement is not None
     assert (placement.position_x, placement.position_y) == expected
+
+
+def test_named_positions_resolve_to_safe_area_anchor_points():
+    config = validate_subtitle_config(
+        None,
+        position="center",
+        relative_values={
+            "margin_left": "100px",
+            "margin_right": "300px",
+            "margin_top": "40px",
+            "margin_bottom": "140px",
+        },
+    )
+
+    placement = resolve_cue_placement(config, GEOMETRY)
+
+    assert placement.anchor is SubtitlePosition.CENTER
+    assert (placement.position_x, placement.position_y) == (860, 490)
+
+
+def test_custom_offset_and_margins_define_anchor_capacity_inside_safe_area():
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "margin_left": "100px",
+            "margin_right": "100px",
+            "position_x": "600px",
+            "position_y": "0px",
+            "max_width": "100%",
+        },
+        anchor="top-left",
+    )
+
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    placement = resolve_cue_placement(resolved, GEOMETRY)
+    metrics = resolve_wrapping_metrics(
+        resolved,
+        GEOMETRY,
+        text_measurer=build_unicode_text_measurer("Roboto", 43),
+    )
+
+    assert resolved.layout.max_width == 1720
+    assert (placement.position_x, placement.position_y) == (700, 0)
+    assert metrics.safe_width == 1720
+    assert metrics.max_width == 1720
+    assert metrics.anchor_width == 1120
+    assert metrics.width_budget == 1120
+    assert resolve_ass_horizontal_margins(resolved, GEOMETRY) == (700, 100)
+
+
+def test_max_width_percentage_is_recalculated_after_margin_changes():
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "margin_left": "100px",
+            "margin_right": "300px",
+            "max_width": "50%",
+        },
+    )
+
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+
+    assert resolved.layout.max_width == 760
 
 
 def test_auto_preset_uses_post_rotation_render_aspect_ratio():

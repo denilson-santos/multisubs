@@ -8,7 +8,13 @@ import pytest
 from multisubs import transcriber
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import TranscriptionError
+from multisubs.layout import resolve_subtitle_config
 from multisubs.models import TranscriptDocument, VideoGeometry
+from multisubs.text_measurement import (
+    TextMeasurementInfo,
+    TextMeasurer,
+    build_unicode_text_measurer,
+)
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -21,6 +27,18 @@ GEOMETRY = VideoGeometry(
     display_aspect_ratio=Fraction(16, 9),
     duration_seconds=12.5,
 )
+
+
+@pytest.fixture(autouse=True)
+def _use_hermetic_text_measurement(monkeypatch):
+    def build(appearance, *, language=None):
+        del language
+        return build_unicode_text_measurer(
+            appearance.font,
+            appearance.font_size,
+        )
+
+    monkeypatch.setattr("multisubs.layout.build_text_measurer", build)
 
 
 def _word(text: str, start: float, end: float, **extra):
@@ -54,6 +72,242 @@ def test_build_subtitle_segments_uses_coarse_fallback_without_word_timestamps():
     assert segments == [
         {"id": 0, "start": 1.0, "end": 2.5, "text": "Fallback text", "words": []}
     ]
+
+
+def test_adaptive_wrapping_uses_resolved_width_and_preserves_timed_words():
+    words = [
+        _word(word, index * 0.25, index * 0.25 + 0.2)
+        for index, word in enumerate(
+            "This is a deliberately long subtitle sentence that needs layout aware "
+            "wrapping for the selected video geometry".split()
+        )
+    ]
+    semantic = transcriber._build_subtitle_segments([{"words": words}])
+    resolved = resolve_subtitle_config(validate_subtitle_config(None), GEOMETRY)
+
+    display, metrics = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
+
+    assert metrics.width_budget == 1690
+    assert len(display) == 1
+    assert display[0]["text"].count("\n") == 1
+    assert display[0]["semantic_text"].replace(" ", "") == "".join(
+        word["word"] for word in words
+    ).replace(" ", "")
+    assert [word["word"] for word in display[0]["words"]] == [
+        word["word"] for word in words
+    ]
+
+
+def test_adaptive_wrapping_changes_with_portrait_geometry_and_font_size():
+    portrait_geometry = VideoGeometry(
+        stream_index=0,
+        coded_width=1080,
+        coded_height=1920,
+        render_width=1080,
+        render_height=1920,
+        rotation_degrees=90,
+        sample_aspect_ratio=Fraction(1, 1),
+        display_aspect_ratio=Fraction(9, 16),
+        duration_seconds=12.5,
+    )
+    semantic = [
+        {
+            "id": 0,
+            "start": 0.0,
+            "end": 1.0,
+            "text": "A long subtitle line changes its visual break with geometry",
+            "words": [],
+        }
+    ]
+    landscape_config = resolve_subtitle_config(validate_subtitle_config(None), GEOMETRY)
+    portrait_config = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            relative_values={"font_size": "8%"},
+        ),
+        portrait_geometry,
+    )
+
+    landscape_display, landscape_metrics = transcriber.layout_subtitle_cues(
+        semantic, landscape_config, GEOMETRY
+    )
+    portrait_display, portrait_metrics = transcriber.layout_subtitle_cues(
+        semantic, portrait_config, portrait_geometry
+    )
+
+    assert landscape_metrics.width_budget == 1690
+    assert portrait_metrics.width_budget == 908
+    assert landscape_display[0]["text"] != portrait_display[0]["text"]
+
+
+@pytest.mark.parametrize("max_lines", [1, 2, 3])
+def test_adaptive_wrapping_honors_internal_max_line_limit(max_lines):
+    text = "one two three four five six seven eight nine ten eleven twelve"
+    config = validate_subtitle_config(
+        None,
+        max_lines=max_lines,
+        relative_values={"max_width": "40%"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    semantic = [{"id": 0, "start": 0.0, "end": 1.0, "text": text, "words": []}]
+
+    display, _ = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
+
+    assert len(display) == 1
+    assert display[0]["text"].count("\n") + 1 <= max_lines
+
+
+def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
+    words = [
+        _word(word, index * 0.4, index * 0.4 + 0.3)
+        for index, word in enumerate("one two three four five six seven eight".split())
+    ]
+    semantic = transcriber._build_subtitle_segments([{"words": words}])
+    config = validate_subtitle_config(
+        None,
+        max_lines=1,
+        relative_values={"max_width": "30%"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+
+    display, metrics = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
+
+    assert len(display) > 1
+    assert all("\n" not in cue["text"] for cue in display)
+    assert all(cue["start"] <= cue["end"] for cue in display)
+    assert [word["word"] for cue in display for word in cue["words"]] == [
+        word["word"] for word in words
+    ]
+    assert metrics.max_lines == 1
+
+
+def test_adaptive_wrapping_keeps_long_unbroken_tokens_intact():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_width": "1px"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    semantic = [
+        {
+            "id": 0,
+            "start": 0.0,
+            "end": 1.0,
+            "text": "supercalifragilisticexpialidocious",
+            "words": [],
+        }
+    ]
+
+    display, _ = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
+
+    assert display[0]["text"] == semantic[0]["text"]
+
+
+def test_adaptive_wrapping_handles_cjk_without_inventing_spaces():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_width": "20px"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    semantic = [
+        {
+            "id": 0,
+            "start": 0.0,
+            "end": 1.0,
+            "text": "这是一个没有空格的字幕句子",
+            "words": [],
+        }
+    ]
+
+    display, _ = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
+
+    assert " " not in display[0]["text"]
+    assert display[0]["text"].replace("\n", "") == semantic[0]["text"]
+
+
+def test_font_metrics_prevent_the_reported_premature_portuguese_break():
+    text = (
+        "divulgou um vídeo nas redes sociais agradecendo o apoio recebido nos "
+        "últimos dias."
+    )
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "margin_left": "0%",
+            "margin_right": "0%",
+            "max_width": "100%",
+        },
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    measurer = TextMeasurer(
+        TextMeasurementInfo(
+            mode="font-metrics",
+            requested_font="Roboto",
+            resolved_font="Roboto",
+            resolved_style="Regular",
+            font_source="fonts-dir",
+            shaping="raqm",
+            metric_size=43,
+        ),
+        lambda value: 1800.0 if value == text else len(value) * 20.0,
+    )
+
+    display, metrics = transcriber.layout_subtitle_cues(
+        [{"id": 0, "start": 0.0, "end": 4.0, "text": text, "words": []}],
+        resolved,
+        GEOMETRY,
+        language="pt",
+        text_measurer=measurer,
+    )
+
+    assert metrics.width_budget == 1920
+    assert display[0]["text"] == text
+
+
+def test_global_partition_avoids_an_avoidable_one_word_final_line():
+    words = [
+        _word(word, index * 0.2, index * 0.2 + 0.15)
+        for index, word in enumerate(
+            "one two three four five six seven eight nine".split()
+        )
+    ]
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            relative_values={"max_width": "800px"},
+        ),
+        GEOMETRY,
+    )
+    measurer = TextMeasurer(
+        TextMeasurementInfo(
+            mode="font-metrics",
+            requested_font="Roboto",
+            resolved_font="Roboto",
+            resolved_style="Regular",
+            font_source="fonts-dir",
+            shaping="raqm",
+            metric_size=43,
+        ),
+        lambda value: len(value.split()) * 90.0,
+    )
+
+    display, _ = transcriber.layout_subtitle_cues(
+        [
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.8,
+                "text": "one two three four five six seven eight nine",
+                "words": words,
+            }
+        ],
+        resolved,
+        GEOMETRY,
+        text_measurer=measurer,
+    )
+
+    line_lengths = [len(line.split()) for line in display[0]["text"].splitlines()]
+    assert len(display) == 1
+    assert line_lengths in ([4, 5], [5, 4])
 
 
 def test_build_subtitle_segments_rejects_invalid_coarse_timestamps():
@@ -261,6 +515,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "top": "0px",
                 "bottom": "0px",
             },
+            "max_width": None,
         },
         "resolved": {
             "font_size": 43,
@@ -272,6 +527,27 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "top": 0,
                 "bottom": 65,
             },
+            "max_width": 1690,
+            "max_lines": 2,
+        },
+        "wrapping": {
+            "safe_width": 1690,
+            "max_width": 1690,
+            "anchor_width": 1690,
+            "width_budget": 1690,
+            "font_size": 43,
+            "backdrop_size": 0,
+            "shadow_size": 2,
+            "max_lines": 2,
+        },
+        "text_measurement": {
+            "mode": "unicode-estimate",
+            "requested_font": "Roboto",
+            "resolved_font": None,
+            "resolved_style": None,
+            "font_source": "unresolved",
+            "shaping": None,
+            "metric_size": None,
         },
         "safe_rectangle": {
             "left": 115,
@@ -280,6 +556,12 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "bottom": 1015,
             "width": 1690,
             "height": 1015,
+        },
+        "resolved_coordinates": {
+            "x": 960,
+            "y": 1015,
+            "anchor": "bottom-center",
+            "coordinate_space": "playres",
         },
     }
     assert srt_path.exists() and ass_path.exists()
@@ -378,9 +660,11 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
         "x": "50%",
         "y": "86%",
         "anchor": "bottom-center",
+        "coordinate_space": "safe-area",
     }
     assert rendering["resolved_coordinates"] == {
         "x": 960,
-        "y": 929,
+        "y": 873,
         "anchor": "bottom-center",
+        "coordinate_space": "playres",
     }

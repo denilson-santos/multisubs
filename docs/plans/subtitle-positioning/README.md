@@ -30,12 +30,12 @@ This table is the source of truth for the package. Status values follow the
 | 3 | [Relative units](03-relative-units.md) | Done | 0, 1 | [#12](https://github.com/denilson-santos/multisubs/pull/12) |
 | 4 | [Layout presets](04-layout-presets.md) | Done | 0–3 | [#13](https://github.com/denilson-santos/multisubs/pull/13) |
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Done | 0–3 | [#15](https://github.com/denilson-santos/multisubs/pull/15) |
-| 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Planned | 0, 1, 3, 4 | — |
+| 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | In review | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
 | 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
 Package progress: 6 of 9 plans done; the breaking CLI cutover and major-version
-release are complete, and Feature 6 is the next numbered plan.
+release are complete, and Feature 6 is currently in progress.
 
 ## Delivery-gate status
 
@@ -75,7 +75,7 @@ Layout:
 --margin-left 8%
 --margin-right 8%
 --margin-bottom 8%
---max-width 84%
+--max-width 100%
 --max-lines 2
 ~~~
 
@@ -86,6 +86,13 @@ Exact placement:
 --position-y 86%
 --anchor bottom-center
 ~~~
+
+Margins define the safe containing rectangle. Percentage `max-width` and custom
+X/Y coordinates resolve inside that rectangle, so `100%` means all width left
+after the horizontal margins. Named `--position` values are semantic shortcuts
+for the matching safe-area anchor point; custom coordinates use an explicit
+anchor and a local offset from the safe area's left/top origin. Both modes
+resolve to private ASS `\an`/`\pos` event placement.
 
 Preview:
 
