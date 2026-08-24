@@ -15,7 +15,12 @@ from multisubs.ass import (
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import ArtifactError
 from multisubs.layout import resolve_subtitle_config
-from multisubs.models import CuePlacement, SubtitlePosition, VideoGeometry
+from multisubs.models import (
+    AssDrawingEvent,
+    CuePlacement,
+    SubtitlePosition,
+    VideoGeometry,
+)
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -112,6 +117,29 @@ def test_escape_ass_text_neutralizes_override_syntax_and_line_endings():
     assert escape_ass_text("{\\an8}\r\ntext") == "\\{\\\\an8\\}\\Ntext"
 
 
+def test_write_ass_serializes_generated_guide_events_and_rejects_raw_newlines(
+    tmp_path: Path,
+):
+    path = tmp_path / "guides.ass"
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "sample"}],
+        validate_subtitle_config(None),
+        GEOMETRY,
+        guide_events=(AssDrawingEvent(0.0, 1.0, r"{\p1}m 0 0 l 1 1{\p0}"),),
+    )
+    assert r"{\p1}m 0 0 l 1 1{\p0}" in path.read_text(encoding="utf-8")
+
+    with pytest.raises(ArtifactError, match="guide events"):
+        write_ass(
+            path,
+            [{"start": 0.0, "end": 1.0, "text": "sample"}],
+            validate_subtitle_config(None),
+            GEOMETRY,
+            guide_events=(AssDrawingEvent(0.0, 1.0, "bad\ntext"),),
+        )
+
+
 @pytest.mark.parametrize(
     ("position", "alignment"),
     [
@@ -157,6 +185,31 @@ def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
     assert content.count(r"{\an2\pos(540,1651)}") == 2
     assert r"{\an9}" not in content
     assert r"Text, \{\\an9\}\\\\value" in content
+
+
+def test_ass_can_preserve_intentional_line_breaks_without_changing_default(
+    tmp_path: Path,
+):
+    preserved_path = tmp_path / "preserved.ass"
+    write_ass(
+        preserved_path,
+        [{"start": 0.0, "end": 1.0, "text": "one\ntwo"}],
+        validate_subtitle_config(None),
+        GEOMETRY,
+        preserve_line_breaks=True,
+    )
+
+    preserved = preserved_path.read_text(encoding="utf-8")
+    assert r"{\q2}one\Ntwo" in preserved
+
+    default_path = tmp_path / "default.ass"
+    write_ass(
+        default_path,
+        [{"start": 0.0, "end": 1.0, "text": "one\ntwo"}],
+        validate_subtitle_config(None),
+        GEOMETRY,
+    )
+    assert r"{\q2}" not in default_path.read_text(encoding="utf-8")
 
 
 def test_named_center_uses_native_alignment_and_actual_margins(

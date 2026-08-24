@@ -21,6 +21,7 @@ ProgressReporter = Callable[[str], None] | None
 MAX_VIDEO_DIMENSION = 32_768
 MAX_ASPECT_RATIO_COMPONENT = 1_000_000
 FFPROBE_TIMEOUT_SECONDS = 30
+MAX_PREVIEW_TIMESTAMP_SECONDS = 86_400.0
 
 
 def validate_ffmpeg_support() -> None:
@@ -354,6 +355,90 @@ def embed_subtitles(
                 pass
 
 
+def render_subtitle_preview(
+    input_path: str | Path,
+    ass_path: str | Path,
+    output_dir: str | Path,
+    *,
+    timestamp: float,
+    geometry: VideoGeometry | None = None,
+    fonts_dir: str | Path | None = None,
+    progress: ProgressReporter = None,
+) -> str:
+    """Render exactly one subtitled PNG frame and publish it collision-safely."""
+    source_path = _require_file(input_path, "Input video")
+    subtitle_path = _require_file(ass_path, "ASS subtitle file")
+    resolved_geometry = geometry or probe_video_geometry(source_path)
+    _validate_preview_timestamp(timestamp, resolved_geometry)
+    resolved_fonts_dir = _require_directory(fonts_dir, "Fonts directory")
+    destination_dir = _normalise_output_dir(output_dir)
+    final_path = Path(
+        get_unique_path(destination_dir / f"{source_path.stem}-subtitle-preview.png")
+    )
+    temporary_path = _temporary_media_path(final_path)
+    try:
+        ffmpeg = _load_ffmpeg_python()
+        _report(progress, f"Rendering subtitle preview into '{final_path.name}'...")
+        try:
+            output_stream = _build_preview_stream(
+                ffmpeg,
+                source_path,
+                subtitle_path,
+                temporary_path,
+                resolved_geometry,
+                timestamp,
+                resolved_fonts_dir,
+            )
+            output_stream.run(
+                overwrite_output=True, capture_stdout=True, capture_stderr=True
+            )
+        except ffmpeg.Error as exc:
+            raise RenderingError(
+                f"FFmpeg could not render subtitle preview '{final_path}': "
+                f"{_short_output(_error_output(exc))}"
+            ) from exc
+        except OSError as exc:
+            raise RenderingError(
+                f"FFmpeg could not render subtitle preview for '{source_path}': {exc}"
+            ) from exc
+
+        try:
+            if os.path.lexists(final_path):
+                final_path = Path(get_unique_path(final_path))
+            os.replace(temporary_path, final_path)
+        except OSError as exc:
+            raise ArtifactError(
+                f"Could not publish subtitle preview '{final_path}': {exc}"
+            ) from exc
+        _report(progress, "Subtitle preview rendered successfully.")
+        return str(final_path)
+    finally:
+        if temporary_path.exists():
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+
+
+def _validate_preview_timestamp(timestamp: object, geometry: VideoGeometry) -> float:
+    if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+        raise ValidationError("Preview timestamp must be a finite, non-negative number")
+    value = float(timestamp)
+    if not math.isfinite(value) or value < 0:
+        raise ValidationError("Preview timestamp must be a finite, non-negative number")
+    if value > MAX_PREVIEW_TIMESTAMP_SECONDS:
+        raise ValidationError(
+            "Preview timestamp must not exceed "
+            f"{MAX_PREVIEW_TIMESTAMP_SECONDS:g} seconds"
+        )
+    if geometry.duration_seconds is not None and value > geometry.duration_seconds:
+        raise ValidationError(
+            f"Preview timestamp ({value:.3f}s) is later than the video duration "
+            f"({geometry.duration_seconds:.3f}s)"
+        )
+    return value
+
+
 def _require_file(path: str | Path, label: str) -> Path:
     candidate = Path(path).expanduser().resolve(strict=False)
     if not candidate.exists() or not candidate.is_file():
@@ -412,7 +497,7 @@ def _temporary_media_path(final_path: Path) -> Path:
         return Path(name)
     except OSError as exc:
         raise ArtifactError(
-            f"Could not create temporary video near '{final_path}': {exc}"
+            f"Could not create temporary media near '{final_path}': {exc}"
         ) from exc
     finally:
         if descriptor is not None:
@@ -448,6 +533,35 @@ def _build_output_stream(
     )
     audio_stream = input_stream["a?"]
     return ffmpeg.output(video_stream, audio_stream, str(output_path), acodec="copy")
+
+
+def _build_preview_stream(
+    ffmpeg: Any,
+    input_path: Path,
+    ass_path: Path,
+    output_path: Path,
+    geometry: VideoGeometry,
+    timestamp: float,
+    fonts_dir: Path | None = None,
+) -> Any:
+    """Build a one-frame preview graph with the final renderer's subtitle filter."""
+    input_stream = ffmpeg.input(str(input_path), ss=timestamp, autorotate=1)
+    filter_options = {
+        "filename": str(ass_path),
+        "original_size": geometry.original_size,
+    }
+    if fonts_dir is not None:
+        filter_options["fontsdir"] = str(fonts_dir)
+    video_stream = input_stream[str(geometry.stream_index)].filter(
+        "subtitles", **filter_options
+    )
+    return ffmpeg.output(
+        video_stream,
+        str(output_path),
+        format="image2",
+        vcodec="png",
+        vframes=1,
+    )
 
 
 def _error_output(error: Any) -> str:

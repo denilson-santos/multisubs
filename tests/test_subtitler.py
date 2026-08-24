@@ -10,10 +10,12 @@ from multisubs.errors import DependencyError, RenderingError, ValidationError
 from multisubs.models import VideoGeometry
 from multisubs.subtitler import (
     _build_output_stream,
+    _build_preview_stream,
     _parse_probe_payload,
     _short_output,
     embed_subtitles,
     probe_video_geometry,
+    render_subtitle_preview,
     validate_ffmpeg_support,
 )
 
@@ -95,6 +97,107 @@ def test_subtitle_filter_includes_fonts_directory_only_when_supplied(
     assert "fontsdir=" in with_fonts
     assert "custom fonts" in with_fonts
     assert "fontsdir=" not in without_fonts
+
+
+def test_preview_filter_is_one_frame_and_uses_structured_subtitle_options(
+    tmp_path: Path,
+):
+    source = tmp_path / "video source.mp4"
+    subtitle = tmp_path / "caption,odd.ass"
+    output = tmp_path / "preview frame.png"
+
+    command = [
+        str(argument)
+        for argument in ffmpeg.compile(
+            _build_preview_stream(ffmpeg, source, subtitle, output, _geometry(), 2.5)
+        )
+    ]
+    command_text = " ".join(command)
+
+    assert "-ss 2.5" in command_text
+    assert "-autorotate" in command
+    assert "subtitles=filename=" in command_text
+    assert "original_size=1920x1080" in command_text
+    assert "-vframes" in command and command[command.index("-vframes") + 1] == "1"
+    assert "-f" in command and command[command.index("-f") + 1] == "image2"
+    assert "-vcodec" in command and command[command.index("-vcodec") + 1] == "png"
+
+
+def test_render_preview_publishes_collision_safe_png_and_cleans_temp(
+    tmp_path: Path, monkeypatch
+):
+    source = tmp_path / "video.mp4"
+    subtitle = tmp_path / "subtitle.ass"
+    output_dir = tmp_path / "output"
+    source.write_bytes(b"input")
+    subtitle.write_text("ASS", encoding="utf-8")
+    output_dir.mkdir()
+    (output_dir / "video-subtitle-preview.png").write_bytes(b"existing")
+
+    class FakeOutput:
+        def __init__(self, output_path: Path):
+            self.output_path = output_path
+
+        def run(self, **kwargs):
+            self.output_path.write_bytes(b"png")
+
+    fake_ffmpeg = SimpleNamespace(Error=RuntimeError)
+    monkeypatch.setattr("multisubs.subtitler._load_ffmpeg_python", lambda: fake_ffmpeg)
+    monkeypatch.setattr(
+        "multisubs.subtitler._build_preview_stream",
+        lambda _ffmpeg, _source, _subtitle, output_path, *_args: FakeOutput(
+            output_path
+        ),
+    )
+
+    result = Path(
+        render_subtitle_preview(
+            source,
+            subtitle,
+            output_dir,
+            timestamp=2.0,
+            geometry=_geometry(),
+        )
+    )
+
+    assert result.name == "video-subtitle-preview (1).png"
+    assert result.read_bytes() == b"png"
+    assert list(output_dir.glob(".*.png")) == []
+
+
+def test_render_preview_failure_never_publishes_partial_png(
+    tmp_path: Path, monkeypatch
+):
+    source = tmp_path / "video.mp4"
+    subtitle = tmp_path / "subtitle.ass"
+    output_dir = tmp_path / "output"
+    source.write_bytes(b"input")
+    subtitle.write_text("ASS", encoding="utf-8")
+
+    class FakeFfmpegError(Exception):
+        stderr = "preview failed"
+
+    class FakeOutput:
+        def run(self, **kwargs):
+            raise FakeFfmpegError()
+
+    fake_ffmpeg = SimpleNamespace(Error=FakeFfmpegError)
+    monkeypatch.setattr("multisubs.subtitler._load_ffmpeg_python", lambda: fake_ffmpeg)
+    monkeypatch.setattr(
+        "multisubs.subtitler._build_preview_stream",
+        lambda *_args: FakeOutput(),
+    )
+
+    with pytest.raises(RenderingError, match="preview failed"):
+        render_subtitle_preview(
+            source,
+            subtitle,
+            output_dir,
+            timestamp=2.0,
+            geometry=_geometry(),
+        )
+
+    assert not output_dir.exists() or not list(output_dir.iterdir())
 
 
 def test_probe_parser_normalizes_landscape_geometry_and_duration():

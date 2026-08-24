@@ -6,12 +6,10 @@ import json
 import math
 import sys
 import time
-import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from fractions import Fraction
-from functools import cache
 from numbers import Real
 from pathlib import Path
 from typing import Any, cast
@@ -24,7 +22,6 @@ from .config import validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
 from .layout import (
     WrappingMetrics,
-    estimate_text_width,
     resolve_cue_placement,
     resolve_native_layout_region,
     resolve_subtitle_config,
@@ -42,6 +39,45 @@ from .models import (
 )
 from .text_measurement import TextMeasurer
 from .utils import atomic_write_text, find_unique_stem
+from .wrapping import (
+    PAUSE_BREAK_THRESHOLD as _WRAPPING_PAUSE_BREAK_THRESHOLD,
+)
+from .wrapping import (
+    boundary_priority as _wrapping_boundary_priority,
+)
+from .wrapping import (
+    ends_clause as _wrapping_ends_clause,
+)
+from .wrapping import (
+    ends_sentence as _wrapping_ends_sentence,
+)
+from .wrapping import (
+    grapheme_clusters as _wrapping_grapheme_clusters,
+)
+from .wrapping import (
+    has_significant_pause as _wrapping_has_significant_pause,
+)
+from .wrapping import (
+    is_cjk_or_emoji as _wrapping_is_cjk_or_emoji,
+)
+from .wrapping import (
+    join_text_parts as _wrapping_join_text_parts,
+)
+from .wrapping import (
+    line_count as _wrapping_line_count,
+)
+from .wrapping import (
+    normalise_display_text as _wrapping_normalise_display_text,
+)
+from .wrapping import (
+    split_words_for_layout as _wrapping_split_words_for_layout,
+)
+from .wrapping import (
+    words_to_text as _wrapping_words_to_text,
+)
+from .wrapping import (
+    wrap_subtitle_text as _wrapping_wrap_subtitle_text,
+)
 
 MAX_CUE_DURATION = 6.0
 PAUSE_BREAK_THRESHOLD = 0.45
@@ -670,100 +706,6 @@ def _append_cue(
     )
 
 
-def _words_to_text(words: Sequence[Mapping[str, Any]]) -> str:
-    return _join_text_parts(str(word["word"]).strip() for word in words)
-
-
-def _join_text_parts(parts: Sequence[str] | Any) -> str:
-    """Join word-like parts without inserting spaces into CJK or emoji text."""
-    result = ""
-    for raw_part in parts:
-        part = str(raw_part).strip()
-        if not part:
-            continue
-        if result and _needs_text_separator(result[-1], part[0]):
-            result += " "
-        result += part
-    return result.strip()
-
-
-def _needs_text_separator(previous: str, next_character: str) -> bool:
-    if (
-        next_character in ".,!?;:%)]}»、。，！？；：》」』】〉》"
-        or previous in "([{«「『【〈《"
-    ):
-        return False
-    if _is_cjk_or_emoji(previous) and _is_cjk_or_emoji(next_character):
-        return False
-    return True
-
-
-def _is_cjk_or_emoji(character: str) -> bool:
-    codepoint = ord(character)
-    return (
-        unicodedata.east_asian_width(character) in {"W", "F"}
-        or 0x1F000 <= codepoint <= 0x1FAFF
-        or 0x2600 <= codepoint <= 0x27BF
-    )
-
-
-def _grapheme_clusters(text: str) -> list[str]:
-    clusters: list[str] = []
-    current = ""
-    for character in text:
-        category = unicodedata.category(character)
-        if current and (
-            category in {"Mn", "Me", "Cf"}
-            or character in {"\ufe0e", "\ufe0f"}
-            or current.endswith("\u200d")
-        ):
-            current += character
-            continue
-        if current:
-            clusters.append(current)
-        current = character
-    if current:
-        clusters.append(current)
-    return clusters
-
-
-def _ends_sentence(word: str) -> bool:
-    return word.rstrip().endswith((".", "!", "?", "…"))
-
-
-def _ends_clause(word: str) -> bool:
-    return word.rstrip().endswith((",", ";", ":", "—", "–"))
-
-
-def _has_significant_pause(
-    previous_word: Mapping[str, Any], next_word: Mapping[str, Any]
-) -> bool:
-    previous_end = _finite_time(previous_word.get("end"))
-    next_start = _finite_time(next_word.get("start"))
-    return (
-        previous_end is not None
-        and next_start is not None
-        and next_start - previous_end >= PAUSE_BREAK_THRESHOLD
-    )
-
-
-def _boundary_priority(words: Sequence[Mapping[str, Any]], index: int) -> int:
-    previous_word = words[index - 1]
-    next_word = words[index]
-    previous_text = str(previous_word.get("word", ""))
-    if _ends_sentence(previous_text):
-        return 3
-    if _ends_clause(previous_text):
-        return 2
-    if _has_significant_pause(previous_word, next_word):
-        return 1
-    return 0
-
-
-def _normalise_display_text(text: str) -> str:
-    return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
-
-
 def layout_subtitle_cues(
     segments: Sequence[Mapping[str, Any]],
     resolved_config: SubtitleConfig,
@@ -824,55 +766,6 @@ def layout_subtitle_cues(
     return display_cues, metrics
 
 
-def _split_words_for_layout(
-    words: Sequence[Mapping[str, Any]],
-    metrics: WrappingMetrics,
-) -> list[list[dict[str, Any]]]:
-    remaining = [dict(word) for word in words]
-    groups: list[list[dict[str, Any]]] = []
-    while remaining:
-        text = _words_to_text(remaining)
-        if _line_count(text, remaining, metrics) <= metrics.line_capacity:
-            groups.append(remaining)
-            break
-        if len(remaining) == 1:
-            groups.append(remaining)
-            break
-        break_at = _find_best_layout_break(remaining, metrics)
-        if break_at <= 0 or break_at >= len(remaining):
-            break_at = 1
-        groups.append(remaining[:break_at])
-        remaining = remaining[break_at:]
-    return groups
-
-
-def _find_best_layout_break(
-    words: Sequence[Mapping[str, Any]],
-    metrics: WrappingMetrics,
-) -> int:
-    candidates = [
-        index
-        for index in range(1, len(words))
-        if _line_count(_words_to_text(words[:index]), words[:index], metrics)
-        <= metrics.line_capacity
-    ]
-    if not candidates:
-        return 1
-
-    def key(index: int) -> tuple[int, int, float, int]:
-        prefix = words[:index]
-        width = estimate_text_width(_words_to_text(prefix), metrics)
-        orphan_penalty = int(index == 1 or len(words) - index == 1)
-        return (
-            _boundary_priority(words, index),
-            -orphan_penalty,
-            -abs(metrics.width_budget - width),
-            index,
-        )
-
-    return max(candidates, key=key)
-
-
 def _append_display_cue(
     cues: list[dict[str, Any]],
     semantic_text: str,
@@ -895,215 +788,6 @@ def _append_display_cue(
             "words": [dict(word) for word in words],
         }
     )
-
-
-def _line_count(
-    text: str,
-    words: Sequence[Mapping[str, Any]] | None,
-    metrics: WrappingMetrics,
-) -> int:
-    lines, fits = _layout_text_lines(text, words, metrics)
-    return len(lines) if fits else metrics.line_capacity + 1
-
-
-def _wrap_subtitle_text(
-    text: str,
-    words: Sequence[Mapping[str, Any]] | None = None,
-    *,
-    metrics: WrappingMetrics,
-) -> str:
-    """Wrap one cue using the resolved PlayRes width budget."""
-    lines, _ = _layout_text_lines(text, words, metrics)
-    return "\n".join(lines)
-
-
-def _layout_text_lines(
-    text: str,
-    words: Sequence[Mapping[str, Any]] | None,
-    metrics: WrappingMetrics,
-) -> tuple[list[str], bool]:
-    normalised = _normalise_display_text(text)
-    if not normalised:
-        return [], True
-    units, compact, source_words = _text_units(normalised, words)
-    if len(units) < 2:
-        return [normalised], True
-
-    def join(parts: Sequence[str]) -> str:
-        return "".join(parts) if compact else _join_text_parts(parts)
-
-    if estimate_text_width(join(units), metrics) <= metrics.width_budget:
-        return [normalised], True
-    if metrics.line_capacity <= 1:
-        return [normalised], False
-    return _partition_text_units(
-        units,
-        join,
-        metrics,
-        source_words=source_words,
-    )
-
-
-def _text_units(
-    text: str,
-    words: Sequence[Mapping[str, Any]] | None,
-) -> tuple[list[str], bool, list[Mapping[str, Any]] | None]:
-    if words:
-        source_words = [word for word in words if str(word.get("word", "")).strip()]
-        return (
-            [str(word.get("word", "")).strip() for word in source_words],
-            False,
-            source_words,
-        )
-    if any(character.isspace() for character in text):
-        return text.split(), False, None
-    clusters = _grapheme_clusters(text)
-    if len(clusters) > 1 and any(_is_cjk_or_emoji(cluster[0]) for cluster in clusters):
-        return clusters, True, None
-    return [text], True, None
-
-
-def _partition_text_units(
-    units: Sequence[str],
-    join: Callable[[Sequence[str]], str],
-    metrics: WrappingMetrics,
-    *,
-    source_words: Sequence[Mapping[str, Any]] | None,
-) -> tuple[list[str], bool]:
-    unit_count = len(units)
-    maximum_lines = min(metrics.line_capacity, unit_count)
-
-    @cache
-    def line(start: int, end: int) -> tuple[str, float]:
-        value = join(units[start:end])
-        return value, estimate_text_width(value, metrics)
-
-    @cache
-    def partitions(
-        start: int,
-        lines_left: int,
-        allow_overflow: bool,
-    ) -> tuple[tuple[int, ...], ...]:
-        if lines_left == 1:
-            _, width = line(start, unit_count)
-            if allow_overflow or _line_fits(
-                width,
-                unit_count=unit_count - start,
-                budget=metrics.width_budget,
-            ):
-                return ((unit_count,),)
-            return ()
-
-        results: list[tuple[int, ...]] = []
-        final_start = unit_count - lines_left + 1
-        for end in range(start + 1, final_start + 1):
-            _, width = line(start, end)
-            if not allow_overflow and not _line_fits(
-                width,
-                unit_count=end - start,
-                budget=metrics.width_budget,
-            ):
-                continue
-            for tail in partitions(end, lines_left - 1, allow_overflow):
-                results.append((end, *tail))
-        return tuple(results)
-
-    for line_count in range(2, maximum_lines + 1):
-        candidates = partitions(0, line_count, False)
-        if candidates:
-            best = min(
-                candidates,
-                key=lambda endings: _partition_score(
-                    endings,
-                    line,
-                    unit_count,
-                    metrics.width_budget,
-                    units,
-                    source_words,
-                ),
-            )
-            return _partition_lines(best, line), True
-
-    candidates = partitions(0, maximum_lines, True)
-    if not candidates:
-        return [join(units)], False
-    best = min(
-        candidates,
-        key=lambda endings: _partition_score(
-            endings,
-            line,
-            unit_count,
-            metrics.width_budget,
-            units,
-            source_words,
-        ),
-    )
-    return _partition_lines(best, line), False
-
-
-def _line_fits(width: float, *, unit_count: int, budget: int) -> bool:
-    return width <= budget or unit_count == 1
-
-
-def _partition_lines(
-    endings: Sequence[int],
-    line: Callable[[int, int], tuple[str, float]],
-) -> list[str]:
-    result: list[str] = []
-    start = 0
-    for end in endings:
-        result.append(line(start, end)[0])
-        start = end
-    return result
-
-
-def _partition_score(
-    endings: Sequence[int],
-    line: Callable[[int, int], tuple[str, float]],
-    unit_count: int,
-    width_budget: int,
-    units: Sequence[str],
-    source_words: Sequence[Mapping[str, Any]] | None,
-) -> tuple[int, float, float, int, float, float, tuple[int, ...]]:
-    starts = (0, *endings[:-1])
-    widths = [line(start, end)[1] for start, end in zip(starts, endings, strict=True)]
-    counts = [end - start for start, end in zip(starts, endings, strict=True)]
-    priorities = [
-        _display_boundary_priority(units, source_words, end) for end in endings[:-1]
-    ]
-    overflows = [max(0.0, width - width_budget) for width in widths]
-    orphan_count = (
-        sum(count == 1 for count in counts) if unit_count > len(counts) else 0
-    )
-    widest = max(widths)
-    shortest = min(widths)
-    short_line_penalty = max(0.0, widest * 0.35 - shortest)
-    raggedness = sum((widest - width) ** 2 for width in widths)
-    semantic_penalty = sum(3 - priority for priority in priorities)
-    return (
-        semantic_penalty,
-        max(overflows),
-        sum(overflows),
-        orphan_count,
-        short_line_penalty,
-        raggedness,
-        tuple(endings),
-    )
-
-
-def _display_boundary_priority(
-    units: Sequence[str],
-    source_words: Sequence[Mapping[str, Any]] | None,
-    index: int,
-) -> int:
-    if source_words is not None and len(source_words) == len(units):
-        return _boundary_priority(source_words, index)
-    previous = units[index - 1]
-    if _ends_sentence(previous):
-        return 3
-    if _ends_clause(previous):
-        return 2
-    return 0
 
 
 def _validate_subtitle_segments(segments: Sequence[Mapping[str, Any]]) -> None:
@@ -1372,3 +1056,20 @@ def _json_safe_value(value: object) -> Any:
 def _report(progress: ProgressReporter, message: str) -> None:
     if progress is not None:
         progress(message)
+
+
+# Keep the established private helper names available to the semantic cue code and
+# existing callers while sharing the exact wrapping implementation with previews.
+PAUSE_BREAK_THRESHOLD = _WRAPPING_PAUSE_BREAK_THRESHOLD
+_boundary_priority = _wrapping_boundary_priority
+_ends_clause = _wrapping_ends_clause
+_ends_sentence = _wrapping_ends_sentence
+_grapheme_clusters = _wrapping_grapheme_clusters
+_has_significant_pause = _wrapping_has_significant_pause
+_is_cjk_or_emoji = _wrapping_is_cjk_or_emoji
+_join_text_parts = _wrapping_join_text_parts
+_line_count = _wrapping_line_count
+_normalise_display_text = _wrapping_normalise_display_text
+_split_words_for_layout = _wrapping_split_words_for_layout
+_wrap_subtitle_text = _wrapping_wrap_subtitle_text
+_words_to_text = _wrapping_words_to_text
