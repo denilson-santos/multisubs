@@ -180,6 +180,8 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
             "72px",
             "--max-width",
             "84%",
+            "--max-height",
+            "12%",
         ]
     )
 
@@ -196,9 +198,10 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
     assert margin_left.unit == "%"
     assert margin_right.original == "72px"
     assert request.subtitle_config.layout.max_width == parse_relative_length("84%")
+    assert request.subtitle_config.layout.max_height == parse_relative_length("12%")
 
 
-def test_build_request_accepts_custom_coordinates_and_default_anchor(
+def test_build_request_accepts_complete_explicit_coordinate_envelope(
     tmp_path: Path,
 ):
     input_path = tmp_path / "video.mp4"
@@ -212,6 +215,12 @@ def test_build_request_accepts_custom_coordinates_and_default_anchor(
             "50%",
             "--position-y",
             "86%",
+            "--anchor",
+            "bottom-center",
+            "--max-width",
+            "60%",
+            "--max-height",
+            "20%",
         ]
     )
 
@@ -231,6 +240,16 @@ def test_build_request_accepts_custom_coordinates_and_default_anchor(
         ["--position-x", "50%"],
         ["--position-y", "86%"],
         ["--anchor", "top-left"],
+        [
+            "--position-x",
+            "50%",
+            "--position-y",
+            "86%",
+            "--max-width",
+            "60%",
+            "--max-height",
+            "20%",
+        ],
         [
             "--position",
             "top-left",
@@ -271,6 +290,7 @@ def test_help_exposes_semantic_options_without_ass_style_flags():
     assert "--text-color COLOR" in help_text
     assert "--bold, --no-bold" in help_text
     assert "--backdrop {none,outline,box}" in help_text
+    assert "--max-height LENGTH" in help_text
     assert "--style-" not in help_text
 
 
@@ -392,10 +412,12 @@ def test_run_request_cleans_private_work_dir_after_default_success(
         *,
         geometry,
         resolved_subtitle_config,
+        wrapping_metrics,
         progress,
     ):
         assert geometry is GEOMETRY
         assert resolved_subtitle_config is not None
+        assert wrapping_metrics.line_capacity >= 1
         paths = TranscriptionPaths(
             Path(destination) / "video-pt.json",
             Path(destination) / "video-pt.srt",

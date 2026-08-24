@@ -87,7 +87,7 @@ def test_adaptive_wrapping_uses_resolved_width_and_preserves_timed_words():
 
     display, metrics = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
 
-    assert metrics.width_budget == 1690
+    assert metrics.width_budget == 1688
     assert len(display) == 1
     assert display[0]["text"].count("\n") == 1
     assert display[0]["semantic_text"].replace(" ", "") == "".join(
@@ -123,7 +123,7 @@ def test_adaptive_wrapping_changes_with_portrait_geometry_and_font_size():
     portrait_config = resolve_subtitle_config(
         validate_subtitle_config(
             None,
-            relative_values={"font_size": "8%"},
+            relative_values={"font_size": "8%", "max_height": "20%"},
         ),
         portrait_geometry,
     )
@@ -135,18 +135,22 @@ def test_adaptive_wrapping_changes_with_portrait_geometry_and_font_size():
         semantic, portrait_config, portrait_geometry
     )
 
-    assert landscape_metrics.width_budget == 1690
-    assert portrait_metrics.width_budget == 908
+    assert landscape_metrics.width_budget == 1688
+    assert portrait_metrics.width_budget == 905
     assert landscape_display[0]["text"] != portrait_display[0]["text"]
 
 
-@pytest.mark.parametrize("max_lines", [1, 2, 3])
-def test_adaptive_wrapping_honors_internal_max_line_limit(max_lines):
+@pytest.mark.parametrize(
+    ("max_height", "line_capacity"),
+    [("54px", 1), ("106px", 2), ("157px", 3)],
+)
+def test_adaptive_wrapping_honors_height_derived_line_capacity(
+    max_height, line_capacity
+):
     text = "one two three four five six seven eight nine ten eleven twelve"
     config = validate_subtitle_config(
         None,
-        max_lines=max_lines,
-        relative_values={"max_width": "40%"},
+        relative_values={"max_width": "40%", "max_height": max_height},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
     semantic = [{"id": 0, "start": 0.0, "end": 1.0, "text": text, "words": []}]
@@ -154,7 +158,7 @@ def test_adaptive_wrapping_honors_internal_max_line_limit(max_lines):
     display, _ = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
 
     assert len(display) == 1
-    assert display[0]["text"].count("\n") + 1 <= max_lines
+    assert display[0]["text"].count("\n") + 1 <= line_capacity
 
 
 def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
@@ -165,8 +169,7 @@ def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
     semantic = transcriber._build_subtitle_segments([{"words": words}])
     config = validate_subtitle_config(
         None,
-        max_lines=1,
-        relative_values={"max_width": "30%"},
+        relative_values={"max_width": "30%", "max_height": "54px"},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
@@ -178,13 +181,13 @@ def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
     assert [word["word"] for cue in display for word in cue["words"]] == [
         word["word"] for word in words
     ]
-    assert metrics.max_lines == 1
+    assert metrics.line_capacity == 1
 
 
 def test_adaptive_wrapping_keeps_long_unbroken_tokens_intact():
     config = validate_subtitle_config(
         None,
-        relative_values={"max_width": "1px"},
+        relative_values={"max_width": "3px"},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
     semantic = [
@@ -259,7 +262,7 @@ def test_font_metrics_prevent_the_reported_premature_portuguese_break():
         text_measurer=measurer,
     )
 
-    assert metrics.width_budget == 1920
+    assert metrics.width_budget == 1918
     assert display[0]["text"] == text
 
 
@@ -497,9 +500,11 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "container_duration": 12.5,
         "requested_preset": "auto",
         "resolved_preset": "landscape",
+        "placement_mode": "native-style",
         "requested_position": "bottom-center",
         "resolved_position": "bottom-center",
         "margins": {
+            "applied": True,
             "left": 115,
             "right": 115,
             "top": 0,
@@ -516,6 +521,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "bottom": "0px",
             },
             "max_width": None,
+            "max_height": None,
         },
         "resolved": {
             "font_size": 43,
@@ -528,17 +534,27 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "bottom": 65,
             },
             "max_width": 1690,
-            "max_lines": 2,
+            "max_height": 107,
+            "line_capacity": 2,
         },
         "wrapping": {
-            "safe_width": 1690,
+            "available_width": 1690,
+            "available_height": 1015,
             "max_width": 1690,
-            "anchor_width": 1690,
-            "width_budget": 1690,
+            "max_height": 107,
+            "width_budget": 1688,
+            "line_height": 51.6,
+            "vertical_decoration": 2,
+            "line_capacity": 2,
             "font_size": 43,
             "backdrop_size": 0,
             "shadow_size": 2,
-            "max_lines": 2,
+        },
+        "percentage_bases": {
+            "max_width": "native-width-after-horizontal-margins",
+            "max_height": "native-height-after-active-margin",
+            "position_x": None,
+            "position_y": None,
         },
         "text_measurement": {
             "mode": "unicode-estimate",
@@ -549,19 +565,13 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "shaping": None,
             "metric_size": None,
         },
-        "safe_rectangle": {
+        "native_region": {
             "left": 115,
             "top": 0,
             "right": 1805,
             "bottom": 1015,
             "width": 1690,
             "height": 1015,
-        },
-        "resolved_coordinates": {
-            "x": 960,
-            "y": 1015,
-            "anchor": "bottom-center",
-            "coordinate_space": "playres",
         },
     }
     assert srt_path.exists() and ass_path.exists()
@@ -646,7 +656,12 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
         tmp_path / "output",
         validate_subtitle_config(
             None,
-            relative_values={"position_x": "50%", "position_y": "86%"},
+            relative_values={
+                "position_x": "50%",
+                "position_y": "86%",
+                "max_width": "60%",
+                "max_height": "20%",
+            },
             anchor="bottom-center",
         ),
         geometry=GEOMETRY,
@@ -654,17 +669,54 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
 
     payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
     rendering = payload["metadata"]["rendering"]
+    assert rendering["placement_mode"] == "explicit"
+    assert rendering["margins"]["applied"] is False
     assert rendering["requested_position"] is None
     assert rendering["resolved_position"] is None
     assert rendering["requested_coordinates"] == {
         "x": "50%",
         "y": "86%",
         "anchor": "bottom-center",
-        "coordinate_space": "safe-area",
+        "coordinate_space": "playres",
     }
     assert rendering["resolved_coordinates"] == {
         "x": 960,
-        "y": 873,
+        "y": 929,
         "anchor": "bottom-center",
         "coordinate_space": "playres",
     }
+
+
+def test_centered_native_metadata_uses_the_full_canvas_height(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Hello.",
+        segments=({"id": 0, "start": 0.0, "end": 1.0, "text": "Hello."},),
+    )
+
+    paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(
+            None,
+            position="center",
+            relative_values={"max_height": "50%"},
+        ),
+        geometry=GEOMETRY,
+    )
+
+    rendering = json.loads(Path(paths[0]).read_text(encoding="utf-8"))["metadata"][
+        "rendering"
+    ]
+    assert rendering["placement_mode"] == "native-style"
+    assert rendering["resolved"]["max_height"] == 540
+    assert rendering["percentage_bases"]["max_height"] == "render-height"
+    assert rendering["native_region"]["top"] == 0
+    assert rendering["native_region"]["bottom"] == 1080
+    assert "requested_coordinates" not in rendering
+    assert "resolved_coordinates" not in rendering

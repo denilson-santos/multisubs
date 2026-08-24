@@ -51,9 +51,15 @@ class TextMeasurer:
         self,
         info: TextMeasurementInfo,
         measure: Callable[[str], float],
+        *,
+        line_height: float | None = None,
     ) -> None:
         self.info = info
         self._measure = measure
+        self.line_height = max(
+            1.0,
+            float(line_height if line_height is not None else info.metric_size or 1),
+        )
         self._cache: OrderedDict[str, float] = OrderedDict()
 
     def measure(self, text: str) -> float:
@@ -95,6 +101,7 @@ class _ResolvedFace:
     source: str
     shaping: str
     metric_size: int
+    line_height: float
 
 
 def build_text_measurer(
@@ -141,6 +148,7 @@ def build_text_measurer(
                     metric_size=resolved.metric_size,
                 ),
                 measure,
+                line_height=resolved.line_height,
             )
 
     return build_unicode_text_measurer(
@@ -165,6 +173,7 @@ def build_unicode_text_measurer(
             metric_size=None,
         ),
         lambda text: estimate_unicode_text_width(text, font_size),
+        line_height=font_size * 1.2,
     )
 
 
@@ -230,7 +239,14 @@ def _resolve_face_from_directory(
             loaded = _load_face(image_font, features, path, font_size, index=index)
             if loaded is None:
                 break
-            loaded_font, loaded_family, loaded_style, shaping, metric_size = loaded
+            (
+                loaded_font,
+                loaded_family,
+                loaded_style,
+                shaping,
+                metric_size,
+                line_height,
+            ) = loaded
             if _normalise_font_name(loaded_family) != _normalise_font_name(family):
                 continue
             score = _style_distance(loaded_style, bold=bold, italic=italic)
@@ -241,6 +257,7 @@ def _resolve_face_from_directory(
                 source="fonts-dir",
                 shaping=shaping,
                 metric_size=metric_size,
+                line_height=line_height,
             )
             if best is None or score < best[0]:
                 best = (score, face)
@@ -297,7 +314,14 @@ def _resolve_face_from_fontconfig(
     loaded = _load_face(image_font, features, path, font_size, index=index)
     if loaded is None:
         return None
-    loaded_font, loaded_family, loaded_style, shaping, metric_size = loaded
+    (
+        loaded_font,
+        loaded_family,
+        loaded_style,
+        shaping,
+        metric_size,
+        line_height,
+    ) = loaded
     return _ResolvedFace(
         font=loaded_font,
         family=loaded_family or resolved_family.split(",", 1)[0],
@@ -305,6 +329,7 @@ def _resolve_face_from_fontconfig(
         source="fontconfig",
         shaping=shaping,
         metric_size=metric_size,
+        line_height=line_height,
     )
 
 
@@ -315,7 +340,7 @@ def _load_face(
     font_size: int,
     *,
     index: int,
-) -> tuple[Any, str, str, str, int] | None:
+) -> tuple[Any, str, str, str, int, float] | None:
     shaping = "raqm" if features.check("raqm") else "basic"
     layout = image_font.Layout.RAQM if shaping == "raqm" else image_font.Layout.BASIC
     try:
@@ -334,9 +359,11 @@ def _load_face(
                 layout_engine=layout,
             )
         family, style = font.getname()
-    except (OSError, TypeError, ValueError):
+        ascent, descent = font.getmetrics()
+    except (AttributeError, OSError, TypeError, ValueError):
         return None
-    return font, str(family), str(style), shaping, metric_size
+    line_height = max(1.0, float(ascent + descent))
+    return font, str(family), str(style), shaping, metric_size, line_height
 
 
 def _ass_metric_size(font: Any, ass_font_size: int) -> int:
