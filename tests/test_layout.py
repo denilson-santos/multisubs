@@ -7,16 +7,24 @@ from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import (
     classify_layout_preset,
-    resolve_ass_horizontal_margins,
     resolve_cue_placement,
+    resolve_native_layout_region,
     resolve_relative_length,
-    resolve_safe_rectangle,
     resolve_subtitle_config,
     resolve_wrapping_metrics,
     unicode_display_width,
 )
-from multisubs.models import SubtitleLayoutPreset, SubtitlePosition, VideoGeometry
-from multisubs.text_measurement import build_unicode_text_measurer
+from multisubs.models import (
+    SubtitleLayoutPreset,
+    SubtitlePlacementMode,
+    SubtitlePosition,
+    VideoGeometry,
+)
+from multisubs.text_measurement import (
+    TextMeasurementInfo,
+    TextMeasurer,
+    build_unicode_text_measurer,
+)
 
 GEOMETRY = VideoGeometry(
     stream_index=0,
@@ -34,18 +42,18 @@ GEOMETRY = VideoGeometry(
 @pytest.mark.parametrize(
     ("position", "expected"),
     [
-        (SubtitlePosition.TOP_LEFT, (40, 15, 1880, 1065)),
-        (SubtitlePosition.TOP_CENTER, (40, 15, 1880, 1065)),
-        (SubtitlePosition.TOP_RIGHT, (40, 15, 1880, 1065)),
-        (SubtitlePosition.MIDDLE_LEFT, (40, 15, 1880, 1065)),
-        (SubtitlePosition.CENTER, (40, 15, 1880, 1065)),
-        (SubtitlePosition.MIDDLE_RIGHT, (40, 15, 1880, 1065)),
-        (SubtitlePosition.BOTTOM_LEFT, (40, 15, 1880, 1065)),
-        (SubtitlePosition.BOTTOM_CENTER, (40, 15, 1880, 1065)),
-        (SubtitlePosition.BOTTOM_RIGHT, (40, 15, 1880, 1065)),
+        ("top-left", (40, 15, 1880, 1080)),
+        ("top-center", (40, 15, 1880, 1080)),
+        ("top-right", (40, 15, 1880, 1080)),
+        ("middle-left", (40, 0, 1880, 1080)),
+        ("center", (40, 0, 1880, 1080)),
+        ("middle-right", (40, 0, 1880, 1080)),
+        ("bottom-left", (40, 0, 1880, 1055)),
+        ("bottom-center", (40, 0, 1880, 1055)),
+        ("bottom-right", (40, 0, 1880, 1055)),
     ],
 )
-def test_named_positions_share_the_configured_safe_rectangle(position, expected):
+def test_native_positions_use_only_the_active_vertical_margin(position, expected):
     config = validate_subtitle_config(
         None,
         position=position,
@@ -53,36 +61,40 @@ def test_named_positions_share_the_configured_safe_rectangle(position, expected)
             "margin_left": "40px",
             "margin_right": "40px",
             "margin_top": "15px",
-            "margin_bottom": "15px",
+            "margin_bottom": "25px",
         },
     )
 
     resolved = resolve_subtitle_config(config, GEOMETRY)
-    rectangle = resolve_safe_rectangle(GEOMETRY, resolved.layout)
+    region = resolve_native_layout_region(GEOMETRY, resolved.layout)
 
-    assert (
-        rectangle.left,
-        rectangle.top,
-        rectangle.right,
-        rectangle.bottom,
-    ) == expected
-    assert (rectangle.width, rectangle.height) == (1840, 1050)
+    assert (region.left, region.top, region.right, region.bottom) == expected
+    assert region.width == 1840
+    assert resolve_cue_placement(resolved, GEOMETRY) is None
 
 
 @pytest.mark.parametrize(
-    "options",
+    ("position", "options", "message"),
     [
-        {"margin_left": "1920px", "margin_right": "1px"},
-        {"margin_top": "1080px", "margin_bottom": "1px"},
+        (
+            "bottom-center",
+            {"margin_left": "1920px", "margin_right": "1px"},
+            "native layout width",
+        ),
+        ("top-center", {"margin_top": "1080px"}, "top margin"),
+        ("bottom-center", {"margin_bottom": "1080px"}, "bottom margin"),
     ],
 )
-def test_margins_that_remove_the_safe_rectangle_are_rejected(options):
-    config = validate_subtitle_config(None, relative_values=options)
+def test_native_margins_that_remove_the_active_region_are_rejected(
+    position, options, message
+):
+    config = validate_subtitle_config(
+        None,
+        position=position,
+        relative_values=options,
+    )
 
-    with pytest.raises(
-        ValidationError,
-        match="leave no usable safe rectangle",
-    ):
+    with pytest.raises(ValidationError, match=message):
         resolve_subtitle_config(config, GEOMETRY)
 
 
@@ -134,7 +146,7 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     assert resolved.layout.margin_bottom == 72
 
 
-def test_layout_presets_resolve_width_and_two_line_baselines():
+def test_portrait_preset_derives_line_capacity_from_maximum_height():
     portrait_geometry = replace(
         GEOMETRY,
         coded_width=1080,
@@ -148,192 +160,169 @@ def test_layout_presets_resolve_width_and_two_line_baselines():
         validate_subtitle_config(None, layout_preset="portrait"),
         portrait_geometry,
     )
-
-    assert resolved.layout.max_width == 908
-    assert resolved.layout.max_lines == 2
     assert isinstance(resolved.appearance.font_size, int)
+    measurer = build_unicode_text_measurer(
+        resolved.appearance.font,
+        resolved.appearance.font_size,
+    )
     metrics = resolve_wrapping_metrics(
         resolved,
         portrait_geometry,
-        text_measurer=build_unicode_text_measurer(
-            resolved.appearance.font,
-            resolved.appearance.font_size,
-        ),
+        text_measurer=measurer,
     )
-    assert metrics.safe_width == 908
+
+    assert resolved.layout.max_width == 908
+    assert isinstance(resolved.layout.max_height, int)
+    assert metrics.available_width == 908
     assert metrics.max_width == 908
-    assert metrics.anchor_width == 908
-    assert metrics.width_budget == 908
+    assert metrics.line_capacity == 2
 
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [
-        ("abc", 3),
-        ("e\u0301", 1),
-        ("字幕", 4),
-        ("🙂", 2),
-    ],
+    [("abc", 3), ("e\u0301", 1), ("字幕", 4), ("🙂", 2)],
 )
 def test_unicode_display_width_is_conservative_without_string_length(text, expected):
     assert unicode_display_width(text) == expected
 
 
-def test_custom_coordinates_resolve_against_safe_area_axes():
-    config = validate_subtitle_config(
-        None,
-        relative_values={
-            "position_x": "50%",
-            "position_y": "86%",
-        },
-        anchor="bottom-center",
-    )
+def _explicit_config(
+    *,
+    position_x: str = "50%",
+    position_y: str = "86%",
+    anchor: str = "bottom-center",
+    max_width: str = "60%",
+    max_height: str = "20%",
+    margins: dict[str, str] | None = None,
+):
+    values = {
+        "position_x": position_x,
+        "position_y": position_y,
+        "max_width": max_width,
+        "max_height": max_height,
+        **(margins or {}),
+    }
+    return validate_subtitle_config(None, relative_values=values, anchor=anchor)
 
-    resolved = resolve_subtitle_config(config, GEOMETRY)
+
+def test_custom_coordinates_resolve_against_global_playres_axes():
+    resolved = resolve_subtitle_config(_explicit_config(), GEOMETRY)
     placement = resolve_cue_placement(resolved, GEOMETRY)
 
-    assert resolved.layout.position_x == 845
-    assert resolved.layout.position_y == 873
-    assert (placement.position_x, placement.position_y) == (960, 873)
+    assert resolved.layout.placement_mode is SubtitlePlacementMode.EXPLICIT
+    assert resolved.layout.position_x == 960
+    assert resolved.layout.position_y == 929
+    assert resolved.layout.max_width == 1152
+    assert resolved.layout.max_height == 216
+    assert placement is not None
+    assert (placement.position_x, placement.position_y) == (960, 929)
     assert placement.anchor is SubtitlePosition.BOTTOM_CENTER
+
+
+def test_explicit_coordinates_and_envelope_ignore_margins():
+    zero = resolve_subtitle_config(_explicit_config(), GEOMETRY)
+    inset = resolve_subtitle_config(
+        _explicit_config(
+            margins={
+                "margin_left": "100px",
+                "margin_right": "300px",
+                "margin_top": "80px",
+                "margin_bottom": "160px",
+            }
+        ),
+        GEOMETRY,
+    )
+
+    assert inset.layout.position_x == zero.layout.position_x == 960
+    assert inset.layout.position_y == zero.layout.position_y == 929
+    assert inset.layout.max_width == zero.layout.max_width == 1152
+    assert inset.layout.max_height == zero.layout.max_height == 216
 
 
 @pytest.mark.parametrize(
     ("anchor", "position_x", "position_y"),
     [
-        (SubtitlePosition.TOP_LEFT, "0%", "0%"),
-        (SubtitlePosition.TOP_CENTER, "50%", "0%"),
-        (SubtitlePosition.TOP_RIGHT, "100%", "0%"),
-        (SubtitlePosition.MIDDLE_LEFT, "0%", "50%"),
-        (SubtitlePosition.CENTER, "50%", "50%"),
-        (SubtitlePosition.MIDDLE_RIGHT, "100%", "50%"),
-        (SubtitlePosition.BOTTOM_LEFT, "0%", "100%"),
-        (SubtitlePosition.BOTTOM_CENTER, "50%", "100%"),
-        (SubtitlePosition.BOTTOM_RIGHT, "100%", "100%"),
+        ("top-left", "0px", "0px"),
+        ("top-center", "960px", "0px"),
+        ("top-right", "1920px", "0px"),
+        ("middle-left", "0px", "540px"),
+        ("center", "960px", "540px"),
+        ("middle-right", "1920px", "540px"),
+        ("bottom-left", "0px", "1080px"),
+        ("bottom-center", "960px", "1080px"),
+        ("bottom-right", "1920px", "1080px"),
     ],
 )
-def test_all_custom_anchors_resolve_inside_landscape_safe_rectangle(
+def test_all_explicit_anchors_accept_their_canvas_boundary_coordinate(
     anchor, position_x, position_y
 ):
-    config = validate_subtitle_config(
-        None,
-        relative_values={"position_x": position_x, "position_y": position_y},
+    config = _explicit_config(
+        position_x=position_x,
+        position_y=position_y,
         anchor=anchor,
+        max_width="200px",
+        max_height="100px",
     )
 
     placement = resolve_cue_placement(config, GEOMETRY)
 
-    assert placement.anchor is anchor
+    assert placement is not None
+    assert placement.anchor.value == anchor
+
+
+def test_center_anchor_rejects_envelope_overflow_without_clamping():
+    invalid = _explicit_config(
+        position_x="300px",
+        position_y="540px",
+        anchor="center",
+        max_width="1152px",
+        max_height="200px",
+    )
+
+    with pytest.raises(ValidationError, match="valid position-x range is 576px"):
+        resolve_subtitle_config(invalid, GEOMETRY)
+
+    valid = _explicit_config(
+        position_x="576px",
+        position_y="540px",
+        anchor="center",
+        max_width="1152px",
+        max_height="200px",
+    )
+    resolved = resolve_subtitle_config(valid, GEOMETRY)
+    assert resolved.layout.max_width == 1152
 
 
 @pytest.mark.parametrize(
-    ("position_x", "position_y", "message"),
+    ("anchor", "position_x", "valid"),
     [
-        ("0%", "86%", "position-x.*no room"),
-        ("50%", "0%", "position-y.*no room"),
-        ("100%", "50%", "position-x.*no room"),
+        ("top-left", "0px", True),
+        ("top-left", "1px", False),
+        ("top-center", "960px", True),
+        ("top-center", "959px", False),
+        ("top-right", "1920px", True),
+        ("top-right", "1919px", False),
     ],
 )
-def test_custom_anchor_outside_safe_rectangle_is_rejected(
-    position_x, position_y, message
+def test_full_width_explicit_envelope_has_only_one_coordinate_per_anchor(
+    anchor, position_x, valid
 ):
-    config = validate_subtitle_config(
-        None,
-        relative_values={"position_x": position_x, "position_y": position_y},
-        anchor="bottom-center",
-    )
-
-    with pytest.raises(ValidationError, match=message):
-        resolve_cue_placement(config, GEOMETRY)
-
-
-def test_custom_pixel_coordinates_are_bounded_by_the_safe_area():
-    config = validate_subtitle_config(
-        None,
-        relative_values={"position_x": "1691px", "position_y": "500px"},
-    )
-
-    with pytest.raises(ValidationError, match="position-x"):
-        resolve_subtitle_config(config, GEOMETRY)
-
-
-@pytest.mark.parametrize(
-    ("position_x", "position_y", "anchor", "expected"),
-    [
-        ("0%", "0%", "top-left", (0, 0)),
-        ("100%", "100%", "bottom-right", (1920, 1080)),
-    ],
-)
-def test_custom_percentage_coordinates_support_canvas_edges(
-    position_x, position_y, anchor, expected
-):
-    config = validate_subtitle_config(
-        None,
-        relative_values={
-            "margin_left": "0px",
-            "margin_right": "0px",
-            "margin_top": "0px",
-            "margin_bottom": "0px",
-            "position_x": position_x,
-            "position_y": position_y,
-        },
+    config = _explicit_config(
+        position_x=position_x,
+        position_y="0px",
         anchor=anchor,
+        max_width="100%",
+        max_height="100px",
     )
 
-    placement = resolve_cue_placement(config, GEOMETRY)
-
-    assert (placement.position_x, placement.position_y) == expected
-
-
-def test_named_positions_resolve_to_safe_area_anchor_points():
-    config = validate_subtitle_config(
-        None,
-        position="center",
-        relative_values={
-            "margin_left": "100px",
-            "margin_right": "300px",
-            "margin_top": "40px",
-            "margin_bottom": "140px",
-        },
-    )
-
-    placement = resolve_cue_placement(config, GEOMETRY)
-
-    assert placement.anchor is SubtitlePosition.CENTER
-    assert (placement.position_x, placement.position_y) == (860, 490)
+    if valid:
+        assert resolve_cue_placement(config, GEOMETRY) is not None
+    else:
+        with pytest.raises(ValidationError, match="position-x"):
+            resolve_cue_placement(config, GEOMETRY)
 
 
-def test_custom_offset_and_margins_define_anchor_capacity_inside_safe_area():
-    config = validate_subtitle_config(
-        None,
-        relative_values={
-            "margin_left": "100px",
-            "margin_right": "100px",
-            "position_x": "600px",
-            "position_y": "0px",
-            "max_width": "100%",
-        },
-        anchor="top-left",
-    )
-
-    resolved = resolve_subtitle_config(config, GEOMETRY)
-    placement = resolve_cue_placement(resolved, GEOMETRY)
-    metrics = resolve_wrapping_metrics(
-        resolved,
-        GEOMETRY,
-        text_measurer=build_unicode_text_measurer("Roboto", 43),
-    )
-
-    assert resolved.layout.max_width == 1720
-    assert (placement.position_x, placement.position_y) == (700, 0)
-    assert metrics.safe_width == 1720
-    assert metrics.max_width == 1720
-    assert metrics.anchor_width == 1120
-    assert metrics.width_budget == 1120
-    assert resolve_ass_horizontal_margins(resolved, GEOMETRY) == (700, 100)
-
-
-def test_max_width_percentage_is_recalculated_after_margin_changes():
+def test_native_max_width_percentage_recalculates_after_margin_changes():
     config = validate_subtitle_config(
         None,
         relative_values={
@@ -346,6 +335,77 @@ def test_max_width_percentage_is_recalculated_after_margin_changes():
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
     assert resolved.layout.max_width == 760
+
+
+@pytest.mark.parametrize(
+    ("position", "expected_basis", "expected_height"),
+    [
+        ("top-center", 980, 490),
+        ("bottom-center", 880, 440),
+        ("center", 1080, 540),
+    ],
+)
+def test_native_max_height_uses_alignment_specific_available_height(
+    position, expected_basis, expected_height
+):
+    config = validate_subtitle_config(
+        None,
+        position=position,
+        relative_values={
+            "margin_top": "100px",
+            "margin_bottom": "200px",
+            "max_height": "50%",
+        },
+    )
+
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    region = resolve_native_layout_region(GEOMETRY, resolved.layout)
+
+    assert region.height == expected_basis
+    assert resolved.layout.max_height == expected_height
+
+
+def test_line_capacity_is_derived_from_max_height_and_vertical_metrics():
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Fixture",
+        resolved_font="Fixture",
+        resolved_style="Regular",
+        font_source="fonts-dir",
+        shaping="basic",
+        metric_size=40,
+    )
+    measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_height": "82px", "shadow_weight": "2px"},
+    )
+
+    metrics = resolve_wrapping_metrics(config, GEOMETRY, text_measurer=measurer)
+
+    assert metrics.max_height == 82
+    assert metrics.vertical_decoration == 2
+    assert metrics.line_capacity == 2
+
+
+def test_max_height_too_small_for_one_measured_line_is_rejected():
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Fixture",
+        resolved_font="Fixture",
+        resolved_style="Regular",
+        font_source="fonts-dir",
+        shaping="basic",
+        metric_size=40,
+    )
+    measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_height": "41px", "shadow_weight": "2px"},
+    )
+
+    with pytest.raises(ValidationError, match="at least 42px"):
+        resolve_wrapping_metrics(config, GEOMETRY, text_measurer=measurer)
 
 
 def test_auto_preset_uses_post_rotation_render_aspect_ratio():
@@ -414,8 +474,10 @@ def test_preset_merge_applies_only_explicit_layout_overrides():
         {"font_size": "0px"},
         {"font_size": "600px"},
         {"margin_left": "100%", "margin_right": "1px"},
-        {"margin_top": "100%", "margin_bottom": "1px"},
+        {"margin_bottom": "100%"},
         {"outline_weight": "200%"},
+        {"max_width": "0px"},
+        {"max_height": "0px"},
     ],
 )
 def test_resolve_subtitle_config_rejects_geometry_dependent_values(relative_values):

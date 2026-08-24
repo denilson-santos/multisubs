@@ -70,25 +70,33 @@ class SubtitleLayoutPreset(str, Enum):
     CENTERED = "centered"
 
 
+class SubtitlePlacementMode(str, Enum):
+    """How subtitle placement is represented in the generated ASS file."""
+
+    NATIVE_STYLE = "native-style"
+    EXPLICIT = "explicit"
+
+
 @dataclass(frozen=True)
 class SubtitleLayout:
-    """Layout values; resolved custom coordinates are safe-area-local offsets."""
+    """Semantic layout values before or after geometry resolution."""
 
     position: SubtitlePosition
     margin_left: int | RelativeLength
     margin_right: int | RelativeLength
     margin_top: int | RelativeLength
     margin_bottom: int | RelativeLength
+    placement_mode: SubtitlePlacementMode = SubtitlePlacementMode.NATIVE_STYLE
     position_x: int | RelativeLength | None = None
     position_y: int | RelativeLength | None = None
     anchor: SubtitlePosition | None = None
     max_width: int | RelativeLength | None = None
-    max_lines: int | None = None
+    max_height: int | RelativeLength | None = None
 
     @property
     def has_custom_coordinates(self) -> bool:
         """Return whether this layout uses a per-event X/Y placement."""
-        return self.position_x is not None or self.position_y is not None
+        return self.placement_mode is SubtitlePlacementMode.EXPLICIT
 
 
 @dataclass(frozen=True)

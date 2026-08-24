@@ -17,6 +17,7 @@ from .models import (
     SubtitleConfig,
     SubtitleLayout,
     SubtitleLayoutPreset,
+    SubtitlePlacementMode,
     SubtitlePosition,
 )
 
@@ -79,7 +80,6 @@ MODELS = (
 
 POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
-DEFAULT_ANCHOR = SubtitlePosition.BOTTOM_CENTER
 LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
 BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
 
@@ -97,6 +97,7 @@ _RELATIVE_FIELDS = {
     "margin_top",
     "margin_bottom",
     "max_width",
+    "max_height",
     "position_x",
     "position_y",
 }
@@ -108,7 +109,7 @@ _LAYOUT_OVERRIDE_FIELDS = frozenset(
         "margin_top",
         "margin_bottom",
         "max_width",
-        "max_lines",
+        "max_height",
     }
 )
 
@@ -152,7 +153,7 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
     {
         SubtitleLayoutPreset.LANDSCAPE: LayoutPreset(
             name=SubtitleLayoutPreset.LANDSCAPE,
-            description="wide video with a balanced lower safe area",
+            description="wide video with balanced lower native margins",
             layout=SubtitleLayout(
                 position=SubtitlePosition.BOTTOM_CENTER,
                 margin_left=_preset_length("6%"),
@@ -160,12 +161,12 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_top=_preset_length("0%"),
                 margin_bottom=_preset_length("6%"),
                 max_width=_preset_length("100%"),
-                max_lines=2,
+                max_height=_preset_length("10.5%"),
             ),
         ),
         SubtitleLayoutPreset.PORTRAIT: LayoutPreset(
             name=SubtitleLayoutPreset.PORTRAIT,
-            description="tall video with an expanded lower safe area",
+            description="tall video with expanded lower native margins",
             layout=SubtitleLayout(
                 position=SubtitlePosition.BOTTOM_CENTER,
                 margin_left=_preset_length("8%"),
@@ -173,12 +174,12 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_top=_preset_length("0%"),
                 margin_bottom=_preset_length("8%"),
                 max_width=_preset_length("100%"),
-                max_lines=2,
+                max_height=_preset_length("6%"),
             ),
         ),
         SubtitleLayoutPreset.SQUARE: LayoutPreset(
             name=SubtitleLayoutPreset.SQUARE,
-            description="square video with a compact lower safe area",
+            description="square video with compact lower native margins",
             layout=SubtitleLayout(
                 position=SubtitlePosition.BOTTOM_CENTER,
                 margin_left=_preset_length("7%"),
@@ -186,7 +187,7 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_top=_preset_length("0%"),
                 margin_bottom=_preset_length("7%"),
                 max_width=_preset_length("100%"),
-                max_lines=2,
+                max_height=_preset_length("10.6%"),
             ),
         ),
         SubtitleLayoutPreset.VERTICAL_SOCIAL: LayoutPreset(
@@ -199,7 +200,7 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_top=_preset_length("8%"),
                 margin_bottom=_preset_length("16%"),
                 max_width=_preset_length("100%"),
-                max_lines=2,
+                max_height=_preset_length("6.6%"),
             ),
         ),
         SubtitleLayoutPreset.UPPER_THIRD: LayoutPreset(
@@ -212,12 +213,12 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_top=_preset_length("8%"),
                 margin_bottom=_preset_length("0%"),
                 max_width=_preset_length("100%"),
-                max_lines=2,
+                max_height=_preset_length("10.7%"),
             ),
         ),
         SubtitleLayoutPreset.CENTERED: LayoutPreset(
             name=SubtitleLayoutPreset.CENTERED,
-            description="centered subtitle with a balanced safe area",
+            description="centered subtitle with balanced horizontal margins",
             layout=SubtitleLayout(
                 position=SubtitlePosition.CENTER,
                 margin_left=_preset_length("8%"),
@@ -225,7 +226,7 @@ LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
                 margin_top=_preset_length("8%"),
                 margin_bottom=_preset_length("8%"),
                 max_width=_preset_length("100%"),
-                max_lines=2,
+                max_height=_preset_length("10%"),
             ),
         ),
     }
@@ -242,7 +243,6 @@ def validate_subtitle_config(
     position_x: RelativeLength | str | None = None,
     position_y: RelativeLength | str | None = None,
     anchor: SubtitlePosition | str | None = None,
-    max_lines: int | None = None,
 ) -> SubtitleConfig:
     """Return a complete, validated semantic subtitle configuration."""
     resolved_position = parse_position(position) if position is not None else None
@@ -256,7 +256,6 @@ def validate_subtitle_config(
             or relative_values
             or position_x is not None
             or position_y is not None
-            or max_lines is not None
         ):
             raise ValidationError(
                 "values cannot override an existing subtitle configuration"
@@ -327,17 +326,18 @@ def validate_subtitle_config(
         )
     if resolved_anchor is not None and not has_custom_coordinates:
         raise ValidationError("anchor requires both position-x and position-y")
+    if has_custom_coordinates and resolved_anchor is None:
+        raise ValidationError("custom coordinates require an explicit anchor")
+    if has_custom_coordinates and "max_width" not in parsed_relative_values:
+        raise ValidationError("custom coordinates require an explicit max-width")
+    if has_custom_coordinates and "max_height" not in parsed_relative_values:
+        raise ValidationError("custom coordinates require an explicit max-height")
     layout_overrides = set()
     if resolved_position is not None:
         layout_overrides.add("position")
     layout_overrides.update(
         field for field in parsed_relative_values if field in _LAYOUT_OVERRIDE_FIELDS
     )
-    if max_lines is not None:
-        parsed_max_lines = parse_max_lines(max_lines)
-        layout_overrides.add("max_lines")
-    else:
-        parsed_max_lines = None
     config = SubtitleConfig(
         appearance=SubtitleAppearance(
             font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
@@ -375,13 +375,16 @@ def validate_subtitle_config(
             margin_right=parsed_relative_values.get("margin_right", 0),
             margin_top=parsed_relative_values.get("margin_top", 0),
             margin_bottom=parsed_relative_values.get("margin_bottom", 0),
+            placement_mode=(
+                SubtitlePlacementMode.EXPLICIT
+                if has_custom_coordinates
+                else SubtitlePlacementMode.NATIVE_STYLE
+            ),
             position_x=parsed_relative_values.get("position_x"),
             position_y=parsed_relative_values.get("position_y"),
-            anchor=(resolved_anchor or DEFAULT_ANCHOR)
-            if has_custom_coordinates
-            else None,
+            anchor=resolved_anchor if has_custom_coordinates else None,
             max_width=parsed_relative_values.get("max_width"),
-            max_lines=parsed_max_lines,
+            max_height=parsed_relative_values.get("max_height"),
         ),
         layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
         layout_overrides=frozenset(layout_overrides),
@@ -420,15 +423,6 @@ def parse_layout_preset(
         raise ValidationError(
             "layout must be one of: " + ", ".join(LAYOUT_PRESET_CHOICES)
         ) from exc
-
-
-def parse_max_lines(value: object) -> int:
-    """Validate the internal one-, two-, or three-line cue limit."""
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValidationError("max-lines must be an integer from 1 to 3")
-    if value not in {1, 2, 3}:
-        raise ValidationError("max-lines must be an integer from 1 to 3")
-    return value
 
 
 def get_layout_preset(value: SubtitleLayoutPreset | str) -> LayoutPreset:
@@ -493,6 +487,8 @@ def _validate_relative_length(value: object, field: str) -> None:
 def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     if not isinstance(config.layout.position, SubtitlePosition):
         raise ValidationError("layout position must use a supported position value")
+    if not isinstance(config.layout.placement_mode, SubtitlePlacementMode):
+        raise ValidationError("layout placement mode must be native-style or explicit")
     if config.layout.anchor is not None and not isinstance(
         config.layout.anchor, SubtitlePosition
     ):
@@ -505,6 +501,15 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError("anchor requires both position-x and position-y")
     if has_position_x and config.layout.anchor is None:
         raise ValidationError("custom coordinates require an anchor")
+    is_explicit = config.layout.placement_mode is SubtitlePlacementMode.EXPLICIT
+    if is_explicit != has_position_x:
+        raise ValidationError(
+            "explicit placement requires position-x, position-y, and anchor"
+        )
+    if is_explicit and config.layout.max_width is None:
+        raise ValidationError("explicit placement requires max-width")
+    if is_explicit and config.layout.max_height is None:
+        raise ValidationError("explicit placement requires max-height")
     try:
         preset = parse_layout_preset(config.layout_preset)
     except ValidationError:
@@ -535,9 +540,10 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         "margin_top": config.layout.margin_top,
         "margin_bottom": config.layout.margin_bottom,
         "max_width": config.layout.max_width,
+        "max_height": config.layout.max_height,
     }
     for field, value in relative_fields.items():
-        if value is None and field == "max_width":
+        if value is None and field in {"max_width", "max_height"}:
             continue
         if isinstance(value, RelativeLength):
             _validate_relative_length(value, field)
@@ -545,12 +551,15 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
             raise ValidationError(
                 f"{field.replace('_', '-')} must be an integer or relative length"
             )
-        elif value < 0 or (field == "font_size" and value == 0):
-            comparator = "greater than zero" if field == "font_size" else "non-negative"
+        elif value < 0 or (
+            field in {"font_size", "max_width", "max_height"} and value == 0
+        ):
+            comparator = (
+                "greater than zero"
+                if field in {"font_size", "max_width", "max_height"}
+                else "non-negative"
+            )
             raise ValidationError(f"{field.replace('_', '-')} must be {comparator}")
-
-    if config.layout.max_lines is not None:
-        parse_max_lines(config.layout.max_lines)
 
     for field, value in {
         "position_x": config.layout.position_x,
