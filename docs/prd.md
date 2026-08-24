@@ -54,6 +54,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-13 | Invalid arguments and paths must exit with a non-zero status before model loading; processing and rendering failures must also exit non-zero with an actionable diagnostic. |
 | FR-14 | Transient connection failures while loading WhisperX model, VAD, or alignment assets must be retried automatically before the processing run is reported as failed. |
 | FR-15 | Before model loading, the tool must probe a deterministic video stream and use its autorotated render dimensions consistently for the ASS canvas and FFmpeg subtitle rendering. |
+| FR-16 | The user must be able to request a transcription-free layout preview that probes the video, resolves the same appearance, placement, wrapping, and ASS canvas, renders exactly one collision-safe PNG frame at a validated timestamp, and never creates transcription artifacts or imports WhisperX/PyTorch. Optional guides must show the relevant native margin region or explicit envelope, anchor, position/preset, and PlayRes dimensions. |
 
 ## Non-functional requirements
 
@@ -93,6 +94,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 14. A cue that fits the width budget with its resolved font remains on one line; when a break is required, equivalent semantic candidates avoid an unnecessary one-word final line, and JSON identifies the resolved font or estimate used.
 15. In native mode, a `100%` maximum width means the complete width remaining after horizontal margins. In explicit mode, maximum width and height are required, percentages use the full canvas axes, and invalid anchor coordinates are rejected rather than clamped or moved.
 16. Maximum height accounts for measured line height plus backdrop and shadow allowances and produces an internal line capacity of at least one line; increasing the height can increase that capacity without introducing a public maximum-lines option.
+17. `--preview-layout` accepts the documented timestamp, sample text, appearance, and placement options, defaults to the video midpoint or first frame, produces a valid PNG with the probed dimensions, applies collision-safe naming, and cleans temporary ASS/PNG files on success or failure without loading WhisperX/PyTorch. When the sample exceeds the resolved envelope, the PNG contains only the first lexical group that fits the normal cue-layout calculation; text representing later timed cues is omitted from that frame. `--keep-transcriptions` is rejected in this mode, and optional guides are visibly present only when requested.
 
 ## Constraints and risks
 

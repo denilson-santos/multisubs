@@ -32,11 +32,11 @@ This table is the source of truth for the package. Status values follow the
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Done | 0–3 | [#15](https://github.com/denilson-santos/multisubs/pull/15) |
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Done | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
 | 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | Done | 0–6 | [#35](https://github.com/denilson-santos/multisubs/pull/35) |
-| 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
+| 8 | [Layout preview](08-layout-preview.md) | In review | 0–7 | [#37](https://github.com/denilson-santos/multisubs/pull/37) |
 
 Package progress: 8 of 9 plans done; the breaking CLI cutover and major-version
 release are complete, Feature 7 merged through pull request #35, and Feature 8
-is the next unblocked plan.
+is in review through pull request #37.
 
 ## Delivery-gate status
 

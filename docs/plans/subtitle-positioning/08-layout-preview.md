@@ -1,6 +1,8 @@
 # Feature 8: layout preview
 
-Status: Planned
+Status: In review
+
+Pull request: [#37](https://github.com/denilson-santos/multisubs/pull/37)
 
 Depends on:
 
@@ -24,7 +26,7 @@ loading WhisperX or running a complete transcription.
 ~~~
 --preview-layout
 --preview-at 00:00:10.500
---preview-text "Example subtitle"
+--preview-text "Example subtitle preview text that demonstrates a readable two-line caption"
 --preview-guides
 ~~~
 
@@ -93,6 +95,11 @@ Validation:
 - Apply the same adaptive wrapping as real cues.
 - Honor the same resolved maximum envelope and derived line capacity as final
   subtitle rendering.
+- If the complete sample would require more than one timed cue, render only the
+  first lexical group selected by the normal cue-boundary calculation. Omit the
+  remaining groups because they represent later scenes in a real render.
+- Preserve the calculated line breaks in the preview ASS so libass cannot add
+  visual lines beyond the capacity derived from maximum height.
 - Escape it with the same ASS dialogue serializer.
 - Give the sample cue a duration that includes the requested frame timestamp.
 
@@ -135,15 +142,15 @@ Add render_subtitle_preview() to multisubs/subtitler.py:
 
 ## Implementation tasks
 
-- [ ] Add preview CLI options.
-- [ ] Add preview mode to RunRequest or a dedicated PreviewRequest.
-- [ ] Branch before transcriber imports.
-- [ ] Parse and validate preview timestamp.
-- [ ] Generate the sample cue and temporary ASS.
-- [ ] Add guide generation.
-- [ ] Render and publish one PNG safely.
-- [ ] Add preview-specific success and failure messages.
-- [ ] Document which normal options are invalid or ignored.
+- [x] Add preview CLI options.
+- [x] Add preview mode with a dedicated PreviewRequest.
+- [x] Branch before transcriber imports.
+- [x] Parse and validate preview timestamp.
+- [x] Generate the sample cue and temporary ASS.
+- [x] Add guide generation.
+- [x] Render and publish one PNG safely.
+- [x] Add preview-specific success and failure messages.
+- [x] Document which normal options are invalid or ignored.
 
 ## Unit tests
 
@@ -154,6 +161,9 @@ Add render_subtitle_preview() to multisubs/subtitler.py:
 - Preview text escaping.
 - Resolved maximum-height and derived-line-capacity propagation into preview cue
   layout.
+- Width- and height-driven first-cue segmentation when the complete sample does
+  not fit.
+- Preservation of calculated ASS line breaks without renderer rewrapping.
 - Guide event serialization.
 - Collision-safe output.
 - --keep-transcriptions conflict.
@@ -221,5 +231,7 @@ Before requesting review:
 - Preview completes without importing or loading WhisperX/PyTorch.
 - The PNG uses the same resolved ASS and filter configuration as final rendering.
 - Position, wrapping, and appearance match the eventual rendered video.
+- An oversized sample shows only the first cue-sized lexical group and never
+  gains renderer-created lines beyond the resolved maximum-height capacity.
 - Failure never publishes a partial preview.
 - Output naming remains collision-safe.
