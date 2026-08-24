@@ -34,7 +34,9 @@ already present in the typed configuration: font size, backdrop/outline size,
 shadow size, and four margins. `--position-x`/`--position-y` are introduced by
 [Feature 5](05-custom-coordinates.md), and `--max-width` is introduced by
 [Feature 6](06-adaptive-line-wrapping.md); both consume the same parser and
-resolution helpers rather than being duplicated in this feature.
+resolution helpers rather than being duplicated in this feature. `--max-height`
+joins the same typed unit contract in
+[Feature 7](07-placement-modes-and-maximum-height.md).
 
 ## Resolution bases
 
@@ -42,20 +44,23 @@ resolution helpers rather than being duplicated in this feature.
 | --- | --- |
 | margin-left, margin-right | Render width |
 | margin-top, margin-bottom | Render height |
-| max-width, position-x | Safe-area width after horizontal margins |
-| position-y | Safe-area height after vertical margins |
+| max-width | Native mode: width after horizontal margins; explicit mode: render width |
+| max-height | Native mode: height after the active vertical margin, or full render height for middle alignment; explicit mode: render height |
+| position-x | Render width |
+| position-y | Render height |
 | font-size | Shorter render edge |
 | backdrop-size, shadow-size | Resolved font size |
 
-Pixel margin and appearance values refer to PlayRes units. Pixel custom
-coordinates are offsets from the safe area's left/top origin; their final ASS
-placement is then expressed in PlayRes coordinates.
+Pixel margin, appearance, maximum-dimension, and custom-coordinate values refer
+to PlayRes units. Pixel custom coordinates are absolute points measured from the
+canvas left/top origin.
 
-This two-stage basis is a decision amendment implemented with
-[Feature 6](06-adaptive-line-wrapping.md). It removes the former duplicate
-subtraction in which preset `max-width` percentages repeated the side margins.
-This plan remains Done because its parser, rounding, and unit model are reused;
-Feature 6 owns the changed resolution order.
+Feature 6 temporarily made custom coordinates safe-area-local. That untagged
+amendment is superseded by
+[Feature 7](07-placement-modes-and-maximum-height.md), which restores global
+PlayRes X/Y and introduces mode-specific maximum-width/height bases. This plan
+remains Done because its parser, rounding, appearance bases, and axis-specific
+unit model are reused.
 
 ## Defaults
 
@@ -101,8 +106,8 @@ Use one documented rounding function consistently.
 
 ### Pixel coordinates
 
-- X: 0 through safe-area width.
-- Y: 0 through safe-area height.
+- X: 0 through render width.
+- Y: 0 through render height.
 
 ### Margins
 
@@ -113,7 +118,14 @@ Use one documented rounding function consistently.
 ### Maximum width
 
 - Greater than zero.
-- Cannot exceed the safe rectangle width.
+- Native mode cannot exceed the width after horizontal margins.
+- Explicit mode cannot exceed render width and must fit at the requested anchor.
+
+### Maximum height
+
+- Greater than zero and large enough for one measured line plus decorations.
+- Native mode cannot exceed its alignment-specific available height.
+- Explicit mode cannot exceed render height and must fit at the requested anchor.
 
 ### Font size
 
@@ -157,10 +169,12 @@ All geometry-dependent validation happens after FFprobe and before WhisperX.
 - Missing unit.
 - Negative values.
 - NaN, infinity, oversized numbers, and excessive precision.
-- 0%, 100%, and exact safe-area-edge coordinates.
+- 0%, 100%, and exact PlayRes-edge coordinates.
 - Landscape, portrait, square, 720p, 1080p, and 4K conversion.
-- Margin sums that eliminate the safe rectangle.
-- Maximum width larger than the safe area.
+- Margin sums that eliminate the native horizontal layout region.
+- Maximum width larger than its mode-specific available width.
+- Maximum height larger than the mode-specific available height.
+- Explicit anchored envelopes that cross a canvas edge.
 - Deterministic rounding.
 
 Property-oriented tests should verify that valid percentages remain monotonic as

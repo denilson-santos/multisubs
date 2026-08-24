@@ -11,7 +11,7 @@ Depends on:
 - [Layout presets](04-layout-presets.md)
 - [Custom coordinates](05-custom-coordinates.md)
 - [Adaptive line wrapping](06-adaptive-line-wrapping.md)
-- [Configurable maximum subtitle lines](07-maximum-lines.md)
+- [Placement modes and maximum height](07-placement-modes-and-maximum-height.md)
 
 ## Objective
 
@@ -90,17 +90,19 @@ Validation:
 - Treat preview text as untrusted user content.
 - Normalize physical newlines consistently.
 - Apply the same adaptive wrapping as real cues.
-- Honor the same resolved max-lines value as final subtitle rendering.
+- Honor the same resolved maximum envelope and derived line capacity as final
+  subtitle rendering.
 - Escape it with the same ASS dialogue serializer.
 - Give the sample cue a duration that includes the requested frame timestamp.
 
 ## Guide overlay
 
-When --preview-guides is active, render non-production diagnostics:
+When --preview-guides is active, render non-production diagnostics appropriate
+to the selected placement mode:
 
-- Safe rectangle.
-- Maximum-width boundary.
-- Anchor point.
+- Native ASS margin region and active vertical margin for named placement.
+- Maximum-width and maximum-height boundaries.
+- Explicit envelope and anchor point for custom coordinates.
 - Position or preset name.
 - PlayRes dimensions.
 
@@ -149,7 +151,8 @@ Add render_subtitle_preview() to multisubs/subtitler.py:
 - Unknown duration fallback.
 - Timestamp before zero and beyond duration.
 - Preview text escaping.
-- Resolved max-lines propagation into preview cue layout.
+- Resolved maximum-height and derived-line-capacity propagation into preview cue
+  layout.
 - Guide event serialization.
 - Collision-safe output.
 - --keep-transcriptions conflict.
@@ -189,7 +192,8 @@ Suggested commits:
 2. feat: render collision-safe subtitle preview frames
    - Add temporary ASS/PNG lifecycle, FFmpeg diagnostics, and publication tests.
 3. feat: draw subtitle layout preview guides
-   - Add safe rectangle, width, anchor, and canvas diagnostics.
+   - Add native margin, explicit envelope, anchor, width/height, and canvas
+     diagnostics.
 4. docs: document subtitle layout previews
    - Add usage, output contract, conflicts, and troubleshooting.
 

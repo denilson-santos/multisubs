@@ -24,13 +24,15 @@ X/Y coordinate.
 --anchor bottom-center
 ~~~
 
-Both coordinates accept percent or pixel units. The default custom anchor is
-bottom-center.
+Both coordinates accept percent or pixel units. The initial implementation
+defaulted the custom anchor to bottom-center;
+[Feature 7](07-placement-modes-and-maximum-height.md) makes it explicit together
+with max-width and max-height so the envelope contract has no hidden inputs.
 
 ## Coordinate meaning
 
-- position-x is measured from the safe area's left edge.
-- position-y is measured from the safe area's top edge.
+- position-x is measured from the PlayRes canvas left edge.
+- position-y is measured from the PlayRes canvas top edge.
 - anchor identifies the point on the subtitle box attached to that coordinate.
 - The anchor uses the same nine public names as --position.
 
@@ -40,43 +42,41 @@ Example:
 --position-x 50% --position-y 86% --anchor bottom-center
 ~~~
 
-This places the bottom-center of the subtitle box at 50% of safe-area width and
-86% of safe-area height, then translates that point to PlayRes coordinates.
+This places the bottom-center of the subtitle box at 50% of PlayRes width and
+86% of PlayRes height.
 
-This safe-area-local coordinate contract is a decision amendment implemented
-with [Feature 6](06-adaptive-line-wrapping.md). Margins act as the containing
-rectangle: changing them changes the origin and percentage bases without
-changing the public option names. This plan remains Done; Feature 6 owns the
-cross-feature width and placement refinement.
+Feature 6 temporarily changed these values to safe-area-local offsets.
+[Feature 7](07-placement-modes-and-maximum-height.md) supersedes that untagged
+amendment and restores this plan's original global PlayRes coordinate contract.
+Margins are ignored for explicit `\pos` placement, matching ASS behavior.
 
 ## CLI conflict rules
 
 - position-x and position-y must be supplied together.
 - --position is incompatible with custom coordinates.
-- --layout may still provide appearance, margins, maximum width, and line count,
-  but not the final point.
+- --layout may still provide appearance and a preset for native mode, but its
+  margins and maximum dimensions do not define explicit placement.
 - --anchor without custom coordinates is rejected to avoid a no-op option.
-- max-width remains active in custom-coordinate mode once introduced by
-  [Feature 6](06-adaptive-line-wrapping.md); this slice validates a minimal
-  line against the current safe rectangle.
+- [Feature 7](07-placement-modes-and-maximum-height.md) requires users to supply
+  max-width and max-height with explicit coordinates so the complete subtitle
+  envelope can be validated.
 
 All syntax conflicts fail before FFprobe. Canvas-bound checks happen after
 FFprobe and before WhisperX.
 
 ## ASS implementation
 
-Generate an internal event override after adding the safe-area origin. For the
-default 1920x1080 landscape safe area, `50%`/`86%` resolves to:
+Generate an internal event override directly in the PlayRes canvas. For a
+1920x1080 canvas, `50%`/`86%` resolves to:
 
 ~~~
-{\an2\pos(960,873)}
+{\an2\pos(960,929)}
 ~~~
 
 Rules:
 
 - Convert public anchor to private ASS alignment.
-- Resolve coordinates locally through the safe rectangle, then translate them
-  to the PlayRes canvas.
+- Resolve coordinates directly against the PlayRes canvas axes.
 - Build generated tags in a dedicated serializer.
 - Escape transcription text separately.
 - Concatenate generated tags only after both pieces are independently valid.
@@ -86,17 +86,19 @@ Although the first implementation applies one coordinate to every cue, represent
 placement per cue internally so later features do not require another ASS event
 contract change.
 
-## Width and safe-area behavior
+## Explicit envelope behavior
 
-- max-width controls visual line wrapping around the anchored subtitle.
-- Margins define the allowed safe rectangle.
-- The effective width is the smaller of max-width and the horizontal capacity
-  from the resolved anchor to the relevant safe-area edge or edges.
-- By default, reject an anchor outside the safe rectangle.
+- max-width and max-height define the complete maximum subtitle envelope around
+  the anchor.
+- Margins do not affect explicit placement or its available space.
+- Percentage maximum dimensions resolve against full render width/height.
+- Reject an envelope that crosses any canvas edge; do not shrink it to anchor
+  capacity or move its coordinate.
+- Reject an anchor outside the PlayRes canvas.
 - An explicit future allow-offscreen switch would require a separate product
   decision; do not silently permit clipping.
-- Estimate the subtitle box before rendering and reject configurations that
-  cannot fit any line within the safe width.
+- Measure the subtitle box before rendering and reject a maximum height that
+  cannot fit one line with its decorations.
 
 ## Implementation tasks
 
@@ -118,7 +120,7 @@ contract change.
 - Default and explicit anchors.
 - All nine anchors.
 - Coordinates at 0% and 100%.
-- Coordinates outside the safe-area width or height.
+- Coordinates outside the PlayRes width or height.
 - Conflict with named position.
 - Anchor without coordinates.
 - Text containing braces, backslashes, commas, newlines, Unicode, and fake ASS
@@ -130,7 +132,7 @@ contract change.
 Render known coordinates and measure the subtitle alpha bounds:
 
 - Center anchor at frame center.
-- Bottom-center anchor near the lower safe edge.
+- Bottom-center anchor near the lower canvas edge with a valid envelope.
 - Top-left at an explicit pixel position.
 - One-line and two-line cues using the same anchor.
 - Landscape, portrait, and square canvases.
@@ -186,8 +188,8 @@ Before requesting review:
 
 ## Acceptance criteria
 
-- The selected subtitle anchor lands on the requested coordinate within one ASS
-  coordinate of rounding tolerance.
+- The selected subtitle anchor lands on the requested global PlayRes coordinate
+  within one ASS coordinate of rounding tolerance.
 - Custom placement remains stable between one-line and two-line cues.
 - Transcript content cannot inject or alter generated position tags.
 - Invalid or clipped placements fail before transcription.
