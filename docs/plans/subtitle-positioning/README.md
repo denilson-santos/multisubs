@@ -31,12 +31,12 @@ This table is the source of truth for the package. Status values follow the
 | 4 | [Layout presets](04-layout-presets.md) | Done | 0–3 | [#13](https://github.com/denilson-santos/multisubs/pull/13) |
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Done | 0–3 | [#15](https://github.com/denilson-santos/multisubs/pull/15) |
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Done | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
-| 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | Planned | 0–6 | — |
+| 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | In progress | 0–6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
 Package progress: 7 of 9 plans done; the breaking CLI cutover and major-version
 release are complete, Feature 6 merged through pull request #33, and Feature 7
-is the next unblocked plan.
+is being implemented on `feat/subtitle-placement-envelopes`.
 
 ## Delivery-gate status
 
