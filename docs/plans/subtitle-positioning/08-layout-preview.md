@@ -1,6 +1,6 @@
 # Feature 8: layout preview
 
-Status: In review
+Status: Done
 
 Pull request: [#37](https://github.com/denilson-santos/multisubs/pull/37)
 
