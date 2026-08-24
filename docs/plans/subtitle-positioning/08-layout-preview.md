@@ -15,8 +15,9 @@ Depends on:
 
 ## Objective
 
-Let a user inspect subtitle position, safe areas, font, colors, and wrapping on a
-real video frame without loading WhisperX or running a complete transcription.
+Let a user inspect subtitle position, native ASS margins or the explicit
+maximum envelope, font, colors, and wrapping on a real video frame without
+loading WhisperX or running a complete transcription.
 
 ## Public interface
 

@@ -26,7 +26,7 @@ from .layout import (
     WrappingMetrics,
     estimate_text_width,
     resolve_cue_placement,
-    resolve_safe_rectangle,
+    resolve_native_layout_region,
     resolve_subtitle_config,
     resolve_wrapping_metrics,
 )
@@ -34,6 +34,7 @@ from .models import (
     RelativeLength,
     SubtitleConfig,
     SubtitleLayoutPreset,
+    SubtitlePlacementMode,
     SubtitlePosition,
     TranscriptDocument,
     TranscriptionPaths,
@@ -109,7 +110,9 @@ def generate_transcriptions(
 
     geometry = probe_video_geometry(source_path)
     resolved_config = resolve_subtitle_config(subtitle_config, geometry)
-    resolve_cue_placement(resolved_config, geometry)
+    wrapping_metrics = resolve_wrapping_metrics(
+        resolved_config, geometry, language=lang
+    )
     document = transcribe_video(
         source_path,
         lang=lang,
@@ -123,6 +126,7 @@ def generate_transcriptions(
         subtitle_config,
         geometry=geometry,
         resolved_subtitle_config=resolved_config,
+        wrapping_metrics=wrapping_metrics,
         progress=progress,
     )
 
@@ -227,6 +231,7 @@ def write_transcription_artifacts(
     *,
     geometry: VideoGeometry | None = None,
     resolved_subtitle_config: SubtitleConfig | None = None,
+    wrapping_metrics: WrappingMetrics | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
@@ -240,15 +245,15 @@ def write_transcription_artifacts(
         resolved_subtitle_config or config,
         geometry,
     )
-    resolve_cue_placement(resolved_config, geometry)
     _validate_subtitle_segments(document.segments)
-    display_segments, wrapping_metrics = layout_subtitle_cues(
+    display_segments, resolved_wrapping_metrics = layout_subtitle_cues(
         document.segments,
         resolved_config,
         geometry,
         language=document.language,
+        wrapping_metrics=wrapping_metrics,
     )
-    measurement_diagnostic = wrapping_metrics.text_measurer.diagnostic
+    measurement_diagnostic = resolved_wrapping_metrics.text_measurer.diagnostic
     if measurement_diagnostic is not None:
         _report(progress, measurement_diagnostic)
     paths = _choose_transcription_paths(
@@ -269,7 +274,7 @@ def write_transcription_artifacts(
         subtitle_config=config,
         resolved_subtitle_config=resolved_config,
         geometry=geometry,
-        wrapping_metrics=wrapping_metrics,
+        wrapping_metrics=resolved_wrapping_metrics,
     )
     _report(progress, "Completed JSON transcript.")
 
@@ -766,13 +771,15 @@ def layout_subtitle_cues(
     *,
     language: str | None = None,
     text_measurer: TextMeasurer | None = None,
+    wrapping_metrics: WrappingMetrics | None = None,
 ) -> tuple[list[dict[str, Any]], WrappingMetrics]:
     """Create display cues from semantic cues using resolved layout metrics."""
-    metrics = resolve_wrapping_metrics(
-        resolved_config,
-        geometry,
-        language=language,
-        text_measurer=text_measurer,
+    if wrapping_metrics is not None and text_measurer is not None:
+        raise ValidationError(
+            "wrapping metrics and text measurer cannot be supplied together"
+        )
+    metrics = wrapping_metrics or resolve_wrapping_metrics(
+        resolved_config, geometry, language=language, text_measurer=text_measurer
     )
     display_cues: list[dict[str, Any]] = []
     for segment in segments:
@@ -825,7 +832,7 @@ def _split_words_for_layout(
     groups: list[list[dict[str, Any]]] = []
     while remaining:
         text = _words_to_text(remaining)
-        if _line_count(text, remaining, metrics) <= metrics.max_lines:
+        if _line_count(text, remaining, metrics) <= metrics.line_capacity:
             groups.append(remaining)
             break
         if len(remaining) == 1:
@@ -847,7 +854,7 @@ def _find_best_layout_break(
         index
         for index in range(1, len(words))
         if _line_count(_words_to_text(words[:index]), words[:index], metrics)
-        <= metrics.max_lines
+        <= metrics.line_capacity
     ]
     if not candidates:
         return 1
@@ -896,7 +903,7 @@ def _line_count(
     metrics: WrappingMetrics,
 ) -> int:
     lines, fits = _layout_text_lines(text, words, metrics)
-    return len(lines) if fits else metrics.max_lines + 1
+    return len(lines) if fits else metrics.line_capacity + 1
 
 
 def _wrap_subtitle_text(
@@ -927,7 +934,7 @@ def _layout_text_lines(
 
     if estimate_text_width(join(units), metrics) <= metrics.width_budget:
         return [normalised], True
-    if metrics.max_lines <= 1:
+    if metrics.line_capacity <= 1:
         return [normalised], False
     return _partition_text_units(
         units,
@@ -964,6 +971,7 @@ def _partition_text_units(
     source_words: Sequence[Mapping[str, Any]] | None,
 ) -> tuple[list[str], bool]:
     unit_count = len(units)
+    maximum_lines = min(metrics.line_capacity, unit_count)
 
     @cache
     def line(start: int, end: int) -> tuple[str, float]:
@@ -1000,7 +1008,7 @@ def _partition_text_units(
                 results.append((end, *tail))
         return tuple(results)
 
-    for line_count in range(2, metrics.max_lines + 1):
+    for line_count in range(2, maximum_lines + 1):
         candidates = partitions(0, line_count, False)
         if candidates:
             best = min(
@@ -1016,7 +1024,7 @@ def _partition_text_units(
             )
             return _partition_lines(best, line), True
 
-    candidates = partitions(0, metrics.max_lines, True)
+    candidates = partitions(0, maximum_lines, True)
     if not candidates:
         return [join(units)], False
     best = min(
@@ -1129,12 +1137,14 @@ def _write_json(
 ) -> None:
     requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
-    safe_rectangle = resolve_safe_rectangle(geometry, resolved_layout)
     placement = resolve_cue_placement(resolved_subtitle_config, geometry)
     wrapping_metrics = wrapping_metrics or resolve_wrapping_metrics(
         resolved_subtitle_config, geometry
     )
-    custom_coordinates = requested_layout.has_custom_coordinates
+    explicit = resolved_layout.placement_mode is SubtitlePlacementMode.EXPLICIT
+    native_region = (
+        None if explicit else resolve_native_layout_region(geometry, resolved_layout)
+    )
     json_data = {
         "schema_version": 1,
         "metadata": {
@@ -1158,13 +1168,15 @@ def _write_json(
                 "container_duration": geometry.duration_seconds,
                 "requested_preset": subtitle_config.layout_preset.value,
                 "resolved_preset": resolved_subtitle_config.layout_preset.value,
+                "placement_mode": resolved_layout.placement_mode.value,
                 "requested_position": (
-                    None if custom_coordinates else requested_layout.position.value
+                    None if explicit else requested_layout.position.value
                 ),
                 "resolved_position": (
-                    None if custom_coordinates else resolved_layout.position.value
+                    None if explicit else resolved_layout.position.value
                 ),
                 "margins": {
+                    "applied": not explicit,
                     "left": resolved_layout.margin_left,
                     "right": resolved_layout.margin_right,
                     "top": resolved_layout.margin_top,
@@ -1191,6 +1203,7 @@ def _write_json(
                         ),
                     },
                     "max_width": _format_requested_length(requested_layout.max_width),
+                    "max_height": _format_requested_length(requested_layout.max_height),
                 },
                 "resolved": {
                     "font_size": resolved_subtitle_config.appearance.font_size,
@@ -1203,27 +1216,39 @@ def _write_json(
                         "bottom": resolved_layout.margin_bottom,
                     },
                     "max_width": resolved_layout.max_width,
-                    "max_lines": resolved_layout.max_lines,
+                    "max_height": resolved_layout.max_height,
+                    "line_capacity": wrapping_metrics.line_capacity,
                 },
                 "wrapping": {
-                    "safe_width": wrapping_metrics.safe_width,
+                    "available_width": wrapping_metrics.available_width,
+                    "available_height": wrapping_metrics.available_height,
                     "max_width": wrapping_metrics.max_width,
-                    "anchor_width": wrapping_metrics.anchor_width,
+                    "max_height": wrapping_metrics.max_height,
                     "width_budget": wrapping_metrics.width_budget,
+                    "line_height": wrapping_metrics.line_height,
+                    "vertical_decoration": wrapping_metrics.vertical_decoration,
+                    "line_capacity": wrapping_metrics.line_capacity,
                     "font_size": wrapping_metrics.font_size,
                     "backdrop_size": wrapping_metrics.backdrop_size,
                     "shadow_size": wrapping_metrics.shadow_size,
-                    "max_lines": wrapping_metrics.max_lines,
+                },
+                "percentage_bases": {
+                    "max_width": (
+                        "render-width"
+                        if explicit
+                        else "native-width-after-horizontal-margins"
+                    ),
+                    "max_height": (
+                        "render-height"
+                        if explicit
+                        or resolved_layout.position.value
+                        in {"middle-left", "center", "middle-right"}
+                        else "native-height-after-active-margin"
+                    ),
+                    "position_x": "render-width" if explicit else None,
+                    "position_y": "render-height" if explicit else None,
                 },
                 "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
-                "safe_rectangle": {
-                    "left": safe_rectangle.left,
-                    "top": safe_rectangle.top,
-                    "right": safe_rectangle.right,
-                    "bottom": safe_rectangle.bottom,
-                    "width": safe_rectangle.width,
-                    "height": safe_rectangle.height,
-                },
             },
         },
         "transcription": {
@@ -1232,20 +1257,29 @@ def _write_json(
         },
     }
     rendering = json_data["metadata"]["rendering"]
-    rendering["resolved_coordinates"] = {
-        "x": placement.position_x,
-        "y": placement.position_y,
-        "anchor": placement.anchor.value,
-        "coordinate_space": "playres",
-    }
-    if custom_coordinates:
+    if native_region is not None:
+        rendering["native_region"] = {
+            "left": native_region.left,
+            "top": native_region.top,
+            "right": native_region.right,
+            "bottom": native_region.bottom,
+            "width": native_region.width,
+            "height": native_region.height,
+        }
+    if explicit and placement is not None:
         rendering["requested_coordinates"] = {
             "x": _format_requested_length(requested_layout.position_x),
             "y": _format_requested_length(requested_layout.position_y),
             "anchor": requested_layout.anchor.value
             if requested_layout.anchor is not None
             else None,
-            "coordinate_space": "safe-area",
+            "coordinate_space": "playres",
+        }
+        rendering["resolved_coordinates"] = {
+            "x": placement.position_x,
+            "y": placement.position_y,
+            "anchor": placement.anchor.value,
+            "coordinate_space": "playres",
         }
     try:
         content = json.dumps(json_data, ensure_ascii=False, indent=2, allow_nan=False)

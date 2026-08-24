@@ -111,14 +111,15 @@ multisubs \
 | --fonts-dir DIR | — | Supply additional fonts to width measurement and FFmpeg/libass. |
 | --layout PRESET | auto | Select auto, landscape, portrait, square, vertical-social, upper-third, or centered subtitle layout. |
 | --position POSITION | preset value | Override the selected layout's semantic position. |
-| --margin-left LENGTH | preset value | Override the left safe-area margin. |
-| --margin-right LENGTH | preset value | Override the right safe-area margin. |
-| --margin-top LENGTH | preset value | Override the top safe-area margin. |
-| --margin-bottom LENGTH | preset value | Override the bottom safe-area margin. |
-| --max-width LENGTH | preset value | Override the maximum subtitle line width relative to the safe-area width or in PlayRes pixels. |
-| --position-x LENGTH | — | Attach a custom anchor to an X coordinate measured from the safe area's left edge. |
-| --position-y LENGTH | — | Attach a custom anchor to a Y coordinate measured from the safe area's top edge. |
-| --anchor POSITION | bottom-center for custom coordinates | Select the subtitle-box anchor used with `--position-x` and `--position-y`. |
+| --margin-left LENGTH | preset value | Override native ASS left margin; ignored by explicit coordinates. |
+| --margin-right LENGTH | preset value | Override native ASS right margin; ignored by explicit coordinates. |
+| --margin-top LENGTH | preset value | Override native ASS top margin; ignored by explicit coordinates. |
+| --margin-bottom LENGTH | preset value | Override native ASS bottom margin; ignored by explicit coordinates. |
+| --max-width LENGTH | preset value; required for explicit coordinates | Set the maximum subtitle-box width. |
+| --max-height LENGTH | preset value; required for explicit coordinates | Set the maximum subtitle-box height used to derive line capacity. |
+| --position-x LENGTH | — | Attach an explicit anchor to a global PlayRes X coordinate. |
+| --position-y LENGTH | — | Attach an explicit anchor to a global PlayRes Y coordinate. |
+| --anchor POSITION | — | Required subtitle-box anchor used with explicit X/Y coordinates. |
 | -v, --version | — | Print the package version. |
 | -h, --help | — | Show every CLI option and accepted language code. |
 
@@ -191,7 +192,8 @@ breaking cutover was released in version 2.0.0.
 
 ### Layout presets
 
-Use `--layout` to choose a complete position and safe-area baseline:
+Use `--layout` to choose a complete native ASS position, margin, width, and
+height baseline:
 
 | Preset | Behavior |
 | --- | --- |
@@ -199,18 +201,20 @@ Use `--layout` to choose a complete position and safe-area baseline:
 | `landscape` | Bottom-center subtitles with 6% left/right and bottom insets. |
 | `portrait` | Bottom-center subtitles with 8% left/right and bottom insets. |
 | `square` | Bottom-center subtitles with 7% left/right and bottom insets. |
-| `vertical-social` | Generic vertical composition with asymmetric 8%/12% side and 16% bottom safe-area insets. |
+| `vertical-social` | Generic vertical composition with asymmetric 8%/12% side and 16% bottom insets. |
 | `upper-third` | Top-center subtitles with 6% side and 8% top insets. |
 | `centered` | Centered subtitles with an 8% inset on every side. |
 
-Each preset also supplies a maximum subtitle width of `100%` of its safe area
-and a two-line baseline. The side margins already remove the unsafe part of the
-frame, so the preset does not subtract the same insets a second time through
-`max-width`. An explicit `--max-width` accepts `%` or `px`; percentages use the
-safe width remaining after the final margins are applied. The value is a ceiling
-for wrapping, not a requested line length, and the selected horizontal anchor
-can reduce the effective capacity further. Libass remains authoritative for
-final shaping and may let an indivisible token overflow rather than mutating it.
+Each preset supplies `max-width: 100%` of the width remaining after native
+horizontal margins and a calibrated `max-height`. Landscape, portrait, square,
+vertical-social, upper-third, and centered use respectively `10.5%`, `6%`,
+`10.6%`, `6.6%`, `10.7%`, and `10%` of their alignment-specific available
+height. These values preserve the ordinary two-line default while allowing line
+capacity to change with an explicit height, font size, or font metrics.
+
+`max-width` and `max-height` are ceilings rather than requested text dimensions.
+Libass remains authoritative for final shaping and may let an indivisible token
+overflow rather than mutating it.
 
 Auto uses the autorotated render dimensions: ratios above 1.1 are landscape,
 ratios below 0.9 are portrait, and the inclusive band between them is square.
@@ -230,29 +234,32 @@ multisubs -i ./video.mp4 --layout centered
 
 `--position` and the relative margin options override only their corresponding
 preset fields. Preset selection happens before relative units are converted to
-PlayRes pixels, and the final merged safe rectangle is validated before model
-loading. When custom coordinates are supplied, the preset still contributes
-appearance and safe-area margins, while the custom anchor and X/Y become the
-final placement inside that area. Changing a margin therefore changes the
-containing rectangle used to resolve percentage widths and coordinates.
+PlayRes pixels. In native mode, left/right margins define the horizontal ASS
+layout region; top positions use only `margin-top`, bottom positions use only
+`margin-bottom`, and middle positions are not moved vertically by margins.
 
-Normalized safe-area guide (`0` is the top/left edge and `1` is the
-bottom/right edge):
+Custom coordinates select a separate explicit mode. Preset and CLI margins may
+still be recorded, but they do not affect coordinates, envelope validation, or
+ASS rendering in that mode.
 
-| Preset | Safe X range | Safe Y range |
+Normalized native layout guide (`0` is the top/left edge and `1` is the
+bottom/right edge). The Y range includes only the vertical margin active for
+the preset's alignment:
+
+| Preset | Native X region | Active Y region |
 | --- | --- | --- |
 | landscape | 0.06–0.94 | 0.00–0.94 |
 | portrait | 0.08–0.92 | 0.00–0.92 |
 | square | 0.07–0.93 | 0.00–0.93 |
-| vertical-social | 0.08–0.88 | 0.08–0.84 |
+| vertical-social | 0.08–0.88 | 0.00–0.84 |
 | upper-third | 0.06–0.94 | 0.08–1.00 |
-| centered | 0.08–0.92 | 0.08–0.92 |
+| centered | 0.08–0.92 | 0.00–1.00 |
 
 ### Adaptive subtitle wrapping
 
 Subtitle cues are first built from semantic word and timing boundaries. The
-selected preset then supplies a safe width, font size, backdrop/shadow allowance,
-and a maximum of two visual lines. Whenever the requested or substituted font
+selected layout then supplies maximum width and height, font size, and
+backdrop/shadow allowances. Whenever the requested or substituted font
 can be resolved, Pillow measures its glyph advances with the resolved size and
 style; RAQM supplies direction- and language-aware shaping when available. If a
 concrete face cannot be resolved, a Unicode-aware fallback estimates
@@ -261,22 +268,21 @@ The internal Pillow size is normalized to libass's FreeType real-dimension
 semantics and recorded as `metric_size`; it is not a second user-facing font
 size.
 
-A cue that fits completely remains on one line. When a break is necessary, the
-layout engine evaluates the complete two- or three-line partition, preserves
-semantic boundary priority, and avoids an unnecessary one-word final line
-before comparing visual balance. Long unbroken tokens remain intact and may
-overflow; text is never truncated or silently changed. SRT and ASS receive the
-same intentional line breaks, while JSON keeps the existing `text` field
-contract. `metadata.rendering.text_measurement` records the requested/resolved
-font, source, shaping mode, and whether font metrics or the Unicode estimate was
-used.
+A cue that fits completely remains on one line. The line capacity is calculated
+from `max-height`, measured font line height, backdrop, and shadow; it is not a
+fixed `max-lines` setting. When a break is necessary, the layout engine
+evaluates partitions up to that capacity, preserves semantic boundary priority,
+and avoids an unnecessary one-word final line before comparing visual balance.
+Long unbroken tokens remain intact and may overflow; text is never truncated or
+silently changed. SRT and ASS receive the same intentional line breaks, while
+JSON keeps the existing `text` field contract.
 
-Use `--max-width` when the subtitle should occupy less than the selected safe
-area:
+Use maximum dimensions when the subtitle should occupy a smaller visual area or
+allow a different vertical line capacity:
 
 ~~~
 multisubs -i ./video.mp4 --max-width 72%
-multisubs -i ./video.mp4 --layout portrait --max-width 640px
+multisubs -i ./video.mp4 --layout portrait --max-width 640px --max-height 180px
 ~~~
 
 ### Relative layout units
@@ -289,9 +295,10 @@ The typed layout options accept an explicit unit suffix:
 | `--backdrop-size`, `--shadow-size` | Resolved font size |
 | `--margin-left`, `--margin-right` | Render width |
 | `--margin-top`, `--margin-bottom` | Render height |
-| `--max-width` | Safe-area width after left/right margins |
-| `--position-x` | Safe-area width after left/right margins |
-| `--position-y` | Safe-area height after top/bottom margins |
+| `--max-width` | Native: width after left/right margins; explicit: render width |
+| `--max-height` | Native: height after the active vertical margin, or render height for middle alignment; explicit: render height |
+| `--position-x` | Render width |
+| `--position-y` | Render height |
 
 Use `%` for resolution-independent values or `px` for fixed PlayRes pixels:
 
@@ -308,45 +315,55 @@ before WhisperX.
 ### Exact subtitle coordinates
 
 Use `--position-x` and `--position-y` together to attach a subtitle-box anchor
-to an exact point inside the selected safe area. Both options require `%` or
-`px`; X starts at the safe area's left edge, Y starts at its top edge, and Y
-increases downward. Pixel values are offsets inside that area. The default
-custom anchor is `bottom-center`.
+to an exact global PlayRes point. Both options require `%` or `px`; X starts at
+the canvas left edge, Y starts at its top edge, and Y increases downward. Pixel
+values are absolute PlayRes coordinates.
 
 ~~~text
-      safe x = 0%                    safe x = 100%
-              ┌──────────────────────────────┐  safe y = 0%
+    canvas x = 0%                  canvas x = 100%
+              ┌──────────────────────────────┐  canvas y = 0%
               │  top-left       top-center   │
               │                              │
               │            center            │
               │                              │
               │ bottom-left  bottom-center  │  safe y = 100%
-              └──────────────────────────────┘
+              └──────────────────────────────┘  canvas y = 100%
 ~~~
 
 The anchor identifies the point on the subtitle box, not the glyph baseline:
 
 ~~~
 multisubs -i ./video.mp4 \
-  --position-x 50% --position-y 86% --anchor bottom-center
+  --position-x 50% --position-y 86% --anchor bottom-center \
+  --max-width 60% --max-height 20%
 multisubs -i ./video.mp4 \
-  --position-x 120px --position-y 80px --anchor top-left
+  --position-x 120px --position-y 80px --anchor top-left \
+  --max-width 900px --max-height 240px
 ~~~
 
 `--position-x` and `--position-y` must be supplied as a pair. They cannot be
-combined with `--position`, and `--anchor` without both coordinates is rejected.
-The resolved anchor must fit inside the selected layout's safe rectangle; an
-off-screen or clipped placement fails after ffprobe and before transcription.
-For example, on a 1920px-wide canvas with 100px side margins,
-`--position-x 600px --position-y 0px --anchor top-left` resolves to PlayRes
-X=700. The safe width is 1720px and 1120px remain between that anchor and the
-right margin. The effective line width is the smaller of that anchor capacity
-and `--max-width`.
+combined with `--position`. `--anchor`, `--max-width`, and `--max-height` are
+required explicitly; preset values are not inherited. Margins are ignored.
+
+The complete maximum envelope must fit inside the canvas for its anchor. For a
+center anchor, X must be between half the maximum width and the canvas width
+minus that half; Y follows the equivalent maximum-height rule. Left/top anchors
+reserve their envelope toward the right/bottom, while right/bottom anchors
+reserve it toward the left/top. Invalid placement fails after ffprobe and before
+WhisperX; multisubs does not clamp the dimensions or move the coordinate.
+
+For example, on a 1920px canvas, `max-width=60%` resolves to 1152px. A centered
+horizontal anchor is valid from X=576 through X=1344. X=300 is rejected.
+
+Migration note for users who tested unreleased source after Feature 6: custom
+coordinates are no longer offsets inside preset margins, and an undersized
+anchor capacity is no longer handled by silently reducing `max-width`. Supply
+global PlayRes X/Y plus explicit maximum width and height. This restores the
+stable v2.0.0 coordinate basis before the transitional behavior is released.
 
 Coordinates are represented in generated ASS event overrides. JSON identifies
-requested coordinates as `safe-area` values and final integer coordinates as
-`playres` values. SRT has no positioning field, so it keeps text and timing but
-cannot preserve coordinates.
+requested and resolved coordinates as `playres` values. SRT has no positioning
+field, so it keeps text and timing but cannot preserve coordinates.
 
 ### Subtitle positions
 
@@ -360,13 +377,11 @@ currently default to `bottom-center` except `upper-third` (`top-center`) and
 | `bottom-left` | `bottom-center` | `bottom-right` |
 
 Left and right are physical screen directions, not language-relative start and
-end values. A named position is a shortcut for attaching the corresponding box
-anchor to the matching edge or center of the safe rectangle. For example,
-`bottom-center` maps to the horizontal center and bottom edge of the safe area;
-`center` maps to its exact center even when opposite margins differ. Both named
-and custom placements are serialized privately as ASS `\an` plus `\pos` event
-overrides. Numeric ASS alignment codes remain implementation details;
-`--style-alignment` is not a supported option.
+end values. Named positions compile to native ASS style `Alignment` plus the
+active margins and do not emit an event `\pos`. Unequal horizontal margins shift
+the native layout region as defined by ASS. Custom placement alone emits private
+ASS `\an` plus `\pos` event overrides. Numeric ASS alignment codes remain
+implementation details; `--style-alignment` is not a supported option.
 
 ## Generated files
 

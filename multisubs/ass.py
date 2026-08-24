@@ -11,15 +11,14 @@ from typing import Any
 from .config import validate_subtitle_config
 from .errors import ArtifactError
 from .layout import (
-    resolve_ass_horizontal_margins,
     resolve_cue_placement,
-    resolve_safe_rectangle,
     resolve_subtitle_config,
 )
 from .models import (
     CuePlacement,
     SubtitleBackdrop,
     SubtitleConfig,
+    SubtitlePlacementMode,
     SubtitlePosition,
     VideoGeometry,
 )
@@ -72,15 +71,14 @@ def write_ass(
 ) -> None:
     """Write safe ASS dialogue on the probed, autorotated video canvas.
 
-    ``placements`` is an internal per-cue contract. When omitted, the named or
-    custom layout resolves to one safe-area placement reused by every cue.
+    ``placements`` is an internal per-cue contract for explicit placement.
+    Native style placement emits no event-level position override.
     """
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
     config = resolve_subtitle_config(
         validate_subtitle_config(subtitle_config), geometry
     )
-    resolve_safe_rectangle(geometry, config.layout)
     style = _compile_style(config, geometry)
     default_placement = resolve_cue_placement(config, geometry)
     if placements is not None and len(placements) != len(segments):
@@ -131,19 +129,23 @@ def _compile_style(
     backdrop_size = _resolved_style_int(appearance.backdrop_size, "backdrop-size")
     margin_top = _resolved_style_int(layout.margin_top, "margin-top")
     margin_bottom = _resolved_style_int(layout.margin_bottom, "margin-bottom")
+    explicit = layout.placement_mode is SubtitlePlacementMode.EXPLICIT
     margin_v = (
-        margin_top
+        0
+        if explicit
+        else margin_top
         if layout.position.value.startswith("top-")
         else margin_bottom
         if layout.position.value.startswith("bottom-")
-        else min(margin_top, margin_bottom)
+        else 0
     )
     backdrop_color = rgba_to_ass_color(appearance.backdrop_color)
-    if geometry is None:
+    if explicit:
+        margin_l = 0
+        margin_r = 0
+    else:
         margin_l = _resolved_style_int(layout.margin_left, "margin-left")
         margin_r = _resolved_style_int(layout.margin_right, "margin-right")
-    else:
-        margin_l, margin_r = resolve_ass_horizontal_margins(config, geometry)
     return {
         "font": appearance.font,
         "font_size": _resolved_style_int(appearance.font_size, "font-size"),
@@ -169,7 +171,9 @@ def _compile_style(
             0 if appearance.backdrop is SubtitleBackdrop.NONE else backdrop_size
         ),
         "shadow_weight": _resolved_style_int(appearance.shadow_size, "shadow-size"),
-        "alignment": _ass_alignment_for_position(layout.anchor or layout.position),
+        "alignment": _ass_alignment_for_position(
+            layout.anchor if explicit and layout.anchor is not None else layout.position
+        ),
         "margin_l": margin_l,
         "margin_r": margin_r,
         "margin_v": margin_v,

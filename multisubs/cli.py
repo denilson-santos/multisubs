@@ -30,7 +30,11 @@ from .config import (
     validate_subtitle_config,
 )
 from .errors import ArtifactError, MultisubsError, ValidationError
-from .layout import resolve_cue_placement, resolve_subtitle_config
+from .layout import (
+    resolve_cue_placement,
+    resolve_subtitle_config,
+    resolve_wrapping_metrics,
+)
 from .models import RelativeLength, RunArtifacts, RunRequest, TranscriptionPaths
 from .utils import (
     create_unique_dir,
@@ -121,8 +125,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=POSITION_CHOICES,
         default=None,
         help=(
-            "Attach the matching subtitle-box anchor to an edge or center of "
-            "the safe area; left and right are physical screen directions."
+            "Use native ASS alignment and margins at the selected screen "
+            "position; left and right are physical screen directions."
         ),
     )
 
@@ -214,8 +218,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         (
             "--max-width",
-            "Maximum subtitle line width as a percentage of the safe-area width "
-            "or pixels.",
+            "Maximum subtitle line width. Native percentages use the width "
+            "after horizontal margins; explicit percentages use render width.",
+        ),
+        (
+            "--max-height",
+            "Maximum subtitle box height. Native percentages use the height "
+            "after the active vertical margin; explicit percentages use the "
+            "render height.",
         ),
     ):
         relative_group.add_argument(
@@ -228,28 +238,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     coordinate_group = parser.add_argument_group(
         "Custom subtitle coordinates",
-        "Attach the selected anchor to an X/Y coordinate inside the safe area; "
-        "use % or px.",
+        "Attach an explicit anchor to global PlayRes X/Y coordinates. Margins "
+        "are ignored; max-width and max-height are required.",
     )
     coordinate_group.add_argument(
         "--position-x",
         type=_relative_length_argument_type,
         default=None,
         metavar="LENGTH",
-        help="Horizontal anchor coordinate measured from the safe area's left edge.",
+        help="Horizontal anchor coordinate measured from the PlayRes left edge.",
     )
     coordinate_group.add_argument(
         "--position-y",
         type=_relative_length_argument_type,
         default=None,
         metavar="LENGTH",
-        help="Vertical anchor coordinate measured from the safe area's top edge.",
+        help="Vertical anchor coordinate measured from the PlayRes top edge.",
     )
     coordinate_group.add_argument(
         "--anchor",
         choices=POSITION_CHOICES,
         default=None,
-        help=("Subtitle-box anchor for custom coordinates (default: bottom-center)."),
+        help="Required subtitle-box anchor for custom coordinates.",
     )
 
     return parser
@@ -323,6 +333,7 @@ def _build_request(
             "margin_top": args.margin_top,
             "margin_bottom": args.margin_bottom,
             "max_width": args.max_width,
+            "max_height": args.max_height,
             "position_x": args.position_x,
             "position_y": args.position_y,
         }.items()
@@ -384,16 +395,23 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
     resolved_subtitle_config = resolve_subtitle_config(
         request.subtitle_config, geometry
     )
+    wrapping_metrics = resolve_wrapping_metrics(
+        resolved_subtitle_config,
+        geometry,
+        language=request.language,
+    )
     placement = resolve_cue_placement(resolved_subtitle_config, geometry)
-    if resolved_subtitle_config.layout.has_custom_coordinates:
+    if placement is not None:
         placement_description = (
             f"anchor {placement.anchor.value} at "
-            f"({placement.position_x}, {placement.position_y})"
+            f"({placement.position_x}, {placement.position_y}) with envelope "
+            f"{wrapping_metrics.max_width}x{wrapping_metrics.max_height}px"
         )
     else:
         placement_description = (
-            f"position {resolved_subtitle_config.layout.position.value} at "
-            f"({placement.position_x}, {placement.position_y})"
+            f"native position {resolved_subtitle_config.layout.position.value} "
+            f"with {wrapping_metrics.max_width}x"
+            f"{wrapping_metrics.max_height}px limits"
         )
     progress(
         "Detected video layout: "
@@ -419,6 +437,7 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
             request.subtitle_config,
             geometry=geometry,
             resolved_subtitle_config=resolved_subtitle_config,
+            wrapping_metrics=wrapping_metrics,
             progress=progress,
         )
         transcripts = TranscriptionPaths(

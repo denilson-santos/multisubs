@@ -12,7 +12,6 @@ from multisubs.config import (
     SUPPORTED_LANGUAGES,
     get_layout_preset,
     parse_layout_preset,
-    parse_max_lines,
     parse_position,
     parse_relative_length,
     validate_subtitle_config,
@@ -23,6 +22,7 @@ from multisubs.models import (
     SubtitleBackdrop,
     SubtitleConfig,
     SubtitleLayoutPreset,
+    SubtitlePlacementMode,
     SubtitlePosition,
 )
 
@@ -105,28 +105,22 @@ def test_default_position_is_bottom_center_and_choices_are_named():
     config = validate_subtitle_config(None)
 
     assert config.layout.position is SubtitlePosition.BOTTOM_CENTER
+    assert config.layout.placement_mode is SubtitlePlacementMode.NATIVE_STYLE
     assert config.layout_preset is SubtitleLayoutPreset.AUTO
     assert config.layout_overrides == frozenset()
     assert POSITION_CHOICES == tuple(position.value for position in SubtitlePosition)
     assert parse_position("top-right") is SubtitlePosition.TOP_RIGHT
 
 
-def test_max_width_and_internal_max_lines_are_typed_layout_values():
+def test_maximum_dimensions_are_typed_layout_values():
     config = validate_subtitle_config(
         None,
-        relative_values={"max_width": "72%"},
-        max_lines=1,
+        relative_values={"max_width": "72%", "max_height": "12%"},
     )
 
     assert config.layout.max_width == parse_relative_length("72%")
-    assert config.layout.max_lines == 1
-    assert config.layout_overrides == frozenset({"max_width", "max_lines"})
-
-
-@pytest.mark.parametrize("value", [0, 4, -1, True, "2"])
-def test_parse_max_lines_rejects_values_outside_internal_range(value):
-    with pytest.raises(ValidationError, match="max-lines"):
-        parse_max_lines(value)
+    assert config.layout.max_height == parse_relative_length("12%")
+    assert config.layout_overrides == frozenset({"max_width", "max_height"})
 
 
 def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
@@ -146,6 +140,7 @@ def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
         assert preset.layout.position in SubtitlePosition
         assert preset.description
         assert preset.layout.max_width == parse_relative_length("100%")
+        assert isinstance(preset.layout.max_height, RelativeLength)
     with pytest.raises(TypeError):
         cast(Any, LAYOUT_PRESETS)[SubtitleLayoutPreset.LANDSCAPE] = get_layout_preset(
             "square"
@@ -257,25 +252,20 @@ def test_relative_values_are_stored_until_geometry_is_available():
     assert config.layout.margin_bottom == parse_relative_length("72px")
 
 
-def test_custom_coordinates_store_default_anchor_and_units():
-    config = validate_subtitle_config(
-        None,
-        relative_values={"position_x": "50%", "position_y": "86%"},
-    )
-
-    assert config.layout.position_x == parse_relative_length("50%")
-    assert config.layout.position_y == parse_relative_length("86%")
-    assert config.layout.anchor is SubtitlePosition.BOTTOM_CENTER
-
-
 def test_custom_coordinates_accept_explicit_anchor():
     config = validate_subtitle_config(
         None,
-        relative_values={"position_x": "960px", "position_y": "929px"},
+        relative_values={
+            "position_x": "960px",
+            "position_y": "929px",
+            "max_width": "60%",
+            "max_height": "12%",
+        },
         anchor="top-left",
     )
 
     assert config.layout.anchor is SubtitlePosition.TOP_LEFT
+    assert config.layout.placement_mode is SubtitlePlacementMode.EXPLICIT
 
 
 @pytest.mark.parametrize(
@@ -284,12 +274,40 @@ def test_custom_coordinates_accept_explicit_anchor():
         ({"position_x": "50%"}, None, None, "position-x and position-y"),
         ({"position_y": "86%"}, None, None, "position-x and position-y"),
         (
-            {"position_x": "50%", "position_y": "86%"},
+            {
+                "position_x": "50%",
+                "position_y": "86%",
+                "max_width": "60%",
+                "max_height": "12%",
+            },
             "top-left",
             None,
             "position cannot be combined",
         ),
         ({}, None, "top-left", "anchor requires"),
+        (
+            {
+                "position_x": "50%",
+                "position_y": "86%",
+                "max_width": "60%",
+                "max_height": "12%",
+            },
+            None,
+            None,
+            "explicit anchor",
+        ),
+        (
+            {"position_x": "50%", "position_y": "86%", "max_height": "12%"},
+            None,
+            "bottom-center",
+            "max-width",
+        ),
+        (
+            {"position_x": "50%", "position_y": "86%", "max_width": "60%"},
+            None,
+            "bottom-center",
+            "max-height",
+        ),
     ],
 )
 def test_custom_coordinate_conflicts_are_rejected(

@@ -1,6 +1,8 @@
 # Feature 7: ASS placement modes and maximum subtitle height
 
-Status: Planned
+Status: In review
+
+Pull request: [#35](https://github.com/denilson-santos/multisubs/pull/35)
 
 Depends on:
 
@@ -352,27 +354,27 @@ before the next release rather than preserving contradictory transitional data.
 
 ## Implementation tasks
 
-- [ ] Add a typed placement mode and replace `max_lines` with `max_height` in
+- [x] Add a typed placement mode and replace `max_lines` with `max_height` in
       the resolved layout contract.
-- [ ] Add `--max-height`, mode-specific CLI help, and early cross-option
+- [x] Add `--max-height`, mode-specific CLI help, and early cross-option
       validation.
-- [ ] Restore global PlayRes X/Y percentage and pixel resolution.
-- [ ] Require explicit maximum width and height in coordinate mode.
-- [ ] Implement full-envelope validation for all nine anchors on both axes.
-- [ ] Restore native ASS alignment and active-margin compilation for named
+- [x] Restore global PlayRes X/Y percentage and pixel resolution.
+- [x] Require explicit maximum width and height in coordinate mode.
+- [x] Implement full-envelope validation for all nine anchors on both axes.
+- [x] Restore native ASS alignment and active-margin compilation for named
       positions; omit event `\pos` in that mode.
-- [ ] Remove anchor-capacity width clamping and synthetic ASS margins.
-- [ ] Resolve optional native max-width against the width after horizontal
+- [x] Remove anchor-capacity width clamping and synthetic ASS margins.
+- [x] Resolve optional native max-width against the width after horizontal
       margins, defaulting implicitly to 100%.
-- [ ] Resolve native max-height against the alignment-specific available height
+- [x] Resolve native max-height against the alignment-specific available height
       and calibrate immutable preset values.
-- [ ] Extend font measurement with line height and vertical decoration metrics.
-- [ ] Derive internal line capacity from max-height and update cue partitioning.
-- [ ] Preserve missing-word-timing and indivisible-token fallbacks.
-- [ ] Reconcile JSON rendering metadata with the two-mode contract.
-- [ ] Add focused configuration, layout, ASS, cue, serialization, and integration
+- [x] Extend font measurement with line height and vertical decoration metrics.
+- [x] Derive internal line capacity from max-height and update cue partitioning.
+- [x] Preserve missing-word-timing and indivisible-token fallbacks.
+- [x] Reconcile JSON rendering metadata with the two-mode contract.
+- [x] Add focused configuration, layout, ASS, cue, serialization, and integration
       tests.
-- [ ] Update README, PRD, architecture, conventions, and roadmap documentation.
+- [x] Update README, PRD, architecture, conventions, and roadmap documentation.
 
 ## Unit tests
 

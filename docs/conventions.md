@@ -132,12 +132,16 @@ Update a higher-level document when a proposed change intentionally modifies the
   exponent notation, and preserve the original requested string for metadata.
 - Must resolve percentages only after normalized video geometry is available,
   using the field's documented axis or reference value.
-- Must resolve margins against the render axes first, then resolve percentage
-  maximum width and custom X/Y coordinates against the resulting safe-area
-  width or height. Treat custom pixel coordinates as offsets from the safe
-  area's left/top origin and record the final PlayRes placement separately.
+- Must resolve margins against the render axes first. In native ASS placement,
+  resolve percentage maximum width against the width after left/right margins
+  and maximum height against the alignment-specific available height. In
+  explicit placement, resolve X/Y and both maximum dimensions against the full
+  PlayRes axes and ignore margins.
+- Must treat explicit pixel coordinates as absolute PlayRes coordinates and
+  reject any complete anchored maximum-width/maximum-height envelope that leaves
+  the canvas. Do not silently clamp, move, or shrink an invalid placement.
 - Must use one deterministic rounding policy for every relative length and
-  perform combined safe-area validation after all fields are resolved.
+  perform combined mode-specific validation after all fields are resolved.
 - Must keep unresolved unit values out of ASS serialization; the ASS writer
   receives a geometry-resolved typed configuration.
 - Must define layout preset sources centrally as immutable typed values in
@@ -186,10 +190,13 @@ Update a higher-level document when a proposed change intentionally modifies the
 ### Cue construction
 
 - Must preserve the product's readability policy: semantic boundaries such as sentence endings and meaningful pauses take priority over arbitrary hard splits. See [architecture.md](architecture.md#subtitle-cue-construction).
-- Must derive visual wrapping from the resolved safe rectangle, maximum width,
-  font/decorative bounds, and Unicode display-width estimates rather than a
-  fixed character count. The estimator is approximate; libass remains
-  authoritative for final font shaping and indivisible tokens may overflow.
+- Must derive visual wrapping from maximum width, maximum height, measured font
+  line height, decorative bounds, and Unicode display-width estimates rather
+  than a fixed character or line count. The estimator is approximate; libass
+  remains authoritative for final font shaping and indivisible tokens may
+  overflow.
+- Must keep partition search bounded by both derived line capacity and available
+  text units so unusually large height values cannot create unbounded work.
 - Must keep cue timestamps in chronological order, with end at or after start; a rendered cue should normally have a strictly positive duration.
 - Should keep thresholds, such as maximum duration and line length, centralized as named constants or documented configuration rather than scattering literal values.
 - Should test punctuation, long sentences, pauses, one-word overflow, missing word timings, and exact threshold boundaries whenever cue logic changes.
@@ -215,6 +222,10 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must not mutate a layout preset during a run. Preset definitions and their
   nested layout values must remain immutable so separate invocations cannot
   influence one another.
+- Must compile named positions through native ASS style Alignment and actual
+  margins without adding a synthetic event `\\pos`. Explicit coordinate mode
+  must use event `\\an`/`\\pos`, neutral style margins, and a previously validated
+  PlayRes envelope.
 - Must validate appearance and layout values that can produce invalid ASS or unsafe filter input. Treat colors, font names, positions, margins, and numeric values as user input.
 - Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.
