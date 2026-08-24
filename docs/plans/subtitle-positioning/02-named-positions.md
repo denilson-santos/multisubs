@@ -57,28 +57,28 @@ The numeric value must be private to the ASS compiler.
 - Right-aligned positions use margin-right.
 - Bottom positions use margin-bottom.
 - Top positions use margin-top.
-- Centered positions use the safe rectangle and maximum width.
-- Equal left and right margins preserve geometric centering.
-- Unequal margins intentionally shift the available safe rectangle.
+- Middle positions follow native ASS alignment and are not moved vertically by
+  MarginV.
+- Equal left and right margins preserve geometric centering inside the native
+  ASS layout region.
+- Unequal margins intentionally shift that native layout region.
 
 Left and right are physical screen directions. They are not language-relative
 start and end values.
 
-Decision amendment implemented with
-[Feature 6](06-adaptive-line-wrapping.md): a named position now resolves to the
-matching point of the complete safe rectangle and is emitted with private ASS
-`\an` plus `\pos`. This replaces reliance on style alignment/margins alone and
-makes center placement exact when opposite margins differ. The public
-`--position` interface and this plan's Done status are unchanged.
+Pull request #33 temporarily changed named positions to safe-area `\an`/`\pos`
+events. [Feature 7](07-placement-modes-and-maximum-height.md) supersedes that
+untagged refinement and restores this plan's native ASS style alignment and
+margin contract. The public `--position` interface and this plan's Done status
+are unchanged.
 
 ## Implementation
 
 - Add a SubtitlePosition enum or equivalent closed type.
 - Parse positions through argparse choices.
 - Map the position to an internal anchor and ASS alignment.
-- Resolve the safe rectangle before compiling ASS.
+- Compile native ASS margins for the selected vertical alignment.
 - Store the position on SubtitleLayout, not SubtitleAppearance.
-- Resolve the global named position to an explicit safe-area anchor point.
 - Keep per-event generated override support available for custom coordinates.
 - Include requested and resolved position in rendering metadata.
 
@@ -86,7 +86,7 @@ makes center placement exact when opposite margins differ. The public
 
 - Unknown names fail through argparse.
 - --position cannot be combined with complete custom X/Y positioning.
-- A position whose resolved margins leave no usable safe rectangle fails before
+- Horizontal margins that leave no usable native layout width fail before
   transcription.
 - Position names are lowercase and hyphenated; do not accept numeric aliases.
 
@@ -106,7 +106,7 @@ makes center placement exact when opposite margins differ. The public
 - Exact mapping for all nine values.
 - Default bottom-center.
 - Each edge selects the correct margin.
-- Unequal side margins affect the safe rectangle predictably.
+- Unequal side margins affect the native ASS layout region predictably.
 - Unknown and numeric inputs fail.
 - Conflict with custom coordinates fails before runtime.
 - Generated ASS contains the correct private numeric alignment.
@@ -120,7 +120,7 @@ coverage remains pending Feature 5 because those public options do not exist yet
 Render one short two-line subtitle in all nine positions and verify:
 
 - Its bounding box falls inside the expected third of the frame.
-- It remains inside the safe rectangle.
+- It remains inside the native margin region.
 - Top and bottom margins are measured from the correct edge.
 - Text with right-to-left shaping does not reverse the physical position.
 

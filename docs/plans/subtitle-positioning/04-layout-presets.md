@@ -15,14 +15,14 @@ Depends on:
 
 ## Objective
 
-Provide coherent, reusable position and safe-area configurations for common
+Provide coherent, reusable position and native-margin configurations for common
 video geometries without requiring a long list of flags.
 
 The first implementation slice wires presets to the typed fields that already
-exist: semantic position and the four safe-area margins. Maximum width and
-maximum line count remain owned by [Feature 6](06-adaptive-line-wrapping.md) and
-[Feature 7](07-maximum-lines.md); those plans extend the same preset merge
-contract when their fields become available.
+exist: semantic position and the four ASS margins. Maximum width is added by
+[Feature 6](06-adaptive-line-wrapping.md), while
+[Feature 7](07-placement-modes-and-maximum-height.md) adds maximum height and
+separates native preset placement from explicit coordinate envelopes.
 
 ## Public interface
 
@@ -40,29 +40,28 @@ The default is auto.
 
 ## Proposed preset baselines
 
-| Preset | Position | Left/right | Vertical inset | Max width | Max lines |
-| --- | --- | --- | --- | --- | ---: |
-| landscape | bottom-center | 6% / 6% | bottom 6% | 100% of safe width | 2 |
-| portrait | bottom-center | 8% / 8% | bottom 8% | 100% of safe width | 2 |
-| square | bottom-center | 7% / 7% | bottom 7% | 100% of safe width | 2 |
-| vertical-social | bottom-center | asymmetric safe area | larger bottom inset | 100% of safe width | 2 |
-| upper-third | top-center | 6% / 6% | top 8% | 100% of safe width | 2 |
-| centered | center | 8% / 8% | centered | 100% of safe width | 2 |
+| Preset | Position | Left/right | Active vertical margin | Max width | Max height |
+| --- | --- | --- | --- | --- | --- |
+| landscape | bottom-center | 6% / 6% | bottom 6% | 100% after margins | calibrated native height |
+| portrait | bottom-center | 8% / 8% | bottom 8% | 100% after margins | calibrated native height |
+| square | bottom-center | 7% / 7% | bottom 7% | 100% after margins | calibrated native height |
+| vertical-social | bottom-center | asymmetric | larger bottom inset | 100% after margins | calibrated native height |
+| upper-third | top-center | 6% / 6% | top 8% | 100% after margins | calibrated native height |
+| centered | center | 8% / 8% | ignored by native middle alignment | 100% after margins | calibrated native height |
 
-Decision amendment implemented with
-[Feature 6](06-adaptive-line-wrapping.md): every preset uses `max-width: 100%`
-relative to its already-inset safe area. The earlier render-width percentages
-were numerically equivalent to subtracting the side margins, but duplicated
-that policy and stopped being equivalent after a user changed a margin. The
-preset identities, safe-area values, and this plan's Done status are unchanged.
+Every preset uses `max-width: 100%` relative to the width remaining after native
+horizontal margins. Feature 7 adds a calibrated maximum-height length instead
+of a fixed line count. Explicit coordinate mode must not silently inherit either
+maximum dimension from a preset; users declare its complete envelope. The
+preset identities, margin values, and this plan's Done status are unchanged.
 
 The vertical-social values must be calibrated with documented generic overlay
 guides. The preset must not claim compatibility guarantees for a named social
 platform whose interface can change.
 
-Presets own the resolved default line count. The public `--max-lines` override
-is delivered by [Feature 7](07-maximum-lines.md) after adaptive wrapping can
-enforce the value without losing text or inventing timestamps.
+Presets own a resolved default maximum height. Feature 7 derives internal line
+capacity from that height and the measured font/decorations without exposing a
+public `--max-lines` option.
 
 ## Auto selection
 

@@ -1,8 +1,10 @@
 # Feature 6: adaptive line wrapping
 
-Status: In review
+Status: Done
 
 Pull request: [#33](https://github.com/denilson-santos/multisubs/pull/33)
+
+The implementation and documentation were merged through pull request #33.
 
 Depends on:
 
@@ -10,6 +12,21 @@ Depends on:
 - [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md)
 - [Relative units](03-relative-units.md)
 - [Layout presets](04-layout-presets.md)
+
+## Superseding placement decision
+
+This plan records the implementation merged in pull request #33. Its
+font-resolution, measured-width, semantic-partitioning, Unicode fallback, and
+Portuguese regression work remain the basis for subsequent features.
+
+Its safe-area-local coordinate model, named-position `\pos` output,
+anchor-capacity clamping, synthetic ASS margins, and fixed internal max-lines
+contract are superseded before release by
+[Feature 7](07-placement-modes-and-maximum-height.md). Feature 7 restores native
+ASS margins for `--position`, restores global PlayRes custom coordinates,
+validates an explicit width/height envelope without clamping, and derives line
+capacity from maximum height. Historical checklists below describe what pull
+request #33 implemented and are not the target contract for the next release.
 
 ## Objective
 
@@ -65,10 +82,9 @@ Excluded:
   areas.
 - ASS remains the authoritative rendered layout.
 
-This feature makes the cue-layout engine capable of enforcing the resolved
-`SubtitleLayout.max_lines` value supplied by presets. The explicit user override
-is added separately by [Feature 7](07-maximum-lines.md), after this engine is in
-place.
+This feature made the cue-layout engine capable of enforcing a transitional
+`SubtitleLayout.max_lines` value supplied by presets. Feature 7 replaces that
+internal limit with a line capacity derived from maximum height.
 
 The public `--max-width LENGTH` override is delivered here because width is the
 layout input that replaces the fixed character target. It accepts the existing
@@ -93,9 +109,8 @@ The public width override is:
 `LENGTH` uses the existing `%` or `px` parser. Percentages resolve against the
 safe-area width remaining after horizontal margins. The final budget is the
 smaller of that ceiling and the capacity available from the selected horizontal
-anchor. There is no public max-lines flag
-in this feature; presets provide the internal two-line default and Feature 7
-adds the explicit user override.
+anchor. There is no public max-lines flag. The transitional preset-provided
+internal limit is replaced by Feature 7 rather than becoming a user option.
 
 JSON policy must be explicit:
 

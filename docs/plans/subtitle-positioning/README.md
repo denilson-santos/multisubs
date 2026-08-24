@@ -30,12 +30,13 @@ This table is the source of truth for the package. Status values follow the
 | 3 | [Relative units](03-relative-units.md) | Done | 0, 1 | [#12](https://github.com/denilson-santos/multisubs/pull/12) |
 | 4 | [Layout presets](04-layout-presets.md) | Done | 0–3 | [#13](https://github.com/denilson-santos/multisubs/pull/13) |
 | 5 | [Custom coordinates](05-custom-coordinates.md) | Done | 0–3 | [#15](https://github.com/denilson-santos/multisubs/pull/15) |
-| 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | In review | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
-| 7 | [Maximum subtitle lines](07-maximum-lines.md) | Planned | 0, 4, 6 | — |
+| 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Done | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
+| 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | Planned | 0–6 | — |
 | 8 | [Layout preview](08-layout-preview.md) | Planned | 0–7 | — |
 
-Package progress: 6 of 9 plans done; the breaking CLI cutover and major-version
-release are complete, and Feature 6 is currently in progress.
+Package progress: 7 of 9 plans done; the breaking CLI cutover and major-version
+release are complete, Feature 6 merged through pull request #33, and Feature 7
+is the next unblocked plan.
 
 ## Delivery-gate status
 
@@ -76,7 +77,7 @@ Layout:
 --margin-right 8%
 --margin-bottom 8%
 --max-width 100%
---max-lines 2
+--max-height 10%
 ~~~
 
 Exact placement:
@@ -85,14 +86,21 @@ Exact placement:
 --position-x 50%
 --position-y 86%
 --anchor bottom-center
+--max-width 72%
+--max-height 14%
 ~~~
 
-Margins define the safe containing rectangle. Percentage `max-width` and custom
-X/Y coordinates resolve inside that rectangle, so `100%` means all width left
-after the horizontal margins. Named `--position` values are semantic shortcuts
-for the matching safe-area anchor point; custom coordinates use an explicit
-anchor and a local offset from the safe area's left/top origin. Both modes
-resolve to private ASS `\an`/`\pos` event placement.
+Named `--position` values use native ASS style alignment and margins. In that
+mode, percentage `max-width` uses the width left after horizontal margins and is
+optional; `100%` means all of that remaining width. `max-height` replaces a
+fixed line count and supplies the vertical budget from which line capacity is
+derived.
+
+Custom X/Y coordinates use the full PlayRes canvas, ignore margins, and require
+an explicit anchor, max-width, and max-height. The complete requested envelope
+must fit the canvas for the selected anchor; it is rejected rather than silently
+shrunk or moved. Only this explicit mode emits private ASS `\an`/`\pos` event
+placement.
 
 Preview:
 
@@ -132,7 +140,7 @@ incompatible options.
 - Presets.
 - Custom coordinates.
 - Adaptive wrapping.
-- Maximum-line override.
+- Native/explicit placement separation and maximum-height envelopes.
 
 ### Milestone 3: editing feedback
 
@@ -281,7 +289,9 @@ The cutover merged through pull request #29. Version 2.0.0 then shipped through
 the separate release pull request #30, an approved staging candidate, and an
 annotated tag on that exact staged `main` commit. Production promoted the staged
 files without rebuilding them. Features 6–8 can ship as backward-compatible
-`2.x` increments.
+`2.x` increments when their final public and output contracts remain compatible
+with v2.0.0; Feature 7 deliberately corrects Feature 6's untagged transitional
+placement behavior before the next release.
 
 ## Pull-request description template
 

@@ -75,7 +75,8 @@ Added by Feature 1 together with the FFprobe boundary.
 - anchor.
 - margins for all four edges.
 - maximum width.
-- maximum visual lines.
+- maximum visual height; the original reserved maximum-line field is superseded
+  by [Feature 7](07-placement-modes-and-maximum-height.md).
 
 ### ResolvedSubtitleConfig
 
@@ -127,7 +128,7 @@ groups and help text:
 --margin-top
 --margin-bottom
 --max-width
---max-lines
+--max-height
 --position-x
 --position-y
 --anchor

@@ -8,7 +8,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 
 | Package | Status | Progress | Current plan | Package dashboard |
 | --- | --- | ---: | --- | --- |
-| Subtitle positioning | In progress | 6/9 | Adaptive line wrapping | [Open dashboard](subtitle-positioning/README.md) |
+| Subtitle positioning | In progress | 7/9 | Placement modes and maximum height | [Open dashboard](subtitle-positioning/README.md) |
 | Karaoke subtitles | Planned | 0/1 | Word-timed highlighting | [Open dashboard](karaoke-subtitles/README.md) |
 | Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
 
