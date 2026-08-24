@@ -106,9 +106,12 @@ def test_preview_filter_is_one_frame_and_uses_structured_subtitle_options(
     subtitle = tmp_path / "caption,odd.ass"
     output = tmp_path / "preview frame.png"
 
-    command = ffmpeg.compile(
-        _build_preview_stream(ffmpeg, source, subtitle, output, _geometry(), 2.5)
-    )
+    command = [
+        str(argument)
+        for argument in ffmpeg.compile(
+            _build_preview_stream(ffmpeg, source, subtitle, output, _geometry(), 2.5)
+        )
+    ]
     command_text = " ".join(command)
 
     assert "-ss 2.5" in command_text
