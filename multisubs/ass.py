@@ -15,6 +15,7 @@ from .layout import (
     resolve_subtitle_config,
 )
 from .models import (
+    AssDrawingEvent,
     CuePlacement,
     SubtitleBackdrop,
     SubtitleConfig,
@@ -68,11 +69,15 @@ def write_ass(
     geometry: VideoGeometry,
     *,
     placements: Sequence[CuePlacement | None] | None = None,
+    guide_events: Sequence[AssDrawingEvent] | None = None,
+    preserve_line_breaks: bool = False,
 ) -> None:
     """Write safe ASS dialogue on the probed, autorotated video canvas.
 
     ``placements`` is an internal per-cue contract for explicit placement.
-    Native style placement emits no event-level position override.
+    Native style placement emits no event-level position override. When
+    ``preserve_line_breaks`` is enabled, the generated dialogue keeps only the
+    caller's intentional line breaks instead of being wrapped again by libass.
     """
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
@@ -110,13 +115,43 @@ def write_ass(
         generated_override = (
             serialize_ass_placement(placement) if placement is not None else ""
         )
+        if preserve_line_breaks:
+            generated_override += r"{\q2}"
         lines.append(
             "Dialogue: 0,"
             f"{format_ass_time(segment['start'])},{format_ass_time(segment['end'])},"
             f"Default,,0,0,0,,{generated_override}"
             f"{escape_ass_text(str(segment['text']))}"
         )
+    for event in guide_events or ():
+        _append_guide_event(lines, event)
     atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+def _append_guide_event(lines: list[str], event: AssDrawingEvent) -> None:
+    """Append one generated diagnostic event without treating it as user text."""
+    if not isinstance(event, AssDrawingEvent):
+        raise ArtifactError("ASS guide events must use the typed drawing contract")
+    if (
+        isinstance(event.start, bool)
+        or not isinstance(event.start, Real)
+        or isinstance(event.end, bool)
+        or not isinstance(event.end, Real)
+        or not math.isfinite(float(event.start))
+        or not math.isfinite(float(event.end))
+        or event.start < 0
+        or event.end < event.start
+        or not isinstance(event.text, str)
+        or not event.text
+        or "\n" in event.text
+        or "\r" in event.text
+    ):
+        raise ArtifactError("ASS guide events must contain valid timestamps and text")
+    lines.append(
+        "Dialogue: 0,"
+        f"{format_ass_time(event.start)},{format_ass_time(event.end)},"
+        f"Default,,0,0,0,,{event.text}"
+    )
 
 
 def _compile_style(

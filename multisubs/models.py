@@ -158,6 +158,15 @@ class VideoGeometry:
 
 
 @dataclass(frozen=True)
+class AssDrawingEvent:
+    """Generated ASS event used for non-production preview diagnostics."""
+
+    start: float
+    end: float
+    text: str
+
+
+@dataclass(frozen=True)
 class TranscriptDocument:
     """Semantic transcription result before artifact serialization."""
 
@@ -201,3 +210,15 @@ class RunRequest:
     model_name: str
     subtitle_config: SubtitleConfig
     keep_transcriptions: bool
+
+
+@dataclass(frozen=True)
+class PreviewRequest:
+    """Validated request for a transcription-free subtitle layout preview."""
+
+    input_path: Path
+    output_dir: Path
+    subtitle_config: SubtitleConfig
+    preview_at: float | None
+    preview_text: str
+    guides: bool

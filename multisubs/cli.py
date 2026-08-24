@@ -35,7 +35,14 @@ from .layout import (
     resolve_subtitle_config,
     resolve_wrapping_metrics,
 )
-from .models import RelativeLength, RunArtifacts, RunRequest, TranscriptionPaths
+from .models import (
+    PreviewRequest,
+    RelativeLength,
+    RunArtifacts,
+    RunRequest,
+    TranscriptionPaths,
+)
+from .preview import DEFAULT_PREVIEW_TEXT, parse_preview_timestamp
 from .utils import (
     create_unique_dir,
     create_work_dir,
@@ -106,6 +113,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-transcriptions",
         action="store_true",
         help="Retain JSON, SRT, and ASS files in a subtitles directory.",
+    )
+    preview_group = parser.add_argument_group(
+        "Subtitle layout preview",
+        "Render one frame without transcription or a final subtitle video.",
+    )
+    preview_group.add_argument(
+        "--preview-layout",
+        action="store_true",
+        help="Render a transcription-free subtitle layout preview PNG.",
+    )
+    preview_group.add_argument(
+        "--preview-at",
+        type=_preview_timestamp_argument_type,
+        default=None,
+        metavar="HH:MM:SS.mmm",
+        help=(
+            "Frame timestamp for the preview (default: video midpoint; "
+            "format HH:MM:SS.mmm)."
+        ),
+    )
+    preview_group.add_argument(
+        "--preview-text",
+        default=None,
+        metavar="TEXT",
+        help=(f"Sample subtitle text (default: {DEFAULT_PREVIEW_TEXT!r})."),
+    )
+    preview_group.add_argument(
+        "--preview-guides",
+        action="store_true",
+        help="Draw non-production placement, envelope, and canvas guides.",
     )
     parser.add_argument(
         "--layout",
@@ -281,7 +318,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Error: Unexpected failure: {exc}", file=sys.stderr)
         return 1
 
-    if request.keep_transcriptions:
+    if isinstance(request, PreviewRequest):
+        print(f"Preview saved to: {result_path}")
+    elif request.keep_transcriptions:
         print(f"Files saved in: {result_path}")
     else:
         print(f"File saved in: {result_path}")
@@ -295,10 +334,30 @@ def _relative_length_argument_type(raw_value: str) -> RelativeLength:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _preview_timestamp_argument_type(raw_value: str) -> float:
+    try:
+        return parse_preview_timestamp(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _build_request(
     args: argparse.Namespace, parser: argparse.ArgumentParser
-) -> RunRequest:
-    _validate_translation_request(args.task, args.model, parser)
+) -> RunRequest | PreviewRequest:
+    preview_options_used = (
+        args.preview_at is not None
+        or args.preview_text is not None
+        or args.preview_guides
+    )
+    if preview_options_used and not args.preview_layout:
+        parser.error(
+            "--preview-at, --preview-text, and --preview-guides require "
+            "--preview-layout"
+        )
+    if args.preview_layout and args.keep_transcriptions:
+        parser.error("--keep-transcriptions cannot be used with --preview-layout")
+    if not args.preview_layout:
+        _validate_translation_request(args.task, args.model, parser)
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
     if not input_path.exists() or not input_path.is_file():
         parser.error(f"Video file not found at '{args.input_path}'")
@@ -351,6 +410,18 @@ def _build_request(
     except ValidationError as exc:
         parser.error(str(exc))
 
+    if args.preview_layout:
+        return PreviewRequest(
+            input_path=input_path,
+            output_dir=output_dir,
+            subtitle_config=subtitle_config,
+            preview_at=args.preview_at,
+            preview_text=(
+                DEFAULT_PREVIEW_TEXT if args.preview_text is None else args.preview_text
+            ),
+            guides=args.preview_guides,
+        )
+
     return RunRequest(
         input_path=input_path,
         output_dir=output_dir,
@@ -381,8 +452,13 @@ def _validate_translation_request(
         )
 
 
-def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
+def _run_request(
+    request: RunRequest | PreviewRequest, progress: ProgressReporter
+) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
+    if isinstance(request, PreviewRequest):
+        return _run_preview_request(request, progress)
+
     from .subtitler import (
         embed_subtitles,
         probe_video_geometry,
@@ -473,6 +549,51 @@ def _run_request(request: RunRequest, progress: ProgressReporter) -> Path:
     else:
         _cleanup_work_dir(work_dir)
         return result_path
+
+
+def _run_preview_request(request: PreviewRequest, progress: ProgressReporter) -> Path:
+    """Render a single preview frame before any transcription runtime import."""
+    from .preview import build_preview_ass, resolve_preview_timestamp
+    from .subtitler import (
+        probe_video_geometry,
+        render_subtitle_preview,
+        validate_ffmpeg_support,
+    )
+
+    validate_ffmpeg_support()
+    geometry = probe_video_geometry(request.input_path)
+    timestamp = resolve_preview_timestamp(request.preview_at, geometry)
+    resolved_config = resolve_subtitle_config(request.subtitle_config, geometry)
+    wrapping_metrics = resolve_wrapping_metrics(resolved_config, geometry)
+    progress(
+        "Detected video layout: "
+        f"{geometry.render_width}x{geometry.render_height} "
+        f"(stream {geometry.stream_index}, rotation "
+        f"{geometry.rotation_degrees}°, preview at {timestamp:.3f}s, "
+        f"{wrapping_metrics.max_width}x{wrapping_metrics.max_height}px limits, "
+        f"preset {resolved_config.layout_preset.value})."
+    )
+    work_dir = create_work_dir(request.output_dir)
+    try:
+        ass_path = work_dir / "subtitle-preview.ass"
+        build_preview_ass(ass_path, request, geometry, timestamp)
+        return Path(
+            render_subtitle_preview(
+                request.input_path,
+                ass_path,
+                request.output_dir,
+                timestamp=timestamp,
+                geometry=geometry,
+                fonts_dir=resolved_config.appearance.fonts_dir,
+                progress=progress,
+            )
+        )
+    except MultisubsError:
+        raise
+    except Exception as exc:
+        raise ArtifactError(f"Unexpected preview failure: {exc}") from exc
+    finally:
+        _cleanup_work_dir(work_dir)
 
 
 def _publish_run(artifacts: RunArtifacts, request: RunRequest) -> Path:
