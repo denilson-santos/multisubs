@@ -99,6 +99,10 @@ multisubs \
 | -t, --task TASK | transcribe | Either transcribe or translate. Translation output is always English. |
 | -m, --model MODEL | turbo | Whisper model: tiny.en, tiny, base.en, base, small.en, small, medium.en, medium, large, or turbo. |
 | -k, --keep-transcriptions | off | Retain JSON, SRT, and ASS files in a structured output directory. |
+| --preview-layout | off | Render one subtitle layout preview PNG without transcription. |
+| --preview-at HH:MM:SS.mmm | video midpoint | Select the frame timestamp used by the preview. |
+| --preview-text TEXT | two-line sample | Replace the sample subtitle text used in the preview. |
+| --preview-guides | off | Draw non-production placement, envelope, and canvas guides. |
 | --font NAME | Roboto | Select the subtitle font family. |
 | --font-size LENGTH | 4% | Set font size relative to the shorter render edge or in PlayRes pixels. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
@@ -284,6 +288,43 @@ allow a different vertical line capacity:
 multisubs -i ./video.mp4 --max-width 72%
 multisubs -i ./video.mp4 --layout portrait --max-width 640px --max-height 180px
 ~~~
+
+### Subtitle layout preview
+
+Use `--preview-layout` to inspect the resolved subtitle appearance and
+position on one real video frame without loading WhisperX, transcribing audio,
+or producing a subtitle-burned video:
+
+~~~
+multisubs -i ./video.mp4 -o ./previews \
+  --preview-layout \
+  --preview-at 00:00:10.500 \
+  --preview-text "A sample subtitle that may wrap" \
+  --preview-guides \
+  --layout landscape --position bottom-center
+~~~
+
+`--preview-at` uses `HH:MM:SS.mmm`. When it is omitted, multisubs uses the
+video midpoint; if the container duration is unavailable, it uses the first
+frame. The sample text is normalized and wrapped with the same resolved font,
+maximum width, maximum height, and line-capacity rules used by a transcription
+run. Appearance, layout, relative-unit, coordinate, and font-directory options
+are honored. Language, task, and model options are accepted but have no effect
+in preview mode; `--keep-transcriptions` is rejected because previews do not
+create transcription artifacts.
+
+When the complete sample cannot fit the resolved envelope, the preview renders
+only the first lexical segment that the normal cue-layout calculation would
+place on screen. The remaining sample represents later timed cues and is not
+shown on the selected frame. Intentional line breaks are preserved in ASS, so
+libass cannot add lines beyond the capacity derived from `max-height`.
+
+The result is published as `<video-stem>-subtitle-preview.png`, with `(1)`,
+`(2)`, and later suffixes when that name already exists. Temporary ASS and
+render files are removed after either success or failure. `--preview-guides`
+adds diagnostic native margin/envelope or explicit coordinate overlays, the
+resolved position or preset, and PlayRes dimensions; guides are not part of a
+normal transcription render.
 
 ### Relative layout units
 
