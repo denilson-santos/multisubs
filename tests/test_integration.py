@@ -225,7 +225,7 @@ def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
     display, metrics = layout_subtitle_cues(semantic, resolved, geometry)
 
     assert metrics.width_budget == 113
-    assert display[0]["text"].count("\n") <= metrics.max_lines - 1
+    assert display[0]["text"].count("\n") <= metrics.line_capacity - 1
     write_ass(subtitle_path, display, config, geometry)
     output_path = Path(
         embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
@@ -812,6 +812,8 @@ def test_custom_coordinates_render_at_requested_anchor(
         relative_values={
             "position_x": position_x,
             "position_y": position_y,
+            "max_width": "40%",
+            "max_height": "20%",
         },
         anchor=anchor,
     )
