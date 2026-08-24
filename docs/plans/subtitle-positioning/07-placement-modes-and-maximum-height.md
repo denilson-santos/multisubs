@@ -1,6 +1,8 @@
 # Feature 7: ASS placement modes and maximum subtitle height
 
-Status: In progress
+Status: In review
+
+Pull request: [#35](https://github.com/denilson-santos/multisubs/pull/35)
 
 Depends on:
 
