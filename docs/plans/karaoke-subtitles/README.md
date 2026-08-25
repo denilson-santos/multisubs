@@ -1,6 +1,6 @@
 # Karaoke subtitles roadmap
 
-Status: In review
+Status: Done
 
 This directory contains the implementation plan for adding an optional
 word-timed karaoke effect to rendered subtitles. The package owns effect timing
@@ -21,12 +21,12 @@ and safely instead of receiving invented timestamps.
 This table is the source of truth for the package. Status values follow the
 [plan catalog vocabulary](../README.md#status-vocabulary).
 
-| Order | Plan | Status | Depends on | Pull request |
+| Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
-| 0 | [Word-timed highlighting](00-word-timed-highlighting.md) | In review | Subtitle positioning 0, 6, and CLI cutover | [#39](https://github.com/denilson-santos/multisubs/pull/39) |
+| 0 | [Word-timed highlighting](00-word-timed-highlighting.md) | Done | Subtitle positioning 0, 6, and CLI cutover | [#39](https://github.com/denilson-santos/multisubs/pull/39) |
 
-Package progress: 0 of 1 plans done; Plan 0 is in review through
-[pull request #39](https://github.com/denilson-santos/multisubs/pull/39).
+Package progress: 1 of 1 plans done; Plan 0 was merged through [pull request
+#39](https://github.com/denilson-santos/multisubs/pull/39).
 
 ## Cross-package dependencies
 
@@ -69,17 +69,19 @@ merged. It must link the individual plan, describe the CLI and artifact
 contracts, include exact verification results, and attach representative
 before/during/after render frames produced with a controlled font.
 
-Before final review:
+For future plans in this package, before opening the pull request:
 
-1. Change the plan row to In review and add the pull-request link.
+1. In the final pre-PR documentation commit, change the plan row to In review
+   and record the task branch in the Delivery column.
 2. Complete every acceptance criterion or document an explicit exception.
 3. Run the focused, repository-wide, and opt-in FFmpeg/libass checks named in
    the plan.
 4. Confirm that the default non-karaoke output remains unchanged.
 5. Confirm no generated media or retained transcription artifact is staged.
 
-After merge, change the row to Done, set package progress to 1 of 1, and update
-the package row in [the plan catalog](../README.md).
+After merge, change the row to Done, replace the branch with the merged
+pull-request link, recalculate package progress, and update the package row in
+[the plan catalog](../README.md).
 
 ## Definition of done
 

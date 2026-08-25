@@ -58,6 +58,9 @@ Resolve contradictions between a new plan and existing plans. Update every affec
 - Keep behavior and focused tests together when practical; separate structural refactors and documentation when that improves reviewability.
 - Specify the exact focused and repository-wide verification commands relevant to the planned change.
 - Require the pull-request description to link the plan, describe included and excluded scope, record contract impact, list commands actually run, identify documentation changes, and disclose remaining risks.
+- Require the final pre-PR documentation commit to move the plan and package to
+  `In review` and record the task branch as the dashboard delivery reference.
+  Do not require a post-open commit solely to add the pull-request number or URL.
 - Do not assume a pull request is merged from commits alone. Use an authoritative merge signal or explicit user confirmation before changing its status to `Done`.
 
 ## Maintain lifecycle status
@@ -66,9 +69,14 @@ Use only the exact vocabulary defined by `docs/plans/README.md`.
 
 - Use `Proposed` while material scope or design decisions remain open.
 - Use `Planned` once the design is accepted and implementation has not started.
-- Change to `In progress` in the branch that begins implementation.
-- Change to `In review` and record the pull-request link when review begins.
-- Change to `Done` only after merge, then recalculate package and catalog progress.
+- Change to `In progress` in the branch that begins implementation and record
+  that branch as the delivery reference.
+- In the final documentation commit before opening the pull request, change to
+  `In review` and retain the branch reference. Do not create a follow-up commit
+  merely to replace it with a newly assigned pull-request number.
+- Change to `Done` only after an authoritative merge signal, then replace the
+  branch reference with the merged pull-request link and recalculate package
+  and catalog progress.
 - Use `Blocked` only with a named blocker and `Cancelled` only when retaining an abandoned decision.
 
 Synchronize the individual plan heading, package dashboard, package progress text, current-plan summary, milestones, and top-level catalog in the same update. Never infer status from unchecked or checked boxes alone.

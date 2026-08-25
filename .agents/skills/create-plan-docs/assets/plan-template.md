@@ -75,11 +75,19 @@ Title: [type]: [reviewable outcome]
 Base: main
 ~~~
 
-Before requesting review:
+Before opening the pull request:
 
 - [Run focused verification.]
 - [Run repository-wide checks required by the project.]
-- [Update the package dashboard to In review and add the PR link.]
+- [In the final pre-PR documentation commit, update the plan and package
+  dashboard to In review and record the task branch as the delivery reference.]
+- [Push the complete branch before opening the PR; do not add a post-open commit
+  solely for its number or URL.]
+
+After merge:
+
+- [Mark the plan and package Done and replace the branch reference with the
+  merged PR link in the next package-status update.]
 
 ## Acceptance criteria
 

@@ -8,6 +8,15 @@ commit, squash, or rebase after the required
 `Development / development-gate` check succeeds. Delete the merged remote
 branch automatically.
 
+For plan-backed work, finish the plan documentation before opening the
+implementation pull request: mark the plan and package `In review`, record the
+task branch as the dashboard delivery reference, commit, verify, and push the
+complete branch. Opening the pull request must not be followed by an automatic
+metadata-only commit just to add its number or URL. After the implementation is
+merged, the next package-status update marks the plan `Done` and replaces the
+branch with the merged pull-request link. This keeps the first pull-request
+workflow run pinned to the complete review candidate.
+
 `development`, `staging`, and `production` are GitHub environments. They do not
 have corresponding Git branches:
 

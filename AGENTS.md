@@ -112,6 +112,14 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
   committing, pushing, or opening or updating a pull request for plan work.
 - Treat commit and pull-request instructions written in a plan as the delivery
   template, not as authorization to stage, commit, push, or publish changes.
+- In the final plan-documentation commit before opening the implementation pull
+  request, move the plan and package to `In review` and keep the task branch as
+  the dashboard's delivery reference. Push the complete branch before opening
+  the pull request. Do not create a post-open commit solely to replace that
+  branch reference with the pull-request number or URL.
+- After an authoritative merge signal, use the next package-status update to
+  mark the plan `Done` and replace the delivery branch with the merged
+  pull-request link.
 - After the user confirms delivery, follow the plan's branch, commit, and
   pull-request instructions and include only the changes belonging to that plan.
 

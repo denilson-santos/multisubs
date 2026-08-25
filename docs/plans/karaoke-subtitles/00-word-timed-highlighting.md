@@ -1,6 +1,6 @@
 # Plan 0: word-timed karaoke highlighting
 
-Status: In review
+Status: Done
 
 Depends on:
 
@@ -248,9 +248,9 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
 - [x] Add controlled-font FFmpeg/libass rendering coverage.
 - [x] Update README.md, docs/prd.md, docs/architecture.md, and relevant
   conventions.
-- [x] Update the package dashboard to In review and add [pull request
-  #39](https://github.com/denilson-santos/multisubs/pull/39) before requesting
-  final review.
+- [x] Complete delivery through [pull request
+  #39](https://github.com/denilson-santos/multisubs/pull/39) and record the
+  merged pull request in the package dashboard.
 
 ## Unit tests
 
