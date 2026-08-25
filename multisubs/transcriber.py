@@ -14,7 +14,11 @@ from numbers import Real
 from pathlib import Path
 from typing import Any, cast
 
-from .ass import write_ass
+from .ass import (
+    allocate_active_word_intervals,
+    allocate_karaoke_durations,
+    write_ass,
+)
 from .config import (
     MODELS as _MODELS,
 )
@@ -28,8 +32,10 @@ from .layout import (
     resolve_wrapping_metrics,
 )
 from .models import (
+    KaraokeCue,
     RelativeLength,
     SubtitleConfig,
+    SubtitleDisplayFragment,
     SubtitleLayoutPreset,
     SubtitlePlacementMode,
     SubtitlePosition,
@@ -44,6 +50,9 @@ from .wrapping import (
 )
 from .wrapping import (
     boundary_priority as _wrapping_boundary_priority,
+)
+from .wrapping import (
+    build_display_fragments as _wrapping_build_display_fragments,
 )
 from .wrapping import (
     ends_clause as _wrapping_ends_clause,
@@ -133,7 +142,6 @@ def generate_transcriptions(
     been validated.
     """
     source_path = _normalise_input_path(input_path)
-    destination_dir = _normalise_output_dir(output_dir)
     subtitle_config = validate_subtitle_config(
         style_options,
         position=position,
@@ -142,6 +150,8 @@ def generate_transcriptions(
         position_y=position_y,
         anchor=anchor,
     )
+    _validate_effect_task(subtitle_config, task)
+    destination_dir = _normalise_output_dir(output_dir)
     from .subtitler import probe_video_geometry
 
     geometry = probe_video_geometry(source_path)
@@ -271,8 +281,9 @@ def write_transcription_artifacts(
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
-    destination_dir = _normalise_output_dir(output_dir)
     config = validate_subtitle_config(subtitle_config)
+    _validate_effect_task(config, document.task)
+    destination_dir = _normalise_output_dir(output_dir)
     if geometry is None:
         from .subtitler import probe_video_geometry
 
@@ -289,6 +300,17 @@ def write_transcription_artifacts(
         language=document.language,
         wrapping_metrics=wrapping_metrics,
     )
+    display_segments, fallback_cues = prepare_karaoke_cues(
+        display_segments,
+        resolved_config,
+    )
+    if resolved_config.effects.karaoke and fallback_cues:
+        _report(
+            progress,
+            f"Warning: {fallback_cues} subtitle cue(s) could not be mapped "
+            "to complete word timings and were rendered without karaoke; "
+            "no timestamps were invented.",
+        )
     measurement_diagnostic = resolved_wrapping_metrics.text_measurer.diagnostic
     if measurement_diagnostic is not None:
         _report(progress, measurement_diagnostic)
@@ -311,6 +333,7 @@ def write_transcription_artifacts(
         resolved_subtitle_config=resolved_config,
         geometry=geometry,
         wrapping_metrics=resolved_wrapping_metrics,
+        karaoke_fallback_cues=fallback_cues,
     )
     _report(progress, "Completed JSON transcript.")
 
@@ -342,6 +365,14 @@ def _normalise_output_dir(output_dir: str | Path) -> Path:
             f"Could not create output directory '{destination_dir}': {exc}"
         ) from exc
     return destination_dir
+
+
+def _validate_effect_task(config: SubtitleConfig, task: str) -> None:
+    if config.effects.karaoke and task == "translate":
+        raise ValidationError(
+            "Karaoke subtitles cannot be generated for translation because "
+            "source-language word timings do not map losslessly to translated text"
+        )
 
 
 def _load_runtime_dependencies() -> tuple[Any, Any]:
@@ -777,6 +808,9 @@ def _append_display_cue(
     if end < start or start < 0:
         raise TranscriptionError("Subtitle cue has invalid timestamps")
     display_text = _wrap_subtitle_text(semantic_text, words, metrics=metrics)
+    display_fragments = (
+        _wrapping_build_display_fragments(display_text, words) if words else None
+    )
     cues.append(
         {
             "id": len(cues),
@@ -786,7 +820,81 @@ def _append_display_cue(
             "semantic_text": semantic_text,
             "display_text": display_text,
             "words": [dict(word) for word in words],
+            "display_fragments": display_fragments,
         }
+    )
+
+
+def prepare_karaoke_cues(
+    segments: Sequence[Mapping[str, Any]],
+    resolved_config: SubtitleConfig,
+) -> tuple[list[dict[str, Any]], int]:
+    """Prepare one immutable karaoke contract per eligible display cue."""
+    prepared: list[dict[str, Any]] = []
+    fallback_cues = 0
+    for segment in segments:
+        prepared_segment = dict(segment)
+        prepared_segment.pop("_karaoke_cue", None)
+        if resolved_config.effects.karaoke:
+            karaoke_cue = _prepare_karaoke_cue(segment)
+            if karaoke_cue is None:
+                fallback_cues += 1
+            else:
+                prepared_segment["_karaoke_cue"] = karaoke_cue
+        prepared.append(prepared_segment)
+    return prepared, fallback_cues
+
+
+def _prepare_karaoke_cue(segment: Mapping[str, Any]) -> KaraokeCue | None:
+    raw_words = segment.get("words")
+    if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
+        return None
+    words = [word for word in raw_words if isinstance(word, Mapping)]
+    if len(words) != len(raw_words) or not words:
+        return None
+    if any(
+        not isinstance(word.get("word"), str) or not word["word"].strip()
+        for word in words
+    ):
+        return None
+
+    raw_fragments = segment.get("display_fragments")
+    if (
+        isinstance(raw_fragments, Sequence)
+        and not isinstance(raw_fragments, (str, bytes))
+        and all(
+            isinstance(fragment, SubtitleDisplayFragment) for fragment in raw_fragments
+        )
+    ):
+        fragments = tuple(raw_fragments)
+    else:
+        fragments = _wrapping_build_display_fragments(
+            str(segment.get("text", "")), words
+        )
+    if fragments is None:
+        return None
+    timed_indexes = [
+        fragment.word_index for fragment in fragments if fragment.word_index is not None
+    ]
+    if timed_indexes != list(range(len(words))):
+        return None
+    try:
+        durations = allocate_karaoke_durations(
+            segment.get("start"),
+            segment.get("end"),
+            words,
+        )
+        active_intervals = allocate_active_word_intervals(
+            segment.get("start"),
+            segment.get("end"),
+            words,
+        )
+    except ArtifactError:
+        return None
+    return KaraokeCue(
+        fragments=fragments,
+        durations=durations,
+        active_intervals=active_intervals,
     )
 
 
@@ -818,6 +926,7 @@ def _write_json(
     resolved_subtitle_config: SubtitleConfig,
     geometry: VideoGeometry,
     wrapping_metrics: WrappingMetrics | None = None,
+    karaoke_fallback_cues: int = 0,
 ) -> None:
     requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
@@ -933,6 +1042,23 @@ def _write_json(
                     "position_y": "render-height" if explicit else None,
                 },
                 "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
+                "effects": {
+                    "karaoke": {
+                        "enabled": resolved_subtitle_config.effects.karaoke,
+                        "mode": (
+                            resolved_subtitle_config.effects.mode.value
+                            if resolved_subtitle_config.effects.mode is not None
+                            else None
+                        ),
+                        "normal_color": (
+                            resolved_subtitle_config.appearance.text_color
+                        ),
+                        "highlight_color": (
+                            resolved_subtitle_config.effects.highlight_color
+                        ),
+                        "fallback_cues": karaoke_fallback_cues,
+                    }
+                },
             },
         },
         "transcription": {
@@ -991,7 +1117,8 @@ def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in segment.items()
-        if key not in {"semantic_text", "display_text"}
+        if key
+        not in {"semantic_text", "display_text", "display_fragments", "_karaoke_cue"}
     }
 
 

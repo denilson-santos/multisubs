@@ -240,6 +240,7 @@ def resolve_subtitle_config(
         layout=resolved_layout,
         layout_preset=resolved_preset,
         layout_overrides=layout_overrides,
+        effects=validated.effects,
     )
     if explicit:
         _validated_explicit_placement(resolved, geometry)
