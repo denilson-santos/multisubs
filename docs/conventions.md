@@ -392,6 +392,10 @@ Do not run a command from this list merely because it appears here if the corres
 - Must use a pull-request title that summarizes the full change and a body that
   explains the scope, reason, user or developer impact, verification actually
   performed, documentation changes, and remaining risks.
+- Plan-backed changes must record their task branch and `In review` status in
+  the final pre-PR documentation commit. Do not push a metadata-only commit
+  after opening the PR solely to add its number; the post-merge status update
+  marks the plan `Done` and replaces the branch with the merged PR link.
 - Should choose the merge method deliberately: merge commits preserve branch
   topology, squash merges collapse the pull request into one commit, and rebase
   merges preserve individual commits on a linear path.
