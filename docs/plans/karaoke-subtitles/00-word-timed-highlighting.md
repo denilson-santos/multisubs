@@ -1,6 +1,6 @@
 # Plan 0: word-timed karaoke highlighting
 
-Status: Planned
+Status: In progress
 
 Depends on:
 
@@ -10,18 +10,22 @@ Depends on:
 
 ## Objective
 
-Let users opt into subtitles that progressively highlight complete words at
-their WhisperX alignment times while preserving readable multiword cues,
-ordinary subtitle positioning, and portable plain-text artifacts.
+Let users opt into subtitles that highlight complete words at their WhisperX
+alignment times using either a cumulative progressive mode or an active-word
+mode, while preserving readable multiword cues, ordinary subtitle positioning,
+and portable plain-text artifacts.
 
 ## Scope
 
 Included:
 
 - An opt-in word-level karaoke effect for transcription runs.
+- A `progressive` mode that keeps prior words highlighted and an `active-word`
+  mode that highlights only the word inside its validated speech interval.
 - One configurable highlight color; the resolved normal text color is the
   inactive color.
-- Deterministic ASS `\k` timing compiled from validated word start times.
+- Deterministic ASS `\k` timing for progressive mode and deterministic,
+  non-overlapping full-cue event intervals for active-word mode.
 - A plain-cue fallback with a visible warning when an individual cue cannot be
   mapped losslessly to usable word timings.
 - Additive JSON rendering metadata that records the resolved effect and fallback
@@ -32,7 +36,7 @@ Excluded:
 
 - Syllable-, phoneme-, or character-level alignment.
 - Smooth left-to-right `\kf` sweeps, bouncing or scaling words, fades, scrolling
-  lyrics, current-word-only overlays, and multiple simultaneous karaoke styles.
+  lyrics, line-level highlighting, and multiple simultaneous karaoke styles.
 - Karaoke on translated output in the first version.
 - A manual timing editor, lyrics import, audio-only workflow, or correction UI.
 - Karaoke markup in SRT or user-authored raw ASS override tags.
@@ -40,10 +44,15 @@ Excluded:
 ## Decisions and constraints
 
 - Plain subtitles remain the default; `--karaoke` is explicit and opt-in.
-- The first effect uses ASS `\k`, which displays a syllable or word with the
+  `--karaoke-mode` defaults to `progressive` only after the effect is enabled.
+- Progressive mode uses ASS `\k`, which displays a syllable or word with the
   secondary color before its interval and switches it immediately to the primary
   color when that interval begins. Durations are centiseconds, as specified by
-  the [Aegisub ASS karaoke tag reference](https://aeg-dev.github.io/AegiSite/docs/3.0/ASS_Tags/#karaoke-effect).
+  the [Aegisub ASS karaoke tag reference](https://aegisub.org/docs/latest/ass_tags/#karaoke-effect).
+- Active-word mode uses each validated word start and end. A word stops being
+  active at the earlier of its end or the next word's start, so overlapping
+  alignments never produce two highlighted words. Gaps render the complete cue
+  in its normal color.
 - A complete aligned word is the smallest highlighted unit. The implementation
   must not claim syllable timing that WhisperX did not supply.
 - Translation is rejected with `--karaoke` before model loading. The current
@@ -57,9 +66,10 @@ Excluded:
   count, and contributes to one concise user-facing warning for the run.
 - The feature adds no runtime dependency. FFmpeg with libass remains the render
   boundary and must be exercised by an opt-in integration test.
-- Effect preparation and serialization must be linear in the number of displayed
-  words. Avoid one ASS Dialogue event per word and avoid duplicating the full cue
-  text in layered events.
+- Progressive preparation and serialization remain linear with one ASS Dialogue
+  event per cue. Active-word mode may emit at most one full-cue event for every
+  active interval and every intervening gap; those events never overlap or layer
+  duplicate glyphs, and the six-second cue ceiling keeps the expansion bounded.
 
 ## Public interface and contracts
 
@@ -69,10 +79,14 @@ Add these options after the subtitle-positioning CLI cutover:
 
 ~~~
 --karaoke
+--karaoke-mode progressive
 --karaoke-highlight-color '#FFD54F'
 ~~~
 
 - `--karaoke` enables the effect.
+- `--karaoke-mode` accepts `progressive` or `active-word` and defaults to
+  `progressive` when karaoke is enabled. Supplying it without `--karaoke` is an
+  argument error.
 - `--karaoke-highlight-color` accepts the same semantic `#RRGGBB` or
   `#RRGGBBAA` color form as the post-cutover `--text-color` option. Its default
   is resolved only when karaoke is enabled.
@@ -85,9 +99,9 @@ Add these options after the subtitle-positioning CLI cutover:
 
 ### Python configuration
 
-- Add an immutable `SubtitleEffects` contract to `SubtitleConfig` and represent
-  the resolved karaoke configuration as typed values rather than an ASS tag or
-  free-form mapping.
+- Add an immutable `SubtitleEffects` contract and `KaraokeMode` enum to
+  `SubtitleConfig`; represent the resolved karaoke configuration as typed values
+  rather than an ASS tag or free-form mapping.
 - Keep effect configuration flowing through `RunRequest`, artifact preparation,
   JSON metadata, and `write_ass()` without adding parallel boolean parameters.
 - Preserve the existing public artifact-writing return value and output paths.
@@ -110,22 +124,27 @@ stays highlighted with that word. Untimed separators, spaces, and intentional
 line breaks retain their exact layout representation and receive no independent
 timing.
 
-For each eligible cue:
+For each eligible cue, first:
 
-1. Quantize the cue start, each word start, and cue end to absolute ASS
+1. Quantize the cue start, each word start/end, and cue end to absolute ASS
    centiseconds using the serializer's established rounding rule.
 2. Require the first displayed word to start at the quantized cue start. A cue
    with a leading untimed interval uses the plain fallback rather than receiving
    an invisible or invented timing token.
-3. Convert the ordered absolute boundaries to non-negative relative durations.
-   Each word's duration ends at the next word's start; the last ends at the cue
-   end. This preserves inter-word pauses without inventing an activation time.
-4. Allow a zero-centisecond duration caused by legitimate quantization instead
-   of shifting later boundaries or lengthening the event.
-5. Prove that durations are monotonic and sum exactly to the quantized Dialogue
-   duration. Fall back to a plain cue if the proof fails.
-6. Compose trusted color and `\kN` override blocks around independently escaped
-   display fragments. Never run the completed tagged line through the ordinary
+3. For `progressive`, convert ordered word starts into non-negative relative
+   durations. Each word ends at the next word's start; the last ends at cue end,
+   so prior words remain highlighted and pauses belong to the prior word.
+4. For `active-word`, create `[word start, min(word end, next word start))`
+   intervals. Render any leading, inter-word, or trailing gap with the complete
+   cue in its normal color; active and gap events must partition the cue without
+   overlap.
+5. Allow a zero-centisecond duration or active interval caused by legitimate
+   quantization instead of shifting boundaries. A zero active interval emits no
+   highlighted event.
+6. Prove progressive duration conservation and active interval ordering. Fall
+   back to a plain cue if the proof for the selected mode fails.
+7. Compose trusted generated overrides around independently escaped display
+   fragments. Never run a completed tagged line through the ordinary
    text-escaping function.
 
 The display mapping must preserve CJK text without adding spaces, retain RTL
@@ -137,7 +156,8 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
 
 - JSON retains plain semantic/display text and original aligned-word metadata;
   it never stores generated ASS strings. Add an `effects.karaoke` object under
-  rendering metadata with `enabled`, resolved mode (`word`), normal color,
+  rendering metadata with `enabled`, resolved mode (`progressive` or
+  `active-word`), normal color,
   highlight color, and `fallback_cues`. This is an additive schema-version 1
   change.
 - SRT remains plain text with the same cue times and intentional visual line
@@ -145,8 +165,10 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
   markup generated by this feature.
 - ASS remains the authoritative effect artifact. When karaoke is disabled, its
   dialogue serialization must remain byte-for-byte compatible for equivalent
-  configuration. When enabled, one Dialogue event per cue contains validated
-  color overrides and one `\k` duration per displayed timed word.
+  configuration. Progressive mode keeps one Dialogue event per cue with one
+  `\k` duration per displayed timed word. Active-word mode emits adjacent,
+  non-overlapping full-cue events for highlighted word intervals and normal
+  gaps, preserving identical text, line breaks, style, and placement.
 - Retained ASS files contain editable karaoke tags. Temporary SRT and ASS cleanup
   and collision-safe publication remain unchanged.
 - Rendered video names, directories, codec policy, stream mapping, and FFmpeg
@@ -168,7 +190,7 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
   `SubtitleConfig`.
 - Resolve defaults and validate semantic colors in `multisubs/config.py`; ASS
   BGR and inverted-alpha conversion remains private to the ASS compiler.
-- Add the two CLI options and cross-option validation in `multisubs/cli.py`.
+- Add the three CLI options and cross-option validation in `multisubs/cli.py`.
   Update request fixtures and prove invalid combinations fail before expensive
   boundaries.
 
@@ -189,10 +211,12 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
 - Keep karaoke timing and override compilation in `multisubs/ass.py` or a focused
   ASS compiler module if `ass.py` would otherwise mix validation, token mapping,
   and serialization responsibilities.
-- Add a pure absolute-boundary-to-duration function and test centisecond rollover,
-  rounding, zero durations, pauses, overlaps, and long cues.
-- Emit validated primary/secondary color overrides once per eligible Dialogue
-  event, followed by generated `\k` blocks at timed word boundaries.
+- Add pure absolute-boundary functions for progressive durations and active-word
+  intervals; test centisecond rollover, rounding, zero durations, pauses,
+  overlapping word ends, and long cues.
+- Emit validated primary/secondary color overrides and generated `\k` blocks for
+  progressive cues. Emit non-overlapping full-cue active/gap events with only
+  the selected word recolored for active-word cues.
 - Escape each transcript-derived fragment before composition. Ensure literal
   braces, backslashes, text resembling `\k`, commas, and newlines cannot create
   or terminate an override block.
@@ -210,18 +234,19 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
 
 ## Implementation tasks
 
-- [ ] Add typed subtitle-effects and karaoke configuration models.
-- [ ] Add CLI parsing, semantic color validation, and translation/color
+- [x] Add typed subtitle-effects and karaoke configuration models.
+- [x] Add CLI parsing, semantic color validation, and translation/color
   cross-option errors before expensive work.
-- [ ] Extend display cues with a lossless word-to-fragment mapping.
-- [ ] Prepare karaoke eligibility and aggregate fallback metadata once per run.
-- [ ] Implement deterministic centisecond duration allocation.
-- [ ] Compile trusted ASS color and `\k` tags around separately escaped text.
-- [ ] Preserve byte-for-byte plain ASS output when the feature is disabled.
-- [ ] Keep SRT plain and add resolved effect metadata to JSON.
-- [ ] Add hermetic CLI, model, timing, escaping, JSON, SRT, and ASS tests.
-- [ ] Add controlled-font FFmpeg/libass rendering coverage.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, and relevant
+- [x] Extend display cues with a lossless word-to-fragment mapping.
+- [x] Prepare karaoke eligibility and aggregate fallback metadata once per run.
+- [x] Implement deterministic centisecond duration allocation.
+- [x] Compile trusted ASS color and `\k` tags around separately escaped text.
+- [x] Add selectable progressive and active-word timing/serialization modes.
+- [x] Preserve byte-for-byte plain ASS output when the feature is disabled.
+- [x] Keep SRT plain and add resolved effect metadata to JSON.
+- [x] Add hermetic CLI, model, timing, escaping, JSON, SRT, and ASS tests.
+- [x] Add controlled-font FFmpeg/libass rendering coverage.
+- [x] Update README.md, docs/prd.md, docs/architecture.md, and relevant
   conventions.
 - [ ] Update this dashboard to In review and add the pull-request link before
   requesting final review.
@@ -231,10 +256,11 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
 ### CLI and configuration
 
 - Defaults leave karaoke disabled and preserve current artifact output.
-- `--karaoke` resolves word mode, normal text color, and default highlight color.
+- `--karaoke` resolves progressive mode, normal text color, and default
+  highlight color; `--karaoke-mode active-word` resolves the alternate enum.
 - Six- and eight-digit highlight colors convert correctly at the ASS boundary.
-- Invalid color, a color without `--karaoke`, and karaoke with translation are
-  parser errors before probing or model loading.
+- Invalid color, a color or mode without `--karaoke`, and karaoke with
+  translation are parser errors before probing or model loading.
 - Typed configurations are immutable, independently validated, and represented
   consistently in request and JSON metadata.
 
@@ -245,8 +271,9 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
   equal starts, and a zero-length quantized interval.
 - The sum of emitted durations equals the quantized cue duration with no
   cumulative rounding drift.
-- Word activation boundaries equal quantized aligned starts; word end timestamps
-  are validated but never used to invent the next activation boundary.
+- Progressive activation boundaries equal quantized aligned starts and word ends
+  never invent a later activation. Active-word deactivation uses the quantized
+  word end capped at the next aligned start; pauses contain no active word.
 - Punctuation attached to a word, explicit line breaks, multiple scripts,
   combining marks, emoji, RTL logical order, and CJK text without inserted spaces.
 - Reconstructing the plain text from display fragments exactly matches the SRT
@@ -254,8 +281,10 @@ controlled font; an unsafe or lossy mapping must use the documented fallback.
 
 ### Serialization and fallback
 
-- Eligible cues receive exactly one generated timing block per displayed timed
-  word and one validated color setup.
+- Eligible progressive cues receive exactly one generated timing block per
+  displayed timed word and one validated color setup.
+- Active-word cues emit ordered, non-overlapping full-text events for word and
+  gap intervals; at most one word is highlighted at any timestamp.
 - Braces, backslashes, literal `\k20`, commas, CRLF, and Unicode remain literal
   subtitle content and cannot inject an ASS override.
 - Missing, partial, non-chronological, non-finite, or lossy word mappings produce
@@ -274,15 +303,16 @@ unescaped override syntax across arbitrary Unicode fragments.
 Add an opt-in FFmpeg/libass test with a short synthetic video and a controlled,
 redistributable font. Render frames:
 
-- before the first word activates;
+- before the cue begins;
 - during at least two different word intervals;
 - after the final word activates;
 - from an equivalent run without karaoke.
 
-Assert that only the expected word regions change from normal to highlight
-color, prior words remain highlighted, positioning and line breaks stay stable,
-and the non-karaoke reference remains unchanged. Exercise at least landscape and
-portrait canvases, one two-line cue, a meaningful pause, and literal ASS-like
+Assert that only the expected word regions change from normal to highlight:
+progressive keeps prior words highlighted, while active-word resets prior words
+and shows no highlight during a meaningful pause. Positioning and line breaks
+must stay stable and the non-karaoke reference must remain unchanged. Exercise
+at least landscape and portrait canvases, one two-line cue, and literal ASS-like
 text.
 
 Manually inspect Portuguese, CJK, RTL, combining-mark, and emoji fixtures with a
@@ -293,7 +323,7 @@ ASS excerpt to the pull request; do not commit generated media.
 
 ## Documentation
 
-- Add the two options, quoting example, translation restriction, fallback
+- Add the three options, both mode examples, translation restriction, fallback
   behavior, and retained-ASS behavior to README.md.
 - Add a functional requirement and acceptance criterion for opt-in word-timed
   highlighting to docs/prd.md; keep richer animated karaoke styles out of scope.
@@ -368,8 +398,11 @@ the pull request, inspect `git log --oneline origin/main..HEAD` and
 
 ## Acceptance criteria
 
-- A transcription run with `--karaoke` highlights each eligible displayed word
-  at its quantized aligned start time and keeps prior words highlighted.
+- A transcription run with `--karaoke` defaults to progressive mode, highlights
+  each eligible displayed word at its quantized aligned start, and keeps prior
+  words highlighted.
+- `--karaoke-mode active-word` highlights only the word in its validated active
+  interval, caps overlaps at the next word start, and renders pauses normally.
 - Plain subtitles remain the default and equivalent non-karaoke ASS output is
   byte-for-byte unchanged.
 - Users can select a validated semantic highlight color without using ASS color

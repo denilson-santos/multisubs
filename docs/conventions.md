@@ -215,6 +215,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep the ASS header, style field order, event field order, and dialogue line-break syntax compatible with the ASS format.
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
+- Must keep generated ASS overrides (placement, colors, and karaoke timing) on a trusted compiler path separate from independently escaped transcript fragments. Never parse or re-escape a completed generated override string as ordinary user text.
+- Word-timed effects must preserve exact display-fragment reconstruction and use only validated aligned timestamps; missing or lossy mappings must fall back without inventing timing tokens.
+- When a word-timed effect expands one cue into multiple ASS events, those events must be adjacent and non-overlapping, retain the complete cue text and placement, and never layer duplicate full-cue glyphs at the same timestamp.
 - Must pass subtitle appearance and layout through typed configuration objects.
   Public inputs use semantic names and conventional color notation; ASS field
   ordering, fixed internal defaults, color conversion, and numeric codes belong
