@@ -9,7 +9,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Package | Status | Progress | Current plan | Package dashboard |
 | --- | --- | ---: | --- | --- |
 | Subtitle positioning | Done | 9/9 | Complete | [Open dashboard](subtitle-positioning/README.md) |
-| Karaoke subtitles | In progress | 0/1 | Word-timed highlighting | [Open dashboard](karaoke-subtitles/README.md) |
+| Karaoke subtitles | In review | 0/1 | Word-timed highlighting | [Open dashboard](karaoke-subtitles/README.md) |
 | Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
 
 Progress includes foundation plans when they are required delivery work.

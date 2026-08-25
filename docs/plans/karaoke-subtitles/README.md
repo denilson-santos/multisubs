@@ -1,6 +1,6 @@
 # Karaoke subtitles roadmap
 
-Status: In progress
+Status: In review
 
 This directory contains the implementation plan for adding an optional
 word-timed karaoke effect to rendered subtitles. The package owns effect timing
@@ -23,10 +23,10 @@ This table is the source of truth for the package. Status values follow the
 
 | Order | Plan | Status | Depends on | Pull request |
 | --- | --- | --- | --- | --- |
-| 0 | [Word-timed highlighting](00-word-timed-highlighting.md) | In progress | Subtitle positioning 0, 6, and CLI cutover | — |
+| 0 | [Word-timed highlighting](00-word-timed-highlighting.md) | In review | Subtitle positioning 0, 6, and CLI cutover | [#39](https://github.com/denilson-santos/multisubs/pull/39) |
 
-Package progress: 0 of 1 plans done; Plan 0 is in active implementation on
-`feat/karaoke-subtitles`.
+Package progress: 0 of 1 plans done; Plan 0 is in review through
+[pull request #39](https://github.com/denilson-santos/multisubs/pull/39).
 
 ## Cross-package dependencies
 
