@@ -103,6 +103,9 @@ multisubs \
 | --preview-at HH:MM:SS.mmm | video midpoint | Select the frame timestamp used by the preview. |
 | --preview-text TEXT | two-line sample | Replace the sample subtitle text used in the preview. |
 | --preview-guides | off | Draw non-production placement, envelope, and canvas guides. |
+| --karaoke | off | Enable word-timed karaoke highlighting in the rendered ASS/video output. |
+| --karaoke-mode MODE | progressive when enabled | Select progressive or active-word highlighting. |
+| --karaoke-highlight-color COLOR | #FFD54F when enabled | Set the karaoke highlight color using #RRGGBB or #RRGGBBAA. |
 | --font NAME | Roboto | Select the subtitle font family. |
 | --font-size LENGTH | 4% | Set font size relative to the shorter render edge or in PlayRes pixels. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
@@ -128,6 +131,12 @@ multisubs \
 | -h, --help | — | Show every CLI option and accepted language code. |
 
 Translation cannot use turbo or an English-only model ending in .en. Use a multilingual model such as medium or large instead.
+
+Karaoke is available only for source-language transcription. `--karaoke` cannot
+be combined with `--task translate`; translation changes the displayed words
+and the source-language alignment cannot be mapped losslessly to them. The
+karaoke options are also rejected by `--preview-layout`, which has no aligned
+word timings to animate.
 
 Supported source-language codes are limited to languages with a default
 word-alignment model in the installed WhisperX release:
@@ -166,6 +175,40 @@ be resolved. Font substitution or estimated measurement produces one progress
 diagnostic and is recorded in JSON without exposing an absolute local font
 path. Supplying a controlled font directory is recommended for reproducible
 wrapping across machines.
+
+### Word-timed karaoke highlighting
+
+Enable the opt-in effect with `--karaoke`. Each eligible displayed word changes
+from the normal `--text-color` to the highlight color according to its aligned
+WhisperX timestamps. The default mode is `progressive`: each word activates at
+its start and remains highlighted through the cue. The default highlight is warm
+yellow; choose another semantic color without using ASS syntax:
+
+~~~
+multisubs -i ./video.mp4 --karaoke --karaoke-highlight-color '#FFD54F'
+~~~
+
+Use `active-word` when only the currently spoken word should be highlighted:
+
+~~~
+multisubs -i ./video.mp4 --karaoke --karaoke-mode active-word
+~~~
+
+In active-word mode, a word is highlighted from its start through its end. If
+aligned word times overlap, the prior word stops when the next begins; during a
+gap, the complete cue remains visible in its normal color. Supplying
+`--karaoke-mode` without `--karaoke` is rejected.
+
+Progressive ASS keeps one dialogue event per cue and stores editable `\k` word
+durations. Active-word ASS uses adjacent full-cue events for active intervals
+and normal gaps so text, wrapping, background, and placement do not move. SRT
+remains plain text and JSON keeps the original word records; JSON additionally
+records the resolved mode, effect colors, and per-cue fallback count. If a cue
+lacks a complete, chronological, lossless word mapping, it is rendered normally
+and one aggregate warning reports that timestamps were not invented. Karaoke
+does not add spaces, retokenize wrapped display text, or invent timings for
+coarse segments. Richer syllable, sweep, fade, and translated karaoke modes are
+not supported yet.
 
 ### Migration from `--style-*`
 

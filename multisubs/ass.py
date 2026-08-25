@@ -17,8 +17,11 @@ from .layout import (
 from .models import (
     AssDrawingEvent,
     CuePlacement,
+    KaraokeCue,
+    KaraokeMode,
     SubtitleBackdrop,
     SubtitleConfig,
+    SubtitleDisplayFragment,
     SubtitlePlacementMode,
     SubtitlePosition,
     VideoGeometry,
@@ -117,15 +120,66 @@ def write_ass(
         )
         if preserve_line_breaks:
             generated_override += r"{\q2}"
-        lines.append(
-            "Dialogue: 0,"
-            f"{format_ass_time(segment['start'])},{format_ass_time(segment['end'])},"
-            f"Default,,0,0,0,,{generated_override}"
-            f"{escape_ass_text(str(segment['text']))}"
+        cue_start = quantize_ass_centiseconds(segment["start"])
+        cue_end = quantize_ass_centiseconds(segment["end"])
+        karaoke_cue = segment.get("_karaoke_cue")
+        if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
+            karaoke_cue, KaraokeCue
+        ):
+            for event_start, event_end, event_text in serialize_active_word_events(
+                karaoke_cue,
+                config,
+                cue_start,
+                cue_end,
+            ):
+                _append_dialogue_line(
+                    lines,
+                    event_start,
+                    event_end,
+                    generated_override,
+                    event_text,
+                )
+            continue
+        karaoke_text = (
+            serialize_karaoke_cue(
+                karaoke_cue,
+                config,
+            )
+            if config.effects.mode is KaraokeMode.PROGRESSIVE
+            else None
+        )
+        dialogue_text = (
+            karaoke_text
+            if karaoke_text is not None
+            else escape_ass_text(str(segment["text"]))
+        )
+        _append_dialogue_line(
+            lines,
+            cue_start,
+            cue_end,
+            generated_override,
+            dialogue_text,
         )
     for event in guide_events or ():
         _append_guide_event(lines, event)
     atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+def _append_dialogue_line(
+    lines: list[str],
+    start_centiseconds: int,
+    end_centiseconds: int,
+    generated_override: str,
+    dialogue_text: str,
+) -> None:
+    if end_centiseconds < start_centiseconds:
+        raise ArtifactError("ASS dialogue end must not precede its start")
+    lines.append(
+        "Dialogue: 0,"
+        f"{format_ass_centiseconds(start_centiseconds)},"
+        f"{format_ass_centiseconds(end_centiseconds)},"
+        f"Default,,0,0,0,,{generated_override}{dialogue_text}"
+    )
 
 
 def _append_guide_event(lines: list[str], event: AssDrawingEvent) -> None:
@@ -185,9 +239,8 @@ def _compile_style(
         "font": appearance.font,
         "font_size": _resolved_style_int(appearance.font_size, "font-size"),
         "primary_color": rgba_to_ass_color(appearance.text_color),
-        # SecondaryColour is mandatory in a V4+ Style even though multisubs does
-        # not currently emit karaoke tags. Matching PrimaryColour is the neutral
-        # fallback and preserves the former default style.
+        # SecondaryColour is mandatory in a V4+ Style. It remains the neutral
+        # inactive color for ordinary cues; karaoke events override both colors.
         "secondary_color": rgba_to_ass_color(appearance.text_color),
         "outline_color": backdrop_color,
         "back_color": backdrop_color,
@@ -267,14 +320,236 @@ def _ass_alignment_for_position(position: SubtitlePosition) -> int:
 
 def format_ass_time(seconds: object) -> str:
     """Format one finite non-negative time using ASS centiseconds."""
-    value = _finite_time(seconds)
-    if value is None:
-        raise ArtifactError("ASS timestamp must be a finite, non-negative number")
-    total_centiseconds = round(value * 100)
+    return format_ass_centiseconds(quantize_ass_centiseconds(seconds))
+
+
+def format_ass_centiseconds(total_centiseconds: object) -> str:
+    """Format one already quantized non-negative ASS timestamp."""
+    if (
+        isinstance(total_centiseconds, bool)
+        or not isinstance(total_centiseconds, int)
+        or total_centiseconds < 0
+    ):
+        raise ArtifactError("ASS centiseconds must be a non-negative integer")
     hours, remainder = divmod(total_centiseconds, 360_000)
     minutes, remainder = divmod(remainder, 6_000)
     whole_seconds, centiseconds = divmod(remainder, 100)
     return f"{hours}:{minutes:02d}:{whole_seconds:02d}.{centiseconds:02d}"
+
+
+def quantize_ass_centiseconds(seconds: object) -> int:
+    """Quantize one timestamp using the rounding policy shared by ASS output."""
+    value = _finite_time(seconds)
+    if value is None:
+        raise ArtifactError("ASS timestamp must be a finite, non-negative number")
+    return round(value * 100)
+
+
+def allocate_karaoke_durations(
+    cue_start: object,
+    cue_end: object,
+    words: Sequence[Mapping[str, Any]],
+) -> tuple[int, ...]:
+    """Allocate exact non-negative ASS centiseconds between word starts."""
+    start_centiseconds, end_centiseconds, starts, _ = _quantized_karaoke_boundaries(
+        cue_start, cue_end, words
+    )
+    boundaries = (*starts[1:], end_centiseconds)
+    durations = tuple(
+        next_boundary - current
+        for current, next_boundary in zip(starts, boundaries, strict=True)
+    )
+    if any(duration < 0 for duration in durations):
+        raise ArtifactError("Karaoke durations must be non-negative")
+    if sum(durations) != end_centiseconds - start_centiseconds:
+        raise ArtifactError("Karaoke durations must conserve cue duration")
+    return durations
+
+
+def allocate_active_word_intervals(
+    cue_start: object,
+    cue_end: object,
+    words: Sequence[Mapping[str, Any]],
+) -> tuple[tuple[int, int], ...]:
+    """Return non-overlapping absolute centisecond intervals for active words."""
+    _, end_centiseconds, starts, ends = _quantized_karaoke_boundaries(
+        cue_start, cue_end, words
+    )
+    next_starts = (*starts[1:], end_centiseconds)
+    return tuple(
+        (start, min(end, next_start))
+        for start, end, next_start in zip(starts, ends, next_starts, strict=True)
+    )
+
+
+def _quantized_karaoke_boundaries(
+    cue_start: object,
+    cue_end: object,
+    words: Sequence[Mapping[str, Any]],
+) -> tuple[int, int, tuple[int, ...], tuple[int, ...]]:
+    start_centiseconds = quantize_ass_centiseconds(cue_start)
+    end_centiseconds = quantize_ass_centiseconds(cue_end)
+    if end_centiseconds < start_centiseconds or not words:
+        raise ArtifactError("Karaoke cue timestamps are invalid")
+
+    starts: list[int] = []
+    ends: list[int] = []
+    previous_start: float | None = None
+    for word in words:
+        if not isinstance(word, Mapping):
+            raise ArtifactError("Karaoke words must use mapping records")
+        start = _finite_time(word.get("start"))
+        end = _finite_time(word.get("end"))
+        if start is None or end is None or end < start:
+            raise ArtifactError("Karaoke words must have valid timestamps")
+        if previous_start is not None and start < previous_start:
+            raise ArtifactError("Karaoke word starts must be chronological")
+        previous_start = start
+        starts.append(quantize_ass_centiseconds(start))
+        ends.append(quantize_ass_centiseconds(end))
+
+    if starts[0] != start_centiseconds:
+        raise ArtifactError(
+            "Karaoke cue must start at the first displayed word timestamp"
+        )
+    if any(start > end_centiseconds for start in starts) or any(
+        end > end_centiseconds for end in ends
+    ):
+        raise ArtifactError("Karaoke word timestamps must fit inside the cue")
+    return start_centiseconds, end_centiseconds, tuple(starts), tuple(ends)
+
+
+def serialize_karaoke_cue(
+    cue: object,
+    config: SubtitleConfig,
+) -> str | None:
+    """Compile one prepared karaoke cue without escaping generated overrides."""
+    if (
+        not isinstance(cue, KaraokeCue)
+        or config.effects.mode is not KaraokeMode.PROGRESSIVE
+    ):
+        return None
+    highlight_color = config.effects.highlight_color
+    if highlight_color is None:
+        raise ArtifactError("Karaoke highlight color is not resolved")
+    _validate_karaoke_cue(cue)
+    fragments = cue.fragments
+    durations = cue.durations
+    result = (
+        "{"
+        + rgba_to_ass_color_override(highlight_color, 1)
+        + rgba_to_ass_color_override(config.appearance.text_color, 2)
+        + "}"
+    )
+    for fragment in fragments:
+        if fragment.word_index is not None:
+            result += f"{{\\k{durations[fragment.word_index]}}}"
+        result += escape_ass_text(fragment.text)
+    return result
+
+
+def serialize_active_word_events(
+    cue: KaraokeCue,
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+) -> tuple[tuple[int, int, str], ...]:
+    """Split one cue into stable full-text intervals with one active word."""
+    if config.effects.mode is not KaraokeMode.ACTIVE_WORD:
+        raise ArtifactError("Active-word events require active-word karaoke mode")
+    _validate_karaoke_cue(cue)
+    if cue_end < cue_start:
+        raise ArtifactError("Karaoke cue timestamps are invalid")
+    if len(cue.active_intervals) != len(cue.durations):
+        raise ArtifactError("Active-word intervals must match karaoke word count")
+
+    plain_text = escape_ass_text("".join(fragment.text for fragment in cue.fragments))
+    events: list[tuple[int, int, str]] = []
+    cursor = cue_start
+    for word_index, interval in enumerate(cue.active_intervals):
+        if (
+            not isinstance(interval, tuple)
+            or len(interval) != 2
+            or any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in interval
+            )
+        ):
+            raise ArtifactError("Active-word intervals must use integer boundaries")
+        start, end = interval
+        if start < cursor or end < start or end > cue_end:
+            raise ArtifactError("Active-word intervals must be ordered inside the cue")
+        if cursor < start:
+            events.append((cursor, start, plain_text))
+        if start < end:
+            events.append(
+                (start, end, _serialize_active_word_text(cue, config, word_index))
+            )
+        cursor = end
+    if cursor < cue_end:
+        events.append((cursor, cue_end, plain_text))
+    if not events:
+        events.append((cue_start, cue_end, plain_text))
+    return tuple(events)
+
+
+def _serialize_active_word_text(
+    cue: KaraokeCue,
+    config: SubtitleConfig,
+    active_word_index: int,
+) -> str:
+    highlight_color = config.effects.highlight_color
+    if highlight_color is None:
+        raise ArtifactError("Karaoke highlight color is not resolved")
+    normal_override = (
+        "{" + rgba_to_ass_color_override(config.appearance.text_color, 1) + "}"
+    )
+    highlight_override = "{" + rgba_to_ass_color_override(highlight_color, 1) + "}"
+    result = normal_override
+    for fragment in cue.fragments:
+        if fragment.word_index == active_word_index:
+            result += (
+                highlight_override + escape_ass_text(fragment.text) + normal_override
+            )
+        else:
+            result += escape_ass_text(fragment.text)
+    return result
+
+
+def _validate_karaoke_cue(cue: KaraokeCue) -> None:
+    durations = cue.durations
+    if not durations or any(
+        isinstance(duration, bool) or not isinstance(duration, int) or duration < 0
+        for duration in durations
+    ):
+        raise ArtifactError("Karaoke durations must be non-negative integers")
+    timed_indexes: list[int] = []
+    for fragment in cue.fragments:
+        if not isinstance(fragment, SubtitleDisplayFragment):
+            raise ArtifactError("Karaoke fragments must use the typed display contract")
+        if not isinstance(fragment.text, str):
+            raise ArtifactError("Karaoke fragment text must be a string")
+        if fragment.word_index is not None:
+            if (
+                isinstance(fragment.word_index, bool)
+                or not isinstance(fragment.word_index, int)
+                or fragment.word_index < 0
+                or fragment.word_index >= len(durations)
+            ):
+                raise ArtifactError("Karaoke fragment word indexes are invalid")
+            timed_indexes.append(fragment.word_index)
+    if timed_indexes != list(range(len(durations))):
+        raise ArtifactError("Karaoke fragments must map each duration exactly once")
+
+
+def rgba_to_ass_color_override(value: str, channel: int) -> str:
+    """Compile one semantic RGBA color into ASS color and alpha overrides."""
+    if channel not in {1, 2, 3, 4}:
+        raise ArtifactError("ASS color override channel must be between 1 and 4")
+    ass_color = rgba_to_ass_color(value)
+    alpha = ass_color[2:4]
+    blue_green_red = ass_color[4:10]
+    return f"\\{channel}c&H{blue_green_red}&\\{channel}a&H{alpha}&"
 
 
 def escape_ass_text(text: str) -> str:

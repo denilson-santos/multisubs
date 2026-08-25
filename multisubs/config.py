@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import MappingProxyType
 
 from .errors import ValidationError
 from .models import (
+    KaraokeMode,
     LayoutPreset,
     RelativeLength,
     SubtitleAppearance,
     SubtitleBackdrop,
     SubtitleConfig,
+    SubtitleEffects,
     SubtitleLayout,
     SubtitleLayoutPreset,
     SubtitlePlacementMode,
@@ -82,6 +85,7 @@ POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
 LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
 BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
+KARAOKE_MODE_CHOICES = tuple(mode.value for mode in KaraokeMode)
 
 _COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
 _RELATIVE_LENGTH_PATTERN = re.compile(
@@ -122,6 +126,8 @@ DEFAULT_BACKDROP = SubtitleBackdrop.BOX
 DEFAULT_BACKDROP_COLOR = "#00000099"
 DEFAULT_BACKDROP_SIZE = "0px"
 DEFAULT_SHADOW_SIZE = "4%"
+DEFAULT_KARAOKE_HIGHLIGHT_COLOR = "#FFD54F"
+DEFAULT_KARAOKE_MODE = KaraokeMode.PROGRESSIVE
 
 
 def parse_relative_length(raw_value: str) -> RelativeLength:
@@ -240,6 +246,7 @@ def validate_subtitle_config(
     position: SubtitlePosition | str | None = None,
     layout_preset: SubtitleLayoutPreset | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
+    effects_values: Mapping[str, object] | None = None,
     position_x: RelativeLength | str | None = None,
     position_y: RelativeLength | str | None = None,
     anchor: SubtitlePosition | str | None = None,
@@ -254,6 +261,7 @@ def validate_subtitle_config(
         if (
             appearance_values
             or relative_values
+            or effects_values
             or position_x is not None
             or position_y is not None
         ):
@@ -276,6 +284,19 @@ def validate_subtitle_config(
                 "configuration"
             )
         _validate_typed_subtitle_config(value)
+        if value.effects.enabled:
+            highlight_color = _validate_color(
+                value.effects.highlight_color or DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
+                "karaoke-highlight-color",
+            )
+            if highlight_color != value.effects.highlight_color:
+                return replace(
+                    value,
+                    effects=replace(
+                        value.effects,
+                        highlight_color=highlight_color,
+                    ),
+                )
         return value
     if value is not None:
         raise ValidationError(
@@ -283,6 +304,7 @@ def validate_subtitle_config(
         )
 
     appearance_overrides = dict(appearance_values or {})
+    effects_overrides = dict(effects_values or {})
     known_appearance_fields = {
         "font",
         "text_color",
@@ -298,6 +320,47 @@ def validate_subtitle_config(
     if unknown_appearance_fields:
         names = ", ".join(sorted(unknown_appearance_fields))
         raise ValidationError(f"Unknown appearance value(s): {names}")
+
+    if "karaoke_highlight_color" in effects_overrides:
+        if "highlight_color" in effects_overrides:
+            raise ValidationError("highlight-color was provided more than once")
+        effects_overrides["highlight_color"] = effects_overrides.pop(
+            "karaoke_highlight_color"
+        )
+    if "mode" in effects_overrides:
+        if "karaoke_mode" in effects_overrides:
+            raise ValidationError("karaoke-mode was provided more than once")
+        effects_overrides["karaoke_mode"] = effects_overrides.pop("mode")
+    unknown_effect_fields = set(effects_overrides).difference(
+        {"karaoke", "karaoke_mode", "highlight_color"}
+    )
+    if unknown_effect_fields:
+        names = ", ".join(sorted(unknown_effect_fields))
+        raise ValidationError(f"Unknown effect value(s): {names}")
+    karaoke = _validate_boolean(effects_overrides.get("karaoke", False), "karaoke")
+    raw_karaoke_mode = effects_overrides.get("karaoke_mode")
+    if not karaoke and raw_karaoke_mode is not None:
+        raise ValidationError("karaoke-mode requires --karaoke")
+    karaoke_mode = (
+        _validate_karaoke_mode(
+            DEFAULT_KARAOKE_MODE if raw_karaoke_mode is None else raw_karaoke_mode
+        )
+        if karaoke
+        else None
+    )
+    raw_highlight_color = effects_overrides.get("highlight_color")
+    if not karaoke and raw_highlight_color is not None:
+        raise ValidationError("karaoke-highlight-color requires --karaoke")
+    highlight_color = (
+        _validate_color(
+            DEFAULT_KARAOKE_HIGHLIGHT_COLOR
+            if raw_highlight_color is None
+            else raw_highlight_color,
+            "karaoke-highlight-color",
+        )
+        if karaoke
+        else None
+    )
 
     parsed_relative_values = _validate_relative_values(relative_values)
     for field, raw_value in (
@@ -388,6 +451,10 @@ def validate_subtitle_config(
         ),
         layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
         layout_overrides=frozenset(layout_overrides),
+        effects=SubtitleEffects(
+            karaoke_mode=karaoke_mode,
+            highlight_color=highlight_color,
+        ),
     )
     _validate_typed_subtitle_config(config)
     return config
@@ -531,6 +598,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     _validate_backdrop(config.appearance.backdrop)
     _validate_color(config.appearance.backdrop_color, "backdrop-color")
     _coerce_fonts_dir(config.appearance.fonts_dir)
+    _validate_effects(config.effects)
     relative_fields = {
         "font_size": config.appearance.font_size,
         "outline_weight": config.appearance.backdrop_size,
@@ -608,6 +676,39 @@ def _validate_backdrop(value: object) -> SubtitleBackdrop:
         except ValueError:
             pass
     raise ValidationError("backdrop must be one of: " + ", ".join(BACKDROP_CHOICES))
+
+
+def _validate_effects(value: object) -> SubtitleEffects:
+    if not isinstance(value, SubtitleEffects):
+        raise ValidationError("subtitle effects must use the typed effects contract")
+    if value.karaoke_mode is None:
+        if value.highlight_color is not None:
+            raise ValidationError(
+                "karaoke-highlight-color requires karaoke to be enabled"
+            )
+        return value
+    if not isinstance(value.karaoke_mode, KaraokeMode):
+        raise ValidationError("karaoke-mode must use the typed KaraokeMode contract")
+    _validate_color(
+        value.highlight_color
+        if value.highlight_color is not None
+        else DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
+        "karaoke-highlight-color",
+    )
+    return value
+
+
+def _validate_karaoke_mode(value: object) -> KaraokeMode:
+    if isinstance(value, KaraokeMode):
+        return value
+    if isinstance(value, str):
+        try:
+            return KaraokeMode(value)
+        except ValueError:
+            pass
+    raise ValidationError(
+        "karaoke-mode must be one of: " + ", ".join(KARAOKE_MODE_CHOICES)
+    )
 
 
 def _coerce_fonts_dir(value: object) -> Path | None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 from fractions import Fraction
@@ -28,6 +28,13 @@ class SubtitleBackdrop(str, Enum):
     BOX = "box"
 
 
+class KaraokeMode(str, Enum):
+    """Supported word-highlight timing policies."""
+
+    PROGRESSIVE = "progressive"
+    ACTIVE_WORD = "active-word"
+
+
 @dataclass(frozen=True)
 class SubtitleAppearance:
     """Validated semantic appearance values passed through the pipeline."""
@@ -42,6 +49,51 @@ class SubtitleAppearance:
     backdrop_size: int | RelativeLength
     shadow_size: int | RelativeLength
     fonts_dir: Path | None = None
+
+
+@dataclass(frozen=True)
+class SubtitleEffects:
+    """Validated optional subtitle effects passed through the pipeline."""
+
+    karaoke_mode: KaraokeMode | None = None
+    highlight_color: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        """Return whether the word-timed karaoke effect is enabled."""
+        return self.karaoke_mode is not None
+
+    @property
+    def karaoke(self) -> bool:
+        """Return whether karaoke is enabled."""
+        return self.enabled
+
+    @property
+    def mode(self) -> KaraokeMode | None:
+        """Return the resolved karaoke mode."""
+        return self.karaoke_mode
+
+    @property
+    def karaoke_highlight_color(self) -> str | None:
+        """Return the highlight color using the public option terminology."""
+        return self.highlight_color
+
+
+@dataclass(frozen=True)
+class SubtitleDisplayFragment:
+    """One exact display fragment, optionally backed by an aligned word."""
+
+    text: str
+    word_index: int | None = None
+
+
+@dataclass(frozen=True)
+class KaraokeCue:
+    """Validated fragments plus progressive and active-word timing data."""
+
+    fragments: tuple[SubtitleDisplayFragment, ...]
+    durations: tuple[int, ...]
+    active_intervals: tuple[tuple[int, int], ...]
 
 
 class SubtitlePosition(str, Enum):
@@ -135,6 +187,7 @@ class SubtitleConfig:
     layout: SubtitleLayout
     layout_preset: SubtitleLayoutPreset = SubtitleLayoutPreset.AUTO
     layout_overrides: frozenset[str] = frozenset()
+    effects: SubtitleEffects = field(default_factory=SubtitleEffects)
 
 
 @dataclass(frozen=True)

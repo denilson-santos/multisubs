@@ -1,6 +1,6 @@
 # Karaoke subtitles roadmap
 
-Status: Planned
+Status: In review
 
 This directory contains the implementation plan for adding an optional
 word-timed karaoke effect to rendered subtitles. The package owns effect timing
@@ -10,9 +10,11 @@ remain in the [subtitle-positioning roadmap](../subtitle-positioning/README.md).
 ## Product outcome
 
 Users can request subtitles whose words change from the normal text color to a
-highlight color as their aligned timestamps are reached. Plain subtitles remain
-the default, SRT stays portable and free of ASS markup, and unsupported timing
-data degrades visibly and safely instead of receiving invented timestamps.
+highlight color as their aligned timestamps are reached. Progressive mode keeps
+prior words highlighted; active-word mode resets them and highlights only the
+current validated speech interval. Plain subtitles remain the default, SRT stays
+portable and free of ASS markup, and unsupported timing data degrades visibly
+and safely instead of receiving invented timestamps.
 
 ## Plan status
 
@@ -21,14 +23,14 @@ This table is the source of truth for the package. Status values follow the
 
 | Order | Plan | Status | Depends on | Pull request |
 | --- | --- | --- | --- | --- |
-| 0 | [Word-timed highlighting](00-word-timed-highlighting.md) | Planned | Subtitle positioning 0, 6, and CLI cutover | — |
+| 0 | [Word-timed highlighting](00-word-timed-highlighting.md) | In review | Subtitle positioning 0, 6, and CLI cutover | [#39](https://github.com/denilson-santos/multisubs/pull/39) |
 
-Package progress: 0 of 1 plans done; Plan 0 awaits its cross-package
-dependencies before implementation starts.
+Package progress: 0 of 1 plans done; Plan 0 is in review through
+[pull request #39](https://github.com/denilson-santos/multisubs/pull/39).
 
 ## Cross-package dependencies
 
-Implementation starts after:
+Implementation started after these dependencies were completed:
 
 - [Shared subtitle-layout foundation](../subtitle-positioning/00-foundation.md),
   which is already complete.
@@ -82,6 +84,8 @@ the package row in [the plan catalog](../README.md).
 ## Definition of done
 
 - Karaoke is opt-in and unavailable combinations fail before model loading.
+- Karaoke exposes progressive and active-word as mutually exclusive modes, with
+  progressive as the enabled default.
 - Highlight timing is derived only from validated aligned-word timestamps.
 - Cues without a lossless word-to-display mapping fall back to plain rendering
   with a user-visible warning and machine-readable count.

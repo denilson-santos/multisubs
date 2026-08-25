@@ -7,6 +7,7 @@ from functools import cache
 from typing import Any
 
 from .layout import WrappingMetrics, estimate_text_width
+from .models import SubtitleDisplayFragment
 
 PAUSE_BREAK_THRESHOLD = 0.45
 
@@ -87,6 +88,48 @@ def split_words_for_layout(
 def words_to_text(words: Sequence[Mapping[str, Any]]) -> str:
     """Join word-like records without inserting spaces into CJK text."""
     return join_text_parts(str(word["word"]).strip() for word in words)
+
+
+def build_display_fragments(
+    display_text: str,
+    words: Sequence[Mapping[str, Any]],
+) -> tuple[SubtitleDisplayFragment, ...] | None:
+    """Map exact display text back to its ordered aligned-word fragments.
+
+    The mapping scans the already rendered display string against the source
+    word records. Separators, including intentional line breaks, remain
+    untimed fragments so the effect compiler never has to tokenize or rewrite
+    user-facing subtitle text.
+    """
+    if not isinstance(display_text, str) or not words:
+        return None
+
+    fragments: list[SubtitleDisplayFragment] = []
+    cursor = 0
+    for index, word in enumerate(words):
+        if not isinstance(word, Mapping):
+            return None
+        token = str(word.get("word", "")).strip()
+        if not token:
+            return None
+        token_start = display_text.find(token, cursor)
+        if token_start < cursor:
+            return None
+        separator = display_text[cursor:token_start]
+        if separator:
+            fragments.append(SubtitleDisplayFragment(separator))
+        fragments.append(SubtitleDisplayFragment(token, word_index=index))
+        cursor = token_start + len(token)
+
+    remainder = display_text[cursor:]
+    if remainder:
+        fragments.append(SubtitleDisplayFragment(remainder))
+    if (
+        not fragments
+        or "".join(fragment.text for fragment in fragments) != display_text
+    ):
+        return None
+    return tuple(fragments)
 
 
 def join_text_parts(parts: Sequence[str] | Any) -> str:

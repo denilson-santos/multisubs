@@ -19,8 +19,11 @@ from .config import (
     DEFAULT_FONT,
     DEFAULT_FONT_SIZE,
     DEFAULT_ITALIC,
+    DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
+    DEFAULT_KARAOKE_MODE,
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_COLOR,
+    KARAOKE_MODE_CHOICES,
     LAYOUT_PRESET_CHOICES,
     LAYOUT_PRESETS,
     MODELS,
@@ -217,6 +220,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing additional fonts for FFmpeg/libass.",
     )
 
+    effects_group = parser.add_argument_group(
+        "Subtitle effects",
+        "Optional effects applied to transcription cues.",
+    )
+    effects_group.add_argument(
+        "--karaoke",
+        action="store_true",
+        help="Highlight aligned words using a karaoke effect.",
+    )
+    effects_group.add_argument(
+        "--karaoke-mode",
+        choices=KARAOKE_MODE_CHOICES,
+        default=None,
+        metavar="MODE",
+        help=(
+            "Karaoke highlight behavior: progressive or active-word "
+            f"(default when enabled: {DEFAULT_KARAOKE_MODE.value})."
+        ),
+    )
+    effects_group.add_argument(
+        "--karaoke-highlight-color",
+        default=None,
+        metavar="COLOR",
+        help=(
+            "Karaoke highlight color using #RRGGBB or #RRGGBBAA "
+            f"(default when enabled: {DEFAULT_KARAOKE_HIGHLIGHT_COLOR})."
+        ),
+    )
+
     relative_group = parser.add_argument_group(
         "Relative layout units",
         "Use percentages or pixels; bare numbers are not accepted.",
@@ -356,6 +388,7 @@ def _build_request(
         )
     if args.preview_layout and args.keep_transcriptions:
         parser.error("--keep-transcriptions cannot be used with --preview-layout")
+    _validate_effect_request(args, parser)
     if not args.preview_layout:
         _validate_translation_request(args.task, args.model, parser)
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
@@ -381,6 +414,14 @@ def _build_request(
         }.items()
         if value is not None
     }
+    effects_values = {
+        "karaoke": args.karaoke,
+        "karaoke_mode": args.karaoke_mode,
+        "highlight_color": args.karaoke_highlight_color,
+    }
+    effects_values = {
+        key: value for key, value in effects_values.items() if value is not None
+    }
     relative_values = {
         key: value
         for key, value in {
@@ -402,6 +443,7 @@ def _build_request(
         subtitle_config = validate_subtitle_config(
             None,
             appearance_values=appearance_values,
+            effects_values=effects_values,
             position=args.position,
             layout_preset=args.layout,
             relative_values=relative_values,
@@ -449,6 +491,26 @@ def _validate_translation_request(
             f'Model "{model_name}" is English-only and cannot translate. Use a '
             'multilingual non-Turbo model, such as "medium" or "large". Whisper '
             "translations are always generated in English."
+        )
+
+
+def _validate_effect_request(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    if args.karaoke_highlight_color is not None and not args.karaoke:
+        parser.error("--karaoke-highlight-color requires --karaoke")
+    if args.karaoke_mode is not None and not args.karaoke:
+        parser.error("--karaoke-mode requires --karaoke")
+    if args.preview_layout and (
+        args.karaoke
+        or args.karaoke_mode is not None
+        or args.karaoke_highlight_color is not None
+    ):
+        parser.error("--karaoke options cannot be used with --preview-layout")
+    if args.karaoke and args.task == "translate":
+        parser.error(
+            "--karaoke cannot be combined with --task translate because "
+            "source-language word timings do not map losslessly to translated text"
         )
 
 

@@ -55,6 +55,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-14 | Transient connection failures while loading WhisperX model, VAD, or alignment assets must be retried automatically before the processing run is reported as failed. |
 | FR-15 | Before model loading, the tool must probe a deterministic video stream and use its autorotated render dimensions consistently for the ASS canvas and FFmpeg subtitle rendering. |
 | FR-16 | The user must be able to request a transcription-free layout preview that probes the video, resolves the same appearance, placement, wrapping, and ASS canvas, renders exactly one collision-safe PNG frame at a validated timestamp, and never creates transcription artifacts or imports WhisperX/PyTorch. Optional guides must show the relevant native margin region or explicit envelope, anchor, position/preset, and PlayRes dimensions. |
+| FR-17 | The user must be able to opt into word-timed karaoke highlighting for source-language transcription and select progressive or active-word mode. Progressive mode must keep prior words highlighted after their validated starts; active-word mode must highlight only the current validated word interval and leave pauses normal. SRT must remain plain, JSON must report the resolved mode/effect and per-cue fallback count, and incomplete mappings must fall back without invented timestamps. Translation, preview-only samples, and richer animated karaoke styles are excluded. |
 
 ## Non-functional requirements
 
@@ -75,6 +76,8 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 - Selectable translation target languages; English is the only translation target.
 - Soft subtitle tracks that can be enabled or disabled in a video player.
 - Speaker diarization, speaker labels, or subtitle speaker styling.
+- Syllable-, phoneme-, character-, sweep-, fade-, bounce-, line-level, or other animated karaoke effects beyond progressive and active-word color highlighting.
+- Karaoke on translated output or transcription-free previews, because neither path has a lossless source-word timing map.
 
 ## Acceptance criteria
 
@@ -95,6 +98,9 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 15. In native mode, a `100%` maximum width means the complete width remaining after horizontal margins. In explicit mode, maximum width and height are required, percentages use the full canvas axes, and invalid anchor coordinates are rejected rather than clamped or moved.
 16. Maximum height accounts for measured line height plus backdrop and shadow allowances and produces an internal line capacity of at least one line; increasing the height can increase that capacity without introducing a public maximum-lines option.
 17. `--preview-layout` accepts the documented timestamp, sample text, appearance, and placement options, defaults to the video midpoint or first frame, produces a valid PNG with the probed dimensions, applies collision-safe naming, and cleans temporary ASS/PNG files on success or failure without loading WhisperX/PyTorch. When the sample exceeds the resolved envelope, the PNG contains only the first lexical group that fits the normal cue-layout calculation; text representing later timed cues is omitted from that frame. `--keep-transcriptions` is rejected in this mode, and optional guides are visibly present only when requested.
+18. `--karaoke` is opt-in and defaults to progressive mode, which highlights eligible displayed words at quantized aligned starts and keeps prior words highlighted. `--karaoke-mode active-word` uses validated word ends, caps overlaps at the next word start, resets prior words, and leaves pauses in the normal color. Both modes preserve line breaks and placement in real ASS/libass renders and leave equivalent non-karaoke output unchanged.
+19. Karaoke rejects translation and meaningless color-only combinations before probing or model loading; incomplete or lossy cues render plainly, produce one aggregate warning without transcript text, and record the exact fallback count in JSON.
+20. Progressive karaoke ASS contains trusted generated color and `\k` overrides around independently escaped transcript fragments; active-word ASS uses trusted color overrides in adjacent, non-overlapping full-cue events. SRT and JSON contain no generated ASS markup in either mode.
 
 ## Constraints and risks
 

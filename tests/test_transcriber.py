@@ -565,6 +565,15 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "shaping": None,
             "metric_size": None,
         },
+        "effects": {
+            "karaoke": {
+                "enabled": False,
+                "mode": None,
+                "normal_color": "#FFFFFF",
+                "highlight_color": None,
+                "fallback_cues": 0,
+            }
+        },
         "native_region": {
             "left": 115,
             "top": 0,
