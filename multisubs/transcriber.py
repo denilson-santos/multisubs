@@ -979,6 +979,9 @@ def _write_json(
                     "font_size": _format_requested_length(
                         subtitle_config.appearance.font_size
                     ),
+                    "letter_spacing": _format_requested_length(
+                        subtitle_config.appearance.letter_spacing
+                    ),
                     "backdrop_size": _format_requested_length(
                         subtitle_config.appearance.backdrop_size
                     ),
@@ -1000,6 +1003,9 @@ def _write_json(
                 },
                 "resolved": {
                     "font_size": resolved_subtitle_config.appearance.font_size,
+                    "letter_spacing": (
+                        resolved_subtitle_config.appearance.letter_spacing
+                    ),
                     "backdrop_size": resolved_subtitle_config.appearance.backdrop_size,
                     "shadow_size": resolved_subtitle_config.appearance.shadow_size,
                     "margins": {
@@ -1022,10 +1028,12 @@ def _write_json(
                     "vertical_decoration": wrapping_metrics.vertical_decoration,
                     "line_capacity": wrapping_metrics.line_capacity,
                     "font_size": wrapping_metrics.font_size,
+                    "letter_spacing": wrapping_metrics.letter_spacing,
                     "backdrop_size": wrapping_metrics.backdrop_size,
                     "shadow_size": wrapping_metrics.shadow_size,
                 },
                 "percentage_bases": {
+                    "letter_spacing": "resolved-font-size",
                     "max_width": (
                         "render-width"
                         if explicit

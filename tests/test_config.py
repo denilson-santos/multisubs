@@ -96,6 +96,7 @@ def test_default_appearance_is_semantic_and_resolution_independent():
 
     assert appearance.font == "Roboto"
     assert appearance.font_size == parse_relative_length("4%")
+    assert appearance.letter_spacing == parse_relative_length("0px")
     assert appearance.text_color == "#FFFFFF"
     assert appearance.font_weight is FontWeight.REGULAR
     assert appearance.font_weight_input == "regular"
@@ -129,6 +130,15 @@ def test_maximum_dimensions_are_typed_layout_values():
     assert config.layout.max_width == parse_relative_length("72%")
     assert config.layout.max_height == parse_relative_length("12%")
     assert config.layout_overrides == frozenset({"max_width", "max_height"})
+
+
+def test_letter_spacing_is_a_typed_appearance_length():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"letter_spacing": "4.5%"},
+    )
+
+    assert config.appearance.letter_spacing == parse_relative_length("4.5%")
 
 
 def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
@@ -458,6 +468,17 @@ def test_typed_font_weight_metadata_is_revalidated():
     )
 
     with pytest.raises(ValidationError, match="metadata"):
+        validate_subtitle_config(inconsistent)
+
+
+def test_typed_letter_spacing_is_revalidated():
+    config = validate_subtitle_config(None)
+    inconsistent = replace(
+        config,
+        appearance=replace(config.appearance, letter_spacing=-1),
+    )
+
+    with pytest.raises(ValidationError, match="letter-spacing"):
         validate_subtitle_config(inconsistent)
 
 

@@ -115,6 +115,7 @@ _RELATIVE_LENGTH_PATTERN = re.compile(
 )
 _RELATIVE_FIELDS = {
     "font_size",
+    "letter_spacing",
     "outline_weight",
     "shadow_weight",
     "margin_left",
@@ -140,6 +141,7 @@ _LAYOUT_OVERRIDE_FIELDS = frozenset(
 
 DEFAULT_FONT = "Roboto"
 DEFAULT_FONT_SIZE = "4%"
+DEFAULT_LETTER_SPACING = "0px"
 DEFAULT_TEXT_COLOR = "#FFFFFF"
 DEFAULT_FONT_WEIGHT = FontWeight.REGULAR
 DEFAULT_ITALIC = False
@@ -495,6 +497,9 @@ def validate_subtitle_config(
             font_size=parsed_relative_values.get(
                 "font_size", parse_relative_length(DEFAULT_FONT_SIZE)
             ),
+            letter_spacing=parsed_relative_values.get(
+                "letter_spacing", parse_relative_length(DEFAULT_LETTER_SPACING)
+            ),
             text_color=_validate_color(
                 appearance_overrides.get("text_color", DEFAULT_TEXT_COLOR),
                 "text-color",
@@ -722,6 +727,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     _validate_effects(config.effects)
     relative_fields = {
         "font_size": config.appearance.font_size,
+        "letter_spacing": config.appearance.letter_spacing,
         "outline_weight": config.appearance.backdrop_size,
         "shadow_weight": config.appearance.shadow_size,
         "margin_left": config.layout.margin_left,

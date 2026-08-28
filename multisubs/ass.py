@@ -257,7 +257,7 @@ def _compile_style(
         "strikeout": 0,
         "scale_x": 100,
         "scale_y": 100,
-        "spacing": 0,
+        "spacing": _resolved_style_int(appearance.letter_spacing, "letter-spacing"),
         "angle": 0,
         # libass BorderStyle 4 creates one box for the whole cue, matching the
         # backdrop used by multisubs before the semantic CLI cutover.

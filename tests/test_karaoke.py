@@ -342,6 +342,7 @@ def test_karaoke_retains_exact_font_weight(tmp_path: Path, karaoke_mode: str):
     config = validate_subtitle_config(
         None,
         appearance_values={"font_weight": "800"},
+        relative_values={"letter_spacing": "2px"},
         effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
     )
     segment = {
@@ -360,6 +361,7 @@ def test_karaoke_retains_exact_font_weight(tmp_path: Path, karaoke_mode: str):
     content = path.read_text(encoding="utf-8")
     style_fields = content.split("Style: Default,", 1)[1].split(",")
     assert style_fields[6] == "0"
+    assert style_fields[12] == "2"
     dialogue = [line for line in content.splitlines() if line.startswith("Dialogue:")]
     assert dialogue
     assert all(r"{\b800}" in line for line in dialogue)

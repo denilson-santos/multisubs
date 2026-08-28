@@ -69,6 +69,7 @@ class SubtitleAppearance:
 
     font: str
     font_size: int | RelativeLength
+    letter_spacing: int | RelativeLength
     text_color: str
     font_weight: FontWeight
     italic: bool

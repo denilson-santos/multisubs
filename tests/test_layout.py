@@ -126,6 +126,7 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
         None,
         relative_values={
             "font_size": "4.5%",
+            "letter_spacing": "4%",
             "outline_weight": "6%",
             "shadow_weight": "4%",
             "margin_left": "8%",
@@ -138,6 +139,7 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
     assert resolved.appearance.font_size == 49
+    assert resolved.appearance.letter_spacing == 2
     assert resolved.appearance.backdrop_size == 3
     assert resolved.appearance.shadow_size == 2
     assert resolved.layout.margin_left == 154
@@ -176,6 +178,28 @@ def test_portrait_preset_derives_line_capacity_from_maximum_height():
     assert metrics.available_width == 908
     assert metrics.max_width == 908
     assert metrics.line_capacity == 2
+
+
+def test_letter_spacing_percentage_uses_resolved_font_size():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"font_size": "40px", "letter_spacing": "50%"},
+    )
+
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+
+    assert resolved.appearance.font_size == 40
+    assert resolved.appearance.letter_spacing == 20
+
+
+def test_letter_spacing_is_bounded_relative_to_font_size():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"font_size": "40px", "letter_spacing": "161px"},
+    )
+
+    with pytest.raises(ValidationError, match="letter-spacing"):
+        resolve_subtitle_config(config, GEOMETRY)
 
 
 @pytest.mark.parametrize(

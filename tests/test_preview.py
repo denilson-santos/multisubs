@@ -268,11 +268,16 @@ def test_preview_guides_serialize_native_or_explicit_geometry(
                 "position_y": "80%",
                 "max_width": "60%",
                 "max_height": "20%",
+                "letter_spacing": "2px",
             },
             anchor="bottom-center",
         )
     else:
-        config = validate_subtitle_config(None, position="top-right")
+        config = validate_subtitle_config(
+            None,
+            position="top-right",
+            relative_values={"letter_spacing": "2px"},
+        )
     resolved = resolve_subtitle_config(config, GEOMETRY)
     metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
     events = build_preview_guide_events(resolved, GEOMETRY, metrics, 1.0)
@@ -281,6 +286,7 @@ def test_preview_guides_serialize_native_or_explicit_geometry(
     assert any("\\p1" in event.text for event in events)
     assert any("Preview guides" in event.text for event in events)
     assert any(r"\fs40" in event.text for event in events)
+    assert any("Letter spacing: 2px" in event.text for event in events)
     path = tmp_path / ("explicit.ass" if explicit else "native.ass")
     write_ass(
         path,
@@ -309,6 +315,27 @@ def test_preview_guide_explicit_anchor_is_custom_coordinate():
     metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
     events = build_preview_guide_events(resolved, GEOMETRY, metrics, 0.0)
     assert any("m 24 684" in event.text for event in events)
+
+
+def test_preview_guides_report_requested_and_resolved_letter_spacing():
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "letter_spacing": "4%",
+        },
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        0.0,
+        requested_config=config,
+    )
+
+    assert any("Letter spacing: 4% (2px resolved)" in event.text for event in events)
 
 
 def test_preview_run_branches_before_whisper_runtime_import(
