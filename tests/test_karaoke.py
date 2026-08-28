@@ -337,6 +337,36 @@ def test_disabled_karaoke_keeps_plain_ass_output_unchanged(tmp_path: Path):
 
 
 @pytest.mark.parametrize("karaoke_mode", ["progressive", "active-word"])
+def test_karaoke_retains_exact_font_weight(tmp_path: Path, karaoke_mode: str):
+    path = tmp_path / f"{karaoke_mode}-weight.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font_weight": "800"},
+        effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
+    )
+    segment = {
+        "start": 0.0,
+        "end": 1.0,
+        "text": "Hello",
+        "_karaoke_cue": KaraokeCue(
+            (SubtitleDisplayFragment("Hello", 0),),
+            (100,),
+            ((0, 100),),
+        ),
+    }
+
+    write_ass(path, [segment], config, GEOMETRY)
+
+    content = path.read_text(encoding="utf-8")
+    style_fields = content.split("Style: Default,", 1)[1].split(",")
+    assert style_fields[6] == "0"
+    dialogue = [line for line in content.splitlines() if line.startswith("Dialogue:")]
+    assert dialogue
+    assert all(r"{\b800}" in line for line in dialogue)
+    assert "Hello" in content
+
+
+@pytest.mark.parametrize("karaoke_mode", ["progressive", "active-word"])
 def test_karaoke_artifacts_keep_srt_plain_and_record_fallback_metadata(
     tmp_path: Path,
     karaoke_mode: str,

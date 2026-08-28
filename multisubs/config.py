@@ -11,6 +11,8 @@ from types import MappingProxyType
 
 from .errors import ValidationError
 from .models import (
+    FontWeight,
+    FontWeightInputForm,
     KaraokeMode,
     LayoutPreset,
     RelativeLength,
@@ -86,6 +88,25 @@ DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
 LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
 BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
 KARAOKE_MODE_CHOICES = tuple(mode.value for mode in KaraokeMode)
+FONT_WEIGHT_NAMES = tuple(weight.canonical_name for weight in FontWeight)
+FONT_WEIGHT_RANKS = tuple(weight.rank for weight in FontWeight)
+
+_FONT_WEIGHT_BY_NAME = MappingProxyType(
+    {weight.canonical_name: weight for weight in FontWeight}
+)
+_FONT_WEIGHT_BY_RANK = MappingProxyType({weight.rank: weight for weight in FontWeight})
+_FONT_WEIGHT_ALIASES = MappingProxyType(
+    {
+        "hairline": FontWeight.THIN,
+        "ultra-light": FontWeight.EXTRA_LIGHT,
+        "normal": FontWeight.REGULAR,
+        "book": FontWeight.REGULAR,
+        "demi-bold": FontWeight.SEMI_BOLD,
+        "ultra-bold": FontWeight.EXTRA_BOLD,
+        "heavy": FontWeight.BLACK,
+    }
+)
+FONT_WEIGHT_ALIASES = tuple(_FONT_WEIGHT_ALIASES)
 
 _COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
 _RELATIVE_LENGTH_PATTERN = re.compile(
@@ -120,7 +141,7 @@ _LAYOUT_OVERRIDE_FIELDS = frozenset(
 DEFAULT_FONT = "Roboto"
 DEFAULT_FONT_SIZE = "4%"
 DEFAULT_TEXT_COLOR = "#FFFFFF"
-DEFAULT_BOLD = False
+DEFAULT_FONT_WEIGHT = FontWeight.REGULAR
 DEFAULT_ITALIC = False
 DEFAULT_BACKDROP = SubtitleBackdrop.BOX
 DEFAULT_BACKDROP_COLOR = "#00000099"
@@ -149,6 +170,56 @@ def parse_relative_length(raw_value: str) -> RelativeLength:
     if not value.is_finite():
         raise ValidationError("length must be a finite decimal number")
     return RelativeLength(value=value, unit=match.group("unit"), original=original)
+
+
+def parse_font_weight(value: object) -> FontWeight:
+    """Parse one canonical name, documented alias, or 100-step numeric rank."""
+    weight, _, _ = _parse_font_weight_request(value)
+    return weight
+
+
+def _parse_font_weight_request(
+    value: object,
+) -> tuple[FontWeight, str, FontWeightInputForm]:
+    if isinstance(value, FontWeight):
+        return value, value.canonical_name, FontWeightInputForm.NAME
+    if isinstance(value, bool):
+        raise _font_weight_error()
+    if isinstance(value, int):
+        weight = _FONT_WEIGHT_BY_RANK.get(value)
+        if weight is None:
+            raise _font_weight_error()
+        return weight, str(value), FontWeightInputForm.NUMERIC
+    if not isinstance(value, str):
+        raise _font_weight_error()
+
+    requested = value.strip()
+    if re.fullmatch(r"[1-9][0-9]{2}", requested):
+        rank = int(requested)
+        weight = _FONT_WEIGHT_BY_RANK.get(rank)
+        if weight is None:
+            raise _font_weight_error()
+        return weight, requested, FontWeightInputForm.NUMERIC
+
+    lowered = requested.casefold()
+    if not re.fullmatch(r"[a-z]+(?:(?: +|_|-)[a-z]+)*", lowered):
+        raise _font_weight_error()
+    normalized = re.sub(r" +", "-", lowered).replace("_", "-")
+    weight = _FONT_WEIGHT_BY_NAME.get(normalized)
+    if weight is not None:
+        return weight, requested, FontWeightInputForm.NAME
+    weight = _FONT_WEIGHT_ALIASES.get(normalized)
+    if weight is not None:
+        return weight, requested, FontWeightInputForm.ALIAS
+    raise _font_weight_error()
+
+
+def _font_weight_error() -> ValidationError:
+    names = ", ".join(FONT_WEIGHT_NAMES)
+    ranks = ", ".join(str(rank) for rank in FONT_WEIGHT_RANKS)
+    return ValidationError(
+        f"font-weight must be a supported name ({names}) or numeric rank ({ranks})"
+    )
 
 
 def _preset_length(raw_value: str) -> RelativeLength:
@@ -308,6 +379,7 @@ def validate_subtitle_config(
     known_appearance_fields = {
         "font",
         "text_color",
+        "font_weight",
         "bold",
         "italic",
         "backdrop",
@@ -320,6 +392,22 @@ def validate_subtitle_config(
     if unknown_appearance_fields:
         names = ", ".join(sorted(unknown_appearance_fields))
         raise ValidationError(f"Unknown appearance value(s): {names}")
+    if "font_weight" in appearance_overrides and "bold" in appearance_overrides:
+        raise ValidationError("font-weight cannot be combined with --bold or --no-bold")
+
+    if "font_weight" in appearance_overrides:
+        font_weight, font_weight_input, font_weight_input_form = (
+            _parse_font_weight_request(appearance_overrides["font_weight"])
+        )
+    elif "bold" in appearance_overrides:
+        bold = _validate_boolean(appearance_overrides["bold"], "bold")
+        font_weight = FontWeight.BOLD if bold else FontWeight.REGULAR
+        font_weight_input = font_weight.canonical_name
+        font_weight_input_form = FontWeightInputForm.BOLD_SHORTHAND
+    else:
+        font_weight = DEFAULT_FONT_WEIGHT
+        font_weight_input = DEFAULT_FONT_WEIGHT.canonical_name
+        font_weight_input_form = FontWeightInputForm.DEFAULT
 
     if "karaoke_highlight_color" in effects_overrides:
         if "highlight_color" in effects_overrides:
@@ -411,9 +499,7 @@ def validate_subtitle_config(
                 appearance_overrides.get("text_color", DEFAULT_TEXT_COLOR),
                 "text-color",
             ),
-            bold=_validate_boolean(
-                appearance_overrides.get("bold", DEFAULT_BOLD), "bold"
-            ),
+            font_weight=font_weight,
             italic=_validate_boolean(
                 appearance_overrides.get("italic", DEFAULT_ITALIC), "italic"
             ),
@@ -431,6 +517,8 @@ def validate_subtitle_config(
                 "shadow_weight", parse_relative_length(DEFAULT_SHADOW_SIZE)
             ),
             fonts_dir=_coerce_fonts_dir(appearance_overrides.get("fonts_dir")),
+            font_weight_input=font_weight_input,
+            font_weight_input_form=font_weight_input_form,
         ),
         layout=SubtitleLayout(
             position=resolved_position or DEFAULT_POSITION,
@@ -593,7 +681,40 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError("layout preset must use a supported preset value")
     _validate_font(config.appearance.font)
     _validate_color(config.appearance.text_color, "text-color")
-    _validate_boolean(config.appearance.bold, "bold")
+    if not isinstance(config.appearance.font_weight, FontWeight):
+        raise ValidationError("font-weight must use the typed FontWeight contract")
+    if (
+        not isinstance(config.appearance.font_weight_input, str)
+        or not config.appearance.font_weight_input.strip()
+    ):
+        raise ValidationError("font-weight input must not be empty")
+    if not isinstance(config.appearance.font_weight_input_form, FontWeightInputForm):
+        raise ValidationError(
+            "font-weight input form must use the typed FontWeightInputForm contract"
+        )
+    input_form = config.appearance.font_weight_input_form
+    if input_form is FontWeightInputForm.BOLD_SHORTHAND:
+        expected_input = config.appearance.font_weight.canonical_name
+        if (
+            config.appearance.font_weight not in {FontWeight.REGULAR, FontWeight.BOLD}
+            or config.appearance.font_weight_input != expected_input
+        ):
+            raise ValidationError("bold shorthand must resolve to regular or bold")
+    elif input_form is FontWeightInputForm.DEFAULT:
+        if (
+            config.appearance.font_weight is not DEFAULT_FONT_WEIGHT
+            or config.appearance.font_weight_input != DEFAULT_FONT_WEIGHT.canonical_name
+        ):
+            raise ValidationError("default font-weight metadata is inconsistent")
+    else:
+        parsed_weight, _, parsed_form = _parse_font_weight_request(
+            config.appearance.font_weight_input
+        )
+        if (
+            parsed_weight is not config.appearance.font_weight
+            or parsed_form is not input_form
+        ):
+            raise ValidationError("font-weight metadata is inconsistent")
     _validate_boolean(config.appearance.italic, "italic")
     _validate_backdrop(config.appearance.backdrop)
     _validate_color(config.appearance.backdrop_color, "backdrop-color")

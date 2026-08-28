@@ -28,6 +28,34 @@ class SubtitleBackdrop(str, Enum):
     BOX = "box"
 
 
+class FontWeight(Enum):
+    """Canonical semantic font weights and their OpenType numeric ranks."""
+
+    THIN = ("thin", 100)
+    EXTRA_LIGHT = ("extra-light", 200)
+    LIGHT = ("light", 300)
+    REGULAR = ("regular", 400)
+    MEDIUM = ("medium", 500)
+    SEMI_BOLD = ("semi-bold", 600)
+    BOLD = ("bold", 700)
+    EXTRA_BOLD = ("extra-bold", 800)
+    BLACK = ("black", 900)
+
+    def __init__(self, canonical_name: str, rank: int) -> None:
+        self.canonical_name = canonical_name
+        self.rank = rank
+
+
+class FontWeightInputForm(str, Enum):
+    """How one public font-weight request reached typed configuration."""
+
+    DEFAULT = "default"
+    NAME = "name"
+    ALIAS = "alias"
+    NUMERIC = "numeric"
+    BOLD_SHORTHAND = "bold-shorthand"
+
+
 class KaraokeMode(str, Enum):
     """Supported word-highlight timing policies."""
 
@@ -42,13 +70,15 @@ class SubtitleAppearance:
     font: str
     font_size: int | RelativeLength
     text_color: str
-    bold: bool
+    font_weight: FontWeight
     italic: bool
     backdrop: SubtitleBackdrop
     backdrop_color: str
     backdrop_size: int | RelativeLength
     shadow_size: int | RelativeLength
     fonts_dir: Path | None = None
+    font_weight_input: str = "regular"
+    font_weight_input_form: FontWeightInputForm = FontWeightInputForm.DEFAULT
 
 
 @dataclass(frozen=True)

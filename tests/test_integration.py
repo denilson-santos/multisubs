@@ -20,7 +20,20 @@ from multisubs.transcriber import layout_subtitle_cues
 
 
 @pytest.mark.integration
-def test_resolved_font_measurement_tracks_libass_bounds(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("font_weight", "rank"),
+    [
+        ("regular", 400),
+        ("light", 300),
+        ("semi-bold", 600),
+        ("bold", 700),
+    ],
+)
+def test_resolved_font_measurement_tracks_libass_bounds(
+    tmp_path: Path,
+    font_weight: str,
+    rank: int,
+):
     if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
         pytest.skip("FFmpeg and fontconfig are required")
     try:
@@ -52,7 +65,11 @@ def test_resolved_font_measurement_tracks_libass_bounds(tmp_path: Path):
     geometry = probe_video_geometry(input_path)
     config = validate_subtitle_config(
         None,
-        appearance_values={"font": "Roboto", "backdrop": "none"},
+        appearance_values={
+            "font": "Roboto",
+            "font_weight": font_weight,
+            "backdrop": "none",
+        },
         relative_values={
             "font_size": "43px",
             "shadow_weight": "0px",
@@ -75,14 +92,39 @@ def test_resolved_font_measurement_tracks_libass_bounds(tmp_path: Path):
     if (
         metrics.text_measurer.info.mode != "font-metrics"
         or metrics.text_measurer.info.resolved_font != "Roboto"
+        or metrics.text_measurer.info.resolved_weight != rank
     ):
-        pytest.skip("A controlled Roboto face is not available through fontconfig")
+        pytest.skip(
+            f"A controlled Roboto {font_weight} face is not available through "
+            "fontconfig"
+        )
 
     measured_width = metrics.text_measurer.measure(text)
     assert measured_width < metrics.width_budget
     assert display[0]["text"] == text
 
     write_ass(subtitle_path, display, config, geometry)
+    selection = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "info",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"ass={subtitle_path}",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    assert re.search(rf"fontselect: \(Roboto, {rank}, 0\)", selection.stderr)
     output_path = Path(
         embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
     )

@@ -36,6 +36,9 @@ def _use_hermetic_text_measurement(monkeypatch):
         return build_unicode_text_measurer(
             appearance.font,
             appearance.font_size,
+            font_weight=appearance.font_weight,
+            font_weight_input=appearance.font_weight_input,
+            font_weight_input_form=appearance.font_weight_input_form,
         )
 
     monkeypatch.setattr("multisubs.layout.build_text_measurer", build)
@@ -564,6 +567,13 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_source": "unresolved",
             "shaping": None,
             "metric_size": None,
+            "requested_weight_name": "regular",
+            "requested_weight": 400,
+            "requested_weight_input": "regular",
+            "requested_weight_input_form": "default",
+            "resolved_weight_name": None,
+            "resolved_weight": None,
+            "weight_substituted": None,
         },
         "effects": {
             "karaoke": {
@@ -646,6 +656,48 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     }
     assert rendering["requested_preset"] == "auto"
     assert rendering["resolved_preset"] == "landscape"
+
+
+def test_json_records_requested_font_weight_without_machine_path(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Hello.",
+        segments=(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Hello.",
+                "words": [],
+            },
+        ),
+    )
+
+    paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(
+            None,
+            appearance_values={"font_weight": "300"},
+        ),
+        geometry=GEOMETRY,
+    )
+
+    payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
+    measurement = payload["metadata"]["rendering"]["text_measurement"]
+    assert measurement["requested_weight_name"] == "light"
+    assert measurement["requested_weight"] == 300
+    assert measurement["requested_weight_input"] == "300"
+    assert measurement["requested_weight_input_form"] == "numeric"
+    assert measurement["resolved_weight_name"] is None
+    assert measurement["resolved_weight"] is None
+    assert measurement["weight_substituted"] is None
+    assert "font_path" not in measurement
 
 
 def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):

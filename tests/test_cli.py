@@ -7,6 +7,8 @@ from multisubs import cli
 from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ArtifactError, TranscriptionError, ValidationError
 from multisubs.models import (
+    FontWeight,
+    FontWeightInputForm,
     RelativeLength,
     RunArtifacts,
     RunRequest,
@@ -131,7 +133,11 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
     assert request.subtitle_config.appearance.font == "Inter"
     assert request.subtitle_config.appearance.font_size == parse_relative_length("22px")
     assert request.subtitle_config.appearance.text_color == "#ABCDEF80"
-    assert request.subtitle_config.appearance.bold is True
+    assert request.subtitle_config.appearance.font_weight is FontWeight.BOLD
+    assert (
+        request.subtitle_config.appearance.font_weight_input_form
+        is FontWeightInputForm.BOLD_SHORTHAND
+    )
     assert request.subtitle_config.appearance.italic is True
     assert request.subtitle_config.appearance.backdrop is SubtitleBackdrop.BOX
     assert request.subtitle_config.layout.position.value == "top-right"
@@ -158,6 +164,75 @@ def test_build_request_accepts_layout_preset_and_position_override(tmp_path: Pat
     assert request.subtitle_config.layout_preset is SubtitleLayoutPreset.PORTRAIT
     assert request.subtitle_config.layout.position.value == "top-right"
     assert "position" in request.subtitle_config.layout_overrides
+
+
+@pytest.mark.parametrize(
+    ("raw_weight", "expected", "input_form"),
+    [
+        ("Semi Bold", FontWeight.SEMI_BOLD, FontWeightInputForm.NAME),
+        ("book", FontWeight.REGULAR, FontWeightInputForm.ALIAS),
+        ("300", FontWeight.LIGHT, FontWeightInputForm.NUMERIC),
+    ],
+)
+def test_build_request_accepts_named_alias_and_numeric_font_weights(
+    tmp_path: Path,
+    raw_weight: str,
+    expected: FontWeight,
+    input_form: FontWeightInputForm,
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    request = cli._build_request(
+        parser.parse_args(["-i", str(input_path), "--font-weight", raw_weight]),
+        parser,
+    )
+
+    appearance = request.subtitle_config.appearance
+    assert appearance.font_weight is expected
+    assert appearance.font_weight_input == raw_weight
+    assert appearance.font_weight_input_form is input_form
+
+
+@pytest.mark.parametrize("bold_flag", ["--bold", "--no-bold"])
+def test_font_weight_conflicts_with_bold_shorthand_before_runtime(
+    tmp_path: Path, bold_flag: str
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        cli._build_request(
+            parser.parse_args(
+                [
+                    "-i",
+                    str(input_path),
+                    "--font-weight",
+                    "700",
+                    bold_flag,
+                ]
+            ),
+            parser,
+        )
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("raw_weight", ["350", "bold italic", "+400"])
+def test_invalid_font_weight_fails_before_runtime(tmp_path: Path, raw_weight: str):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        cli._build_request(
+            parser.parse_args(["-i", str(input_path), "--font-weight", raw_weight]),
+            parser,
+        )
+
+    assert error.value.code == 2
 
 
 def test_build_request_accepts_relative_layout_values(tmp_path: Path):
@@ -285,9 +360,15 @@ def test_removed_style_options_are_rejected(tmp_path: Path):
 
 def test_help_exposes_semantic_options_without_ass_style_flags():
     help_text = cli.build_parser().format_help()
+    compact_help = "".join(help_text.split())
 
     assert "--font NAME" in help_text
     assert "--text-color COLOR" in help_text
+    assert "--font-weight WEIGHT" in help_text
+    assert "thin,extra-light,light,regular" in compact_help
+    assert "100,200,300,400" in compact_help
+    assert "hairline,ultra-light,normal,book" in compact_help
+    assert "spacesandunderscoresnormalizetohyphens" in compact_help
     assert "--bold, --no-bold" in help_text
     assert "--backdrop {none,outline,box}" in help_text
     assert "--max-height LENGTH" in help_text
