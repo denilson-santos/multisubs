@@ -161,6 +161,28 @@ def test_build_preview_ass_reuses_resolved_height_and_wrapping(tmp_path: Path):
     assert "0:00:00.00,0:00:03.00" in content
 
 
+def test_preview_ass_uses_the_same_exact_font_weight_as_normal_output(
+    tmp_path: Path,
+):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font_weight": "600"},
+    )
+    path = tmp_path / "preview-weight.ass"
+
+    build_preview_ass(
+        path,
+        _request(tmp_path, subtitle_config=config),
+        GEOMETRY,
+        0.0,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    style_fields = content.split("Style: Default,", 1)[1].split(",")
+    assert style_fields[6] == "0"
+    assert r"{\b600}" in content
+
+
 def test_preview_renders_only_the_first_segment_that_fits_the_envelope(
     tmp_path: Path,
 ):

@@ -115,7 +115,12 @@ def write_ass(
     ]
     for index, segment in enumerate(segments):
         placement = placements[index] if placements is not None else default_placement
-        generated_override = (
+        # Older libass releases normalize positive values in the style Bold
+        # field to boolean bold. Event-level \b accepts the exact OpenType rank
+        # across those releases, so keep the base style neutral and apply the
+        # validated semantic weight through the trusted override path.
+        generated_override = rf"{{\b{config.appearance.font_weight.rank}}}"
+        generated_override += (
             serialize_ass_placement(placement) if placement is not None else ""
         )
         if preserve_line_breaks:
@@ -244,7 +249,9 @@ def _compile_style(
         "secondary_color": rgba_to_ass_color(appearance.text_color),
         "outline_color": backdrop_color,
         "back_color": backdrop_color,
-        "bold": -1 if appearance.bold else 0,
+        # Exact weight is emitted as a trusted event-level \b override because
+        # older libass style parsers coerce every positive value to bold.
+        "bold": 0,
         "italic": -1 if appearance.italic else 0,
         "underline": 0,
         "strikeout": 0,

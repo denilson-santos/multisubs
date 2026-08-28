@@ -15,14 +15,17 @@ from .config import (
     DEFAULT_BACKDROP,
     DEFAULT_BACKDROP_COLOR,
     DEFAULT_BACKDROP_SIZE,
-    DEFAULT_BOLD,
     DEFAULT_FONT,
     DEFAULT_FONT_SIZE,
+    DEFAULT_FONT_WEIGHT,
     DEFAULT_ITALIC,
     DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
     DEFAULT_KARAOKE_MODE,
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_COLOR,
+    FONT_WEIGHT_ALIASES,
+    FONT_WEIGHT_NAMES,
+    FONT_WEIGHT_RANKS,
     KARAOKE_MODE_CHOICES,
     LAYOUT_PRESET_CHOICES,
     LAYOUT_PRESETS,
@@ -187,10 +190,28 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Subtitle text color (default: {DEFAULT_TEXT_COLOR}).",
     )
     appearance_group.add_argument(
+        "--font-weight",
+        default=None,
+        metavar="WEIGHT",
+        help=(
+            "Font weight name or numeric rank. Names: "
+            + ", ".join(FONT_WEIGHT_NAMES)
+            + ". Numeric ranks: "
+            + ", ".join(str(rank) for rank in FONT_WEIGHT_RANKS)
+            + ". Aliases: "
+            + ", ".join(FONT_WEIGHT_ALIASES)
+            + ". Names are case-insensitive; spaces and underscores normalize "
+            "to hyphens" + f" (default: {DEFAULT_FONT_WEIGHT.canonical_name})."
+        ),
+    )
+    appearance_group.add_argument(
         "--bold",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help=f"Enable or disable bold text (default: {DEFAULT_BOLD}).",
+        help=(
+            "Compatibility shorthand: --bold selects bold (700); --no-bold "
+            "selects regular (400) (default: regular)."
+        ),
     )
     appearance_group.add_argument(
         "--italic",
@@ -406,6 +427,7 @@ def _build_request(
         for key, value in {
             "font": args.font,
             "text_color": args.text_color,
+            "font_weight": args.font_weight,
             "bold": args.bold,
             "italic": args.italic,
             "backdrop": args.backdrop,

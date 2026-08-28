@@ -5,12 +5,16 @@ import pytest
 
 from multisubs.config import (
     BACKDROP_CHOICES,
+    FONT_WEIGHT_ALIASES,
+    FONT_WEIGHT_NAMES,
+    FONT_WEIGHT_RANKS,
     LAYOUT_PRESET_CHOICES,
     LAYOUT_PRESETS,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     get_layout_preset,
+    parse_font_weight,
     parse_layout_preset,
     parse_position,
     parse_relative_length,
@@ -18,6 +22,8 @@ from multisubs.config import (
 )
 from multisubs.errors import ValidationError
 from multisubs.models import (
+    FontWeight,
+    FontWeightInputForm,
     RelativeLength,
     SubtitleBackdrop,
     SubtitleConfig,
@@ -91,7 +97,9 @@ def test_default_appearance_is_semantic_and_resolution_independent():
     assert appearance.font == "Roboto"
     assert appearance.font_size == parse_relative_length("4%")
     assert appearance.text_color == "#FFFFFF"
-    assert appearance.bold is False
+    assert appearance.font_weight is FontWeight.REGULAR
+    assert appearance.font_weight_input == "regular"
+    assert appearance.font_weight_input_form is FontWeightInputForm.DEFAULT
     assert appearance.italic is False
     assert appearance.backdrop is SubtitleBackdrop.BOX
     assert appearance.backdrop_color == "#00000099"
@@ -185,7 +193,11 @@ def test_semantic_appearance_options_build_typed_config(tmp_path):
     assert config.appearance.font == "Inter"
     assert config.appearance.font_size == parse_relative_length("22px")
     assert config.appearance.text_color == "#ABCDEF80"
-    assert config.appearance.bold is True
+    assert config.appearance.font_weight is FontWeight.BOLD
+    assert config.appearance.font_weight_input == "bold"
+    assert (
+        config.appearance.font_weight_input_form is FontWeightInputForm.BOLD_SHORTHAND
+    )
     assert config.appearance.italic is True
     assert config.appearance.backdrop is SubtitleBackdrop.BOX
     assert config.appearance.backdrop_color == "#123456"
@@ -211,6 +223,112 @@ def test_parse_relative_length_accepts_bounded_percent_and_pixel_values(
     assert str(parsed.value) == value
     assert parsed.unit == unit
     assert parsed.original == original
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("thin", FontWeight.THIN),
+        ("Extra Light", FontWeight.EXTRA_LIGHT),
+        ("semi_bold", FontWeight.SEMI_BOLD),
+        ("BLACK", FontWeight.BLACK),
+        ("hairline", FontWeight.THIN),
+        ("ultra-light", FontWeight.EXTRA_LIGHT),
+        ("normal", FontWeight.REGULAR),
+        ("book", FontWeight.REGULAR),
+        ("demi-bold", FontWeight.SEMI_BOLD),
+        ("ultra-bold", FontWeight.EXTRA_BOLD),
+        ("heavy", FontWeight.BLACK),
+        (100, FontWeight.THIN),
+        ("400", FontWeight.REGULAR),
+        (900, FontWeight.BLACK),
+    ],
+)
+def test_parse_font_weight_accepts_names_aliases_and_numeric_ranks(raw_value, expected):
+    assert parse_font_weight(raw_value) is expected
+
+
+@pytest.mark.parametrize("weight", list(FontWeight))
+def test_every_canonical_font_weight_name_and_rank_are_equivalent(weight):
+    assert parse_font_weight(weight.canonical_name) is weight
+    assert parse_font_weight(weight.canonical_name.upper()) is weight
+    assert parse_font_weight(str(weight.rank)) is weight
+    assert parse_font_weight(weight.rank) is weight
+
+
+def test_public_font_weight_names_and_ranks_are_complete():
+    assert FONT_WEIGHT_NAMES == tuple(weight.canonical_name for weight in FontWeight)
+    assert FONT_WEIGHT_RANKS == tuple(weight.rank for weight in FontWeight)
+    assert FONT_WEIGHT_ALIASES == (
+        "hairline",
+        "ultra-light",
+        "normal",
+        "book",
+        "demi-bold",
+        "ultra-bold",
+        "heavy",
+    )
+
+
+@pytest.mark.parametrize(
+    "raw_value",
+    [
+        "",
+        "unknown",
+        "bold italic",
+        "semi--bold",
+        "semi__bold",
+        "99",
+        "350",
+        "1000",
+        "+400",
+        "400.0",
+        350,
+        400.0,
+        True,
+    ],
+)
+def test_parse_font_weight_rejects_unknown_or_noncanonical_values(raw_value):
+    with pytest.raises(ValidationError, match="font-weight"):
+        parse_font_weight(raw_value)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "weight", "input_form"),
+    [
+        ("Semi Bold", FontWeight.SEMI_BOLD, FontWeightInputForm.NAME),
+        ("book", FontWeight.REGULAR, FontWeightInputForm.ALIAS),
+        ("300", FontWeight.LIGHT, FontWeightInputForm.NUMERIC),
+    ],
+)
+def test_font_weight_request_metadata_preserves_input_form(
+    raw_value, weight, input_form
+):
+    appearance = validate_subtitle_config(
+        None, appearance_values={"font_weight": raw_value}
+    ).appearance
+
+    assert appearance.font_weight is weight
+    assert appearance.font_weight_input == raw_value
+    assert appearance.font_weight_input_form is input_form
+
+
+@pytest.mark.parametrize("bold", [False, True])
+def test_bold_shorthand_maps_to_regular_or_bold_weight(bold):
+    appearance = validate_subtitle_config(
+        None, appearance_values={"bold": bold}
+    ).appearance
+
+    assert appearance.font_weight is (FontWeight.BOLD if bold else FontWeight.REGULAR)
+    assert appearance.font_weight_input_form is FontWeightInputForm.BOLD_SHORTHAND
+
+
+def test_font_weight_conflicts_with_bold_shorthand():
+    with pytest.raises(ValidationError, match="cannot be combined"):
+        validate_subtitle_config(
+            None,
+            appearance_values={"font_weight": "700", "bold": True},
+        )
 
 
 @pytest.mark.parametrize(
@@ -330,6 +448,17 @@ def test_typed_subtitle_config_is_revalidated():
     )
 
     assert validate_subtitle_config(config).layout.position is SubtitlePosition.CENTER
+
+
+def test_typed_font_weight_metadata_is_revalidated():
+    config = validate_subtitle_config(None)
+    inconsistent = replace(
+        config,
+        appearance=replace(config.appearance, font_weight=FontWeight.BOLD),
+    )
+
+    with pytest.raises(ValidationError, match="metadata"):
+        validate_subtitle_config(inconsistent)
 
 
 @pytest.mark.parametrize(

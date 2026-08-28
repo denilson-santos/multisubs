@@ -61,6 +61,11 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must treat Pillow as the text-measurement boundary rather than reimplementing
   TrueType/OpenType parsing. Font resolution must remain bounded and must not
   serialize machine-specific font paths or persist transcript text in caches.
+- Must normalize public font-weight names, aliases, and supported numeric input
+  to one canonical OpenType rank. Face selection ranks absolute weight distance
+  before italic mismatch and uses stable provider order as the final tie
+  breaker; diagnostics must distinguish the requested rank from the inferred
+  resolved face rank.
 
 ## Project structure and module boundaries
 
@@ -222,6 +227,11 @@ Update a higher-level document when a proposed change intentionally modifies the
   Public inputs use semantic names and conventional color notation; ASS field
   ordering, fixed internal defaults, color conversion, and numeric codes belong
   only in the ASS serializer.
+- Must keep the ASS style Bold field neutral and compile canonical font weights
+  as trusted event-level `\\b100` through `\\b900` overrides so older libass
+  style parsers receive the same exact OpenType rank used by font measurement.
+  Compatibility bold shorthands may map to 400 or 700 only at configuration
+  boundaries.
 - Must not mutate a layout preset during a run. Preset definitions and their
   nested layout values must remain immutable so separate invocations cannot
   influence one another.

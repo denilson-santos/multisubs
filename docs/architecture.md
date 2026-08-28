@@ -55,7 +55,7 @@ flowchart LR
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream or render one preview PNG. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview() |
 | multisubs/config.py | Defines supported choices, semantic appearance/effect defaults, immutable layout preset sources, and validates typed subtitle configuration. | SUPPORTED_LANGUAGES, MODELS, LAYOUT_PRESETS, validate_subtitle_config() |
 | multisubs/layout.py | Classifies autorotated geometry, merges preset and explicit layout fields, resolves unit-bearing lengths, derives wrapping dimensions, and validates native regions or explicit subtitle envelopes on the probed canvas. | classify_layout_preset(), resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement() |
-| multisubs/text_measurement.py | Resolves custom or fontconfig faces, measures glyph advances with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
+| multisubs/text_measurement.py | Resolves the nearest custom or fontconfig family/weight face, measures glyph advances with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
 | multisubs/wrapping.py | Shares font-aware, bounded adaptive wrapping between transcription and preview without importing the model runtime. | wrap_subtitle_text(), line_count() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
@@ -73,9 +73,9 @@ flowchart LR
 7. The normal transcription path reports the resolved dimensions, semantic position, and concrete layout preset, then creates a private temporary work directory inside the output directory.
 8. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
 9. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
-10. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. The resolved layout then creates display cues using maximum width, maximum height, font line height, and backdrop/shadow allowances. The text-measurement boundary first searches the validated custom font directory, then queries fontconfig where available, measures a resolved face with Pillow/RAQM, and otherwise uses its explicit Unicode estimate. Complete cues that fit remain unbroken; required multi-line layouts use bounded global partition scoring rather than greedy first-line filling. wrapping.py supplies the same algorithm to preview mode, where only the first fitting lexical group is rendered when the sample would require later timed cues.
+10. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. The resolved layout then creates display cues using maximum width, maximum height, font line height, and backdrop/shadow allowances. The text-measurement boundary normalizes named, aliased, or numeric font weights to an OpenType rank, first searches the validated custom font directory, then queries fontconfig with the corresponding weight/slant where available, measures the nearest resolved face with Pillow/RAQM, and otherwise uses its explicit Unicode estimate. Complete cues that fit remain unbroken; required multi-line layouts use bounded global partition scoring rather than greedy first-line filling. wrapping.py supplies the same algorithm to preview mode, where only the first fitting lexical group is rendered when the sample would require later timed cues.
 11. When karaoke is enabled, each display cue preserves a lossless sequence of `SubtitleDisplayFragment` values: timed fragments point to original aligned words, while separators and intentional line breaks remain untimed. `prepare_karaoke_cues()` validates the mapping and word boundaries, quantizes cue/word starts, word ends, and cue ends to ASS centiseconds, then prepares both progressive durations and non-overlapping active-word intervals. Progressive intervals end at the next start; active-word intervals end at the earlier of the aligned word end or next start. It records per-cue fallback instead of inventing timestamps and prepares the same immutable outcome before JSON, SRT, and ASS serialization.
-12. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates preset merging, unit resolution, placement validation, and wrapping metrics to layout.py, then delegates ASS serialization to ass.py. The ASS compiler converts conventional RGBA colors to ASS BGR/inverted-alpha values. Native placement compiles semantic alignment and actual margins into the style without event positioning; explicit placement uses neutral style margins and generated per-cue `\\an`/`\\pos` tags. Progressive karaoke adds one trusted color setup and one `\\k` duration for each displayed timed word. Active-word karaoke emits adjacent full-cue events for highlighted word intervals and normal gaps; events never overlap, so the block does not move or receive duplicate glyph layers. Each transcript fragment is escaped separately. JSON preserves JSON-compatible aligned-word metadata plus the placement mode, applicable margins, requested and resolved dimensions, wrapping metrics, native region or explicit PlayRes coordinates, and additive karaoke metadata.
+12. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. It delegates preset merging, unit resolution, placement validation, and wrapping metrics to layout.py, then delegates ASS serialization to ass.py. The ASS compiler converts conventional RGBA colors to ASS BGR/inverted-alpha values and writes the canonical 100-900 OpenType rank into the ASS Bold field. Native placement compiles semantic alignment and actual margins into the style without event positioning; explicit placement uses neutral style margins and generated per-cue `\\an`/`\\pos` tags. Progressive karaoke adds one trusted color setup and one `\\k` duration for each displayed timed word. Active-word karaoke emits adjacent full-cue events for highlighted word intervals and normal gaps; events never overlap, so the block does not move or receive duplicate glyph layers. Each transcript fragment is escaped separately. JSON preserves JSON-compatible aligned-word metadata plus the placement mode, applicable margins, requested and resolved dimensions, wrapping metrics, requested/resolved font-weight diagnostics, native region or explicit PlayRes coordinates, and additive karaoke metadata.
 13. embed_subtitles() selects the same probed stream, explicitly enables autorotation, supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter, and supplies fontsdir only when a validated custom fonts directory was requested. Available audio streams are copied into a temporary rendered output when present. render_subtitle_preview() uses the same subtitles filter options, seeks to the validated timestamp, requests one PNG frame, captures bounded diagnostics, and publishes it with get_unique_path().
 14. After normal rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed normal runs retain transcription artifacts in that directory for diagnosis; preview runs remove their temporary ASS directory, while the renderer removes partial media in either mode.
 
@@ -95,9 +95,10 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   backdrop/shadow allowance, divided by the resolved font line height. Presets
   retain a calibrated two-line default, but there is no fixed max-lines input.
 - It measures a concrete face with Pillow when `--fonts-dir` or fontconfig can
-  resolve the family/style that libass will use. RAQM applies direction and
-  language shaping when available. Otherwise it reports and records a
-  Unicode-category estimate with calibrated proportional-width factors.
+  resolve the nearest family, weight, and italic style that libass will use.
+  RAQM applies direction and language shaping when available. Otherwise it
+  reports and records a Unicode-category estimate with calibrated
+  proportional-width factors.
 - It keeps a complete cue on one line whenever its measured width fits. A
   required multi-line break searches no more partitions than both the derived
   line capacity and the number of text units, then scores semantic class,
@@ -212,7 +213,14 @@ The JSON artifact has this high-level shape:
         "resolved_style": "Regular",
         "font_source": "fontconfig",
         "shaping": "raqm",
-        "metric_size": 36
+        "metric_size": 36,
+        "requested_weight_name": "regular",
+        "requested_weight": 400,
+        "requested_weight_input": "regular",
+        "requested_weight_input_form": "default",
+        "resolved_weight_name": "regular",
+        "resolved_weight": 400,
+        "weight_substituted": false
       },
       "effects": {
         "karaoke": {
@@ -248,7 +256,7 @@ The JSON artifact has this high-level shape:
 }
 ~~~
 
-`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX; its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records normalized geometry, requested and resolved presets, placement mode, whether margins apply, maximum dimensions, percentage bases, and the reproducibility inputs used by adaptive wrapping. The `wrapping` object records available and maximum dimensions, effective width budget, measured line height, vertical decoration allowance, and derived line capacity. `text_measurement` records `font-metrics` or `unicode-estimate`, requested and resolved family/style names, font source, and shaping mode. `effects.karaoke` records whether word highlighting is enabled, the resolved `progressive` or `active-word` mode, normal/highlight semantic colors, and the exact number of plain fallback cues. Unresolved values are null, font substitutions remain visible, and absolute local font paths are never serialized. Native mode adds `native_region` and deliberately omits synthetic coordinates. Explicit mode omits `native_region` and adds requested and resolved X/Y values with `coordinate_space: playres`. The metadata does not claim exact equivalence with final libass shaping or store generated ASS strings or raw command lines. `container_duration` is null when ffprobe cannot report it.
+`schema_version` identifies the top-level JSON contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX; its exact optional fields are owned by that dependency. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records normalized geometry, requested and resolved presets, placement mode, whether margins apply, maximum dimensions, percentage bases, and the reproducibility inputs used by adaptive wrapping. The `wrapping` object records available and maximum dimensions, effective width budget, measured line height, vertical decoration allowance, and derived line capacity. `text_measurement` records `font-metrics` or `unicode-estimate`, requested and resolved family/style names, the original weight token and input form, canonical requested and inferred resolved weight names/ranks, substitution state, font source, and shaping mode. `effects.karaoke` records whether word highlighting is enabled, the resolved `progressive` or `active-word` mode, normal/highlight semantic colors, and the exact number of plain fallback cues. Unresolved values are null, font-family and font-weight substitutions remain visible, and absolute local font paths are never serialized. Native mode adds `native_region` and deliberately omits synthetic coordinates. Explicit mode omits `native_region` and adds requested and resolved X/Y values with `coordinate_space: playres`. The metadata does not claim exact equivalence with final libass shaping or store generated ASS strings or raw command lines. `container_duration` is null when ffprobe cannot report it.
 
 ### SRT and ASS
 
@@ -280,8 +288,13 @@ clamp, move, or shrink it. Percentages use Decimal half-up rounding. All resolve
 lengths use PlayRes pixels, and resolved font, backdrop, and shadow values remain
 bounded.
 
-ass.py converts `#RRGGBB[AA]` colors, backdrop kinds, boolean text treatments,
-and semantic positions into the required private ASS fields. The `box` backdrop
+ass.py converts `#RRGGBB[AA]` colors, backdrop kinds, canonical 100-900 font
+weights, boolean italic treatment, and semantic positions into the required
+private ASS fields and trusted event overrides. The base ASS Bold style field
+remains neutral because older libass style parsers coerce every positive value
+to boolean bold. Each subtitle event instead receives an exact `\\b100` through
+`\\b900` override, which keeps preview, ordinary cues, and both karaoke modes on
+the same OpenType rank across supported libass versions. The `box` backdrop
 uses libass `BorderStyle=4`, which draws one background box for the complete
 cue. The required ASS `SecondaryColour` field follows the semantic text color
 for ordinary cues; enabled karaoke events override the inactive and active
@@ -350,11 +363,15 @@ environment, but Pillow is already present transitively in common WhisperX
 installations; declaring it directly makes the relied-upon API explicit.
 
 Custom font resolution inspects only supported files directly inside
-`--fonts-dir` and matches their internal family/style metadata. On hosts with
-fontconfig, `fc-match` is invoked with a bounded argument-vector subprocess and
-its returned regular file is validated. Other providers are not guessed. Font
-objects and up to 4096 repeated text measurements are cached in memory for one
-artifact-writing run; transcript strings are not persisted by the cache.
+`--fonts-dir` and matches their internal family/style metadata. Common face
+names are mapped to canonical OpenType ranks, and candidates are ordered by
+absolute weight distance, requested italic state, then stable path/index order.
+On hosts with fontconfig, `fc-match` is invoked with a bounded argument-vector
+subprocess using the corresponding fontconfig weight and slant; the returned
+file's actual metadata is still validated instead of assuming an exact match.
+Other providers are not guessed. Font objects and up to 4096 repeated text
+measurements are cached in memory for one artifact-writing run; transcript
+strings are not persisted by the cache.
 Pillow and libass can differ in shaping, hinting, and fallback, so libass remains
 the render authority and integration tests use an explicit tolerance.
 

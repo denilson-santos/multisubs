@@ -1,6 +1,6 @@
 # Subtitle typography roadmap
 
-Status: Planned
+Status: In review
 
 This package adds semantic typography controls without exposing raw ASS field
 names. It owns font weight, letter spacing, line height, global opacity, and
@@ -66,13 +66,13 @@ This table is the source of truth for the package. Status values follow the
 
 | Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
-| 0 | [Font weight](00-font-weight.md) | Planned | Subtitle positioning and karaoke packages | — |
+| 0 | [Font weight](00-font-weight.md) | In review | Subtitle positioning and karaoke packages | `feat/subtitle-font-weight` |
 | 1 | [Letter spacing](01-letter-spacing.md) | Planned | 0 | — |
 | 2 | [Line height](02-line-height.md) | Planned | 0, 1 | — |
 | 3 | [Subtitle opacity](03-opacity.md) | Planned | 0, 1, 2 | — |
 | 4 | [Text case](04-text-case.md) | Planned | 0, 1, 2, 3 | — |
 
-Package progress: 0 of 5 plans done. Plan 0 is the next unblocked plan.
+Package progress: 0 of 5 plans done. Plan 0 is in review.
 
 ## Dependencies and delivery order
 

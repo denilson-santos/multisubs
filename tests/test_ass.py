@@ -18,6 +18,7 @@ from multisubs.layout import resolve_subtitle_config
 from multisubs.models import (
     AssDrawingEvent,
     CuePlacement,
+    FontWeight,
     SubtitlePosition,
     VideoGeometry,
 )
@@ -65,6 +66,7 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert r"{\pos" not in content
     assert "0:00:00.00,0:01:01.24" in content
+    assert r"{\b400}Olá" in content
     assert "\\{mundo\\}" in content
     assert "\\N字幕" in content
 
@@ -103,8 +105,30 @@ def test_semantic_backdrops_compile_to_private_ass_fields(
 
     assert style["border_style"] == border_style
     assert style["outline_weight"] == outline_weight
-    assert style["bold"] == -1
+    assert style["bold"] == 0
     assert style["italic"] == -1
+
+
+@pytest.mark.parametrize("font_weight", list(FontWeight))
+def test_all_font_weights_compile_to_exact_event_override(
+    tmp_path: Path, font_weight: FontWeight
+):
+    path = tmp_path / f"{font_weight.canonical_name}.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font_weight": font_weight.canonical_name},
+    )
+
+    style = _compile_style(resolve_subtitle_config(config, GEOMETRY))
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "sample"}],
+        config,
+        GEOMETRY,
+    )
+
+    assert style["bold"] == 0
+    assert rf"{{\b{font_weight.rank}}}sample" in path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("value", [-1, float("nan"), float("inf"), True, "1"])
