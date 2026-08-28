@@ -83,6 +83,7 @@ multisubs \
   -o ./output \
   --font "Roboto" \
   --font-size 4.5% \
+  --letter-spacing 1px \
   --text-color '#FFFFFF' \
   --font-weight semi-bold \
   --backdrop outline \
@@ -108,6 +109,7 @@ multisubs \
 | --karaoke-highlight-color COLOR | #FFD54F when enabled | Set the karaoke highlight color using #RRGGBB or #RRGGBBAA. |
 | --font NAME | Roboto | Select the subtitle font family. |
 | --font-size LENGTH | 4% | Set font size relative to the shorter render edge or in PlayRes pixels. |
+| --letter-spacing LENGTH | 0px | Add non-negative spacing between rendered grapheme clusters; percentages use the resolved font size and pixels use PlayRes space. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
 | --font-weight WEIGHT | regular (400) | Select a named or numeric font weight from 100 through 900. |
 | --bold, --no-bold | off | Compatibility shorthand for bold (700) or regular (400). |
@@ -199,6 +201,12 @@ deterministically when the requested family lacks an exact face. Supplying a
 controlled font directory is recommended for reproducible wrapping across
 machines.
 
+`--letter-spacing` adds non-negative tracking between rendered grapheme
+clusters. Use a pixel value for fixed PlayRes spacing or a percentage of the
+resolved font size, for example `--letter-spacing 2px` or
+`--letter-spacing 4%`. The default is `0px`; values above four times the
+resolved font size are rejected to keep wrapping bounded.
+
 ### Word-timed karaoke highlighting
 
 Enable the opt-in effect with `--karaoke`. Each eligible displayed word changes
@@ -249,11 +257,12 @@ replacements:
 | `--style-border-style` | `--backdrop none`, `outline`, or `box` |
 | `--style-outline-weight`, `--style-shadow-weight` | `--backdrop-size`, `--shadow-size` |
 | `--style-margin-l`, `--style-margin-r`, `--style-margin-v` | `--margin-left`, `--margin-right`, `--margin-top`, `--margin-bottom` |
+| `--style-spacing` | `--letter-spacing` with an explicit `%` or `px` suffix |
 
 `--style-secondary-color`, `--style-underline`, `--style-strikeout`,
-`--style-scale-x`, `--style-scale-y`, `--style-spacing`, and `--style-angle`
-have no replacement because they expose ASS internals outside the supported
-subtitle appearance model.
+`--style-scale-x`, `--style-scale-y`, and `--style-angle` have no replacement
+because they expose ASS internals outside the supported subtitle appearance
+model.
 
 The new defaults preserve the former appearance while scaling with the video:
 Roboto, 4% font size, white regular non-italic text, a black background box at
@@ -329,8 +338,8 @@ the preset's alignment:
 ### Adaptive subtitle wrapping
 
 Subtitle cues are first built from semantic word and timing boundaries. The
-selected layout then supplies maximum width and height, font size, and
-backdrop/shadow allowances. Whenever the requested or substituted font
+selected layout then supplies maximum width and height, font size, letter
+spacing, and backdrop/shadow allowances. Whenever the requested or substituted font
 can be resolved, Pillow measures its glyph advances with the resolved size and
 style; RAQM supplies direction- and language-aware shaping when available. If a
 concrete face cannot be resolved, a Unicode-aware fallback estimates
@@ -400,6 +409,7 @@ The typed layout options accept an explicit unit suffix:
 | Option | Percentage basis |
 | --- | --- |
 | `--font-size` | Shorter autorotated render edge |
+| `--letter-spacing` | Resolved font size |
 | `--backdrop-size`, `--shadow-size` | Resolved font size |
 | `--margin-left`, `--margin-right` | Render width |
 | `--margin-top`, `--margin-bottom` | Render height |
@@ -411,7 +421,7 @@ The typed layout options accept an explicit unit suffix:
 Use `%` for resolution-independent values or `px` for fixed PlayRes pixels:
 
 ~~~
-multisubs -i ./video.mp4 --font-size 4.5% --margin-left 8% \
+multisubs -i ./video.mp4 --font-size 4.5% --letter-spacing 2px --margin-left 8% \
   --margin-right 8% --margin-bottom 72px
 ~~~
 
@@ -419,6 +429,14 @@ Bare numbers, signs, exponent notation, and excessive precision are rejected.
 Percentages are rounded deterministically to the nearest PlayRes pixel, with
 half values rounded up. Geometry-dependent validation runs after ffprobe and
 before WhisperX.
+
+`--letter-spacing` adds non-negative tracking between rendered grapheme
+clusters. A percentage is relative to the resolved font size, while a pixel
+value is fixed in PlayRes space; explicit line breaks reset the spacing count.
+Combining marks and emoji zero-width-joiner sequences remain attached to their
+base cluster. The default `0px` leaves existing wrapping and rendering
+unchanged, and spacing above four times the resolved font size is rejected as
+unsafe.
 
 ### Exact subtitle coordinates
 

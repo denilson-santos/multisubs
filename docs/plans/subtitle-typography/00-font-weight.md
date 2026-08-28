@@ -1,6 +1,6 @@
 # Font weight
 
-Status: In review
+Status: Done
 
 Depends on:
 
