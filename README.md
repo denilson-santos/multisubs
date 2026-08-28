@@ -84,7 +84,7 @@ multisubs \
   --font "Roboto" \
   --font-size 4.5% \
   --text-color '#FFFFFF' \
-  --bold \
+  --font-weight semi-bold \
   --backdrop outline \
   --margin-bottom 8%
 ~~~
@@ -109,7 +109,8 @@ multisubs \
 | --font NAME | Roboto | Select the subtitle font family. |
 | --font-size LENGTH | 4% | Set font size relative to the shorter render edge or in PlayRes pixels. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
-| --bold, --no-bold | off | Enable or disable bold text. |
+| --font-weight WEIGHT | regular (400) | Select a named or numeric font weight from 100 through 900. |
+| --bold, --no-bold | off | Compatibility shorthand for bold (700) or regular (400). |
 | --italic, --no-italic | off | Enable or disable italic text. |
 | --backdrop KIND | box | Select none, outline, or box. |
 | --backdrop-color COLOR | #00000099 | Set outline, box, and shadow color. |
@@ -168,13 +169,35 @@ current run: it does not install fonts on the host. The measurer matches the
 font's internal family metadata rather than its filename, and the same directory
 is passed to libass during rendering.
 
+`--font-weight` accepts these equivalent named and numeric ranks:
+
+| Name | Numeric rank |
+| --- | ---: |
+| `thin` | 100 |
+| `extra-light` | 200 |
+| `light` | 300 |
+| `regular` | 400 |
+| `medium` | 500 |
+| `semi-bold` | 600 |
+| `bold` | 700 |
+| `extra-bold` | 800 |
+| `black` | 900 |
+
+Names are case-insensitive, and spaces or underscores can replace hyphens.
+The aliases `hairline`, `ultra-light`, `normal`, `book`, `demi-bold`,
+`ultra-bold`, and `heavy` map to their corresponding canonical ranks.
+`--bold` and `--no-bold` remain compatibility shorthands, but combining either
+with `--font-weight` is rejected instead of applying implicit precedence.
+
 When `--fonts-dir` is omitted, multisubs queries fontconfig where available so
 measurement follows the concrete system font or fallback that libass is likely
 to use. Other platforms retain the Unicode estimate when a concrete face cannot
-be resolved. Font substitution or estimated measurement produces one progress
-diagnostic and is recorded in JSON without exposing an absolute local font
-path. Supplying a controlled font directory is recommended for reproducible
-wrapping across machines.
+be resolved. Font-family or font-weight substitution, or estimated measurement,
+produces one progress diagnostic and is recorded in JSON without exposing an
+absolute local font path. The closest available weight is selected
+deterministically when the requested family lacks an exact face. Supplying a
+controlled font directory is recommended for reproducible wrapping across
+machines.
 
 ### Word-timed karaoke highlighting
 
@@ -220,7 +243,8 @@ replacements:
 | `--style-font` | `--font` |
 | `--style-font-size` | `--font-size` with an explicit `%` or `px` suffix |
 | `--style-primary-color` | `--text-color` using `#RRGGBB[AA]` |
-| `--style-bold`, `--style-italic` | `--bold`/`--no-bold`, `--italic`/`--no-italic` |
+| `--style-bold` | `--font-weight bold`, `--font-weight 700`, or the `--bold` compatibility shorthand |
+| `--style-italic` | `--italic`/`--no-italic` |
 | `--style-outline-color`, `--style-back-color` | `--backdrop-color` |
 | `--style-border-style` | `--backdrop none`, `outline`, or `box` |
 | `--style-outline-weight`, `--style-shadow-weight` | `--backdrop-size`, `--shadow-size` |
@@ -493,6 +517,9 @@ coded and render dimensions, rotation, aspect ratios, and container duration are
 recorded under `metadata.rendering` in the versioned JSON transcript. Rendering
 metadata also records the requested and resolved layout preset names. Relative
 layout options record both their requested strings and resolved PlayRes pixels.
+Text-measurement metadata records the requested weight token and form, its
+canonical name and numeric rank, the inferred resolved face weight, and whether
+a substitution occurred.
 
 See [docs/prd.md](docs/prd.md) for product scope and [docs/architecture.md](docs/architecture.md) for implementation details.
 

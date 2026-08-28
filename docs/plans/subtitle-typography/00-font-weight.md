@@ -1,6 +1,6 @@
 # Font weight
 
-Status: Planned
+Status: In review
 
 Depends on:
 
@@ -104,24 +104,26 @@ substitution occurred. These additive fields keep `schema_version` unchanged.
 - Request the corresponding weight from fontconfig while still validating the
   loaded face's actual metadata. Do not infer exact success only from the
   fontconfig query.
-- Update `multisubs/ass.py` to compile the canonical weight through one private
-  mapping without changing ASS field order or user text.
+- Update `multisubs/ass.py` to keep the base style weight neutral and compile
+  the canonical rank as a trusted event-level `\\b` override without changing
+  ASS field order or user text. This avoids the boolean coercion performed by
+  older libass style parsers.
 - Add requested/resolved weight details to `multisubs/transcriber.py` JSON and
   existing font-substitution diagnostics without recording local paths.
 
 ## Implementation tasks
 
-- [ ] Add the `FontWeight` enum, canonical name/rank table, alias parser,
+- [x] Add the `FontWeight` enum, canonical name/rank table, alias parser,
   numeric parser, default, and typed revalidation.
-- [ ] Wire named and numeric `--font-weight` plus bold-shorthand conflict
+- [x] Wire named and numeric `--font-weight` plus bold-shorthand conflict
   handling into the CLI.
-- [ ] Make custom-directory and fontconfig face selection weight-aware with
+- [x] Make custom-directory and fontconfig face selection weight-aware with
   deterministic nearest-face behavior.
-- [ ] Compile the resolved weight into ASS for preview and normal rendering.
-- [ ] Record requested and resolved weight diagnostics in JSON.
-- [ ] Add focused configuration, CLI, font-resolution, ASS, preview, karaoke,
+- [x] Compile the resolved weight into ASS for preview and normal rendering.
+- [x] Record requested and resolved weight diagnostics in JSON.
+- [x] Add focused configuration, CLI, font-resolution, ASS, preview, karaoke,
   metadata, and default-output tests.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, and package status.
+- [x] Update README.md, docs/prd.md, docs/architecture.md, and package status.
 
 ## Unit tests
 
@@ -138,14 +140,16 @@ substitution occurred. These additive fields keep `schema_version` unchanged.
   missing exact faces.
 - Fontconfig substitutions and diagnostics that distinguish requested from
   resolved weight.
-- Exact ASS weight mapping and style-field order for all canonical weights.
+- Neutral ASS style weight, exact trusted event override, and style-field order
+  for all canonical weights across plain, preview, and karaoke events.
 - Default-output regression confirming regular non-italic rendering.
 
 ## Integration and manual verification
 
 - Extend the controlled-font integration coverage with a family containing at
   least Regular, Light, SemiBold, and Bold faces; compare measured and libass
-  bounds within the existing tolerance.
+  bounds within the existing tolerance and prove distinct requested weights do
+  not collapse to the same rendered frame.
 - Request a missing named weight and confirm preview and final rendering select
   the same nearest face and emit one actionable substitution diagnostic.
 - Verify ordinary, progressive karaoke, and active-word cues retain identical
