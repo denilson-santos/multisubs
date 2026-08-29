@@ -22,6 +22,7 @@ from .config import (
     DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
     DEFAULT_KARAOKE_MODE,
     DEFAULT_LETTER_SPACING,
+    DEFAULT_LINE_HEIGHT,
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_COLOR,
     FONT_WEIGHT_ALIASES,
@@ -33,6 +34,7 @@ from .config import (
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
+    parse_line_height,
     parse_relative_length,
     validate_subtitle_config,
 )
@@ -288,6 +290,12 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_LETTER_SPACING.replace('%', '%%')}).",
         ),
         (
+            "--line-height",
+            "Vertical baseline distance: auto uses measured font metrics; explicit "
+            "percentages use natural line height and pixels use PlayRes space "
+            f"(default: {DEFAULT_LINE_HEIGHT}).",
+        ),
+        (
             "--backdrop-size",
             "Backdrop/outline size as a percentage of the resolved font size "
             f"or pixels (default: {DEFAULT_BACKDROP_SIZE.replace('%', '%%')}).",
@@ -327,9 +335,13 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         relative_group.add_argument(
             option,
-            type=_relative_length_argument_type,
+            type=(
+                _line_height_argument_type
+                if option == "--line-height"
+                else _relative_length_argument_type
+            ),
             default=None,
-            metavar="LENGTH",
+            metavar="auto|LENGTH" if option == "--line-height" else "LENGTH",
             help=help_text,
         )
 
@@ -390,6 +402,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _relative_length_argument_type(raw_value: str) -> RelativeLength:
     try:
         return parse_relative_length(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _line_height_argument_type(raw_value: str) -> str | RelativeLength:
+    try:
+        return parse_line_height(raw_value)
     except ValidationError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
@@ -456,6 +475,7 @@ def _build_request(
         for key, value in {
             "font_size": args.font_size,
             "letter_spacing": args.letter_spacing,
+            "line_height": args.line_height,
             "outline_weight": args.backdrop_size,
             "shadow_weight": args.shadow_size,
             "margin_left": args.margin_left,

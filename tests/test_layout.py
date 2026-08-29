@@ -8,6 +8,7 @@ from multisubs.errors import ValidationError
 from multisubs.layout import (
     classify_layout_preset,
     resolve_cue_placement,
+    resolve_line_height,
     resolve_native_layout_region,
     resolve_relative_length,
     resolve_subtitle_config,
@@ -409,6 +410,60 @@ def test_line_capacity_is_derived_from_max_height_and_vertical_metrics():
 
     assert metrics.max_height == 82
     assert metrics.vertical_decoration == 2
+    assert metrics.line_capacity == 2
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [("auto", 40.0), ("100%", 40), ("125%", 50), ("64px", 64), ("64.5px", 65)],
+)
+def test_line_height_resolves_against_natural_metrics(requested, expected):
+    assert (
+        resolve_line_height(
+            parse_relative_length(requested) if requested != "auto" else requested,
+            40.0,
+        )
+        == expected
+    )
+
+
+def test_numeric_line_height_uses_half_up_playres_rounding():
+    assert resolve_line_height(40.5, 40.0) == 41
+
+
+def test_line_height_equal_to_fractional_natural_metric_never_rounds_below_it():
+    assert resolve_line_height(parse_relative_length("100%"), 40.4) == 41
+
+
+def test_line_height_rejects_values_below_natural_metrics():
+    with pytest.raises(ValidationError, match="below the natural"):
+        resolve_line_height(parse_relative_length("99%"), 40.0)
+
+
+def test_explicit_line_height_reduces_capacity_using_baseline_advance():
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Fixture",
+        resolved_font="Fixture",
+        resolved_style="Regular",
+        font_source="fonts-dir",
+        shaping="basic",
+        metric_size=40,
+    )
+    measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "line_height": "60px",
+            "max_height": "142px",
+            "shadow_weight": "2px",
+        },
+    )
+
+    metrics = resolve_wrapping_metrics(config, GEOMETRY, text_measurer=measurer)
+
+    assert metrics.natural_line_height == 40
+    assert metrics.resolved_line_height == 60
     assert metrics.line_capacity == 2
 
 

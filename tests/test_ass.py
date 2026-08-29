@@ -14,11 +14,13 @@ from multisubs.ass import (
 )
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import ArtifactError
-from multisubs.layout import resolve_subtitle_config
+from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import (
     AssDrawingEvent,
     CuePlacement,
     FontWeight,
+    KaraokeCue,
+    SubtitleDisplayFragment,
     SubtitlePosition,
     VideoGeometry,
 )
@@ -252,6 +254,161 @@ def test_ass_can_preserve_intentional_line_breaks_without_changing_default(
         GEOMETRY,
     )
     assert r"{\q2}" not in default_path.read_text(encoding="utf-8")
+
+
+def test_explicit_line_height_positions_lines_and_shares_box_backdrop(
+    tmp_path: Path,
+):
+    path = tmp_path / "line-height.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "line_height": "64px",
+            "max_width": "600px",
+            "max_height": "200px",
+        },
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "first\nsecond"}],
+        config,
+        GEOMETRY,
+        preserve_line_breaks=True,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert len(dialogue) == 3
+    content = path.read_text(encoding="utf-8")
+    default_style = next(
+        line for line in content.splitlines() if line.startswith("Style: Default,")
+    ).split(",")
+    positioned_style = next(
+        line for line in content.splitlines() if line.startswith("Style: Positioned,")
+    ).split(",")
+    assert default_style[15:17] == ["4", "0"]
+    assert positioned_style[15:17] == ["1", "0"]
+    assert dialogue[0].startswith("Dialogue: 0,")
+    assert all(line.startswith("Dialogue: 1,") for line in dialogue[1:])
+    assert all(",Positioned,," in line for line in dialogue)
+    assert dialogue[1].count(r"\pos(540,") == 1
+    assert dialogue[2].count(r"\pos(540,") == 1
+    assert r"\p1" in dialogue[0]
+    assert "first\\Nsecond" not in "\n".join(dialogue[1:])
+
+
+def test_explicit_line_height_keeps_single_line_on_traditional_ass_path(
+    tmp_path: Path,
+):
+    path = tmp_path / "single-line-height.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "line_height": "100%",
+            "max_width": "100px",
+            "max_height": "200px",
+        },
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "one-unbreakable-long-token"}],
+        config,
+        GEOMETRY,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    dialogue = [line for line in content.splitlines() if line.startswith("Dialogue:")]
+    assert len(dialogue) == 1
+    assert ",Default,," in dialogue[0]
+    assert r"\pos(" not in dialogue[0]
+    assert "Style: Positioned," not in content
+    default_style = next(
+        line for line in content.splitlines() if line.startswith("Style: Default,")
+    ).split(",")
+    assert default_style[15] == "4"
+
+
+def test_write_ass_reuses_supplied_wrapping_metrics(tmp_path: Path, monkeypatch):
+    path = tmp_path / "shared-metrics.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "line_height": "125%",
+            "max_width": "300px",
+            "max_height": "200px",
+        },
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
+
+    def reject_recomputation(*args, **kwargs):
+        pytest.fail("write_ass recomputed wrapping metrics")
+
+    monkeypatch.setattr("multisubs.ass.resolve_wrapping_metrics", reject_recomputation)
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "first\nsecond"}],
+        config,
+        GEOMETRY,
+        wrapping_metrics=metrics,
+    )
+
+    assert path.exists()
+
+
+def test_explicit_progressive_lines_keep_cue_global_word_boundaries(
+    tmp_path: Path,
+):
+    path = tmp_path / "line-height-progressive.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "line_height": "64px",
+            "max_width": "600px",
+            "max_height": "200px",
+        },
+        effects_values={"karaoke": True},
+    )
+    segment = {
+        "start": 0.0,
+        "end": 1.0,
+        "text": "one two\nthree",
+        "_karaoke_cue": KaraokeCue(
+            (
+                SubtitleDisplayFragment("one", 0),
+                SubtitleDisplayFragment(" "),
+                SubtitleDisplayFragment("two", 1),
+                SubtitleDisplayFragment("\n"),
+                SubtitleDisplayFragment("three", 2),
+            ),
+            (20, 30, 50),
+            ((0, 20), (20, 50), (50, 100)),
+        ),
+    }
+
+    write_ass(path, [segment], config, GEOMETRY)
+
+    lines = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue: 1,")
+    ]
+    assert len(lines) == 6
+    assert sum(r"{\k" in line for line in lines) == 3
+    assert sum("0:00:00.00,0:00:00.20" in line for line in lines) == 2
+    second_line = lines[3:]
+    assert len(second_line) == 3
+    assert r"\1c&H4FD5FF&" not in second_line[0]
+    assert r"\1c&H4FD5FF&" not in second_line[1]
+    assert r"\1c&H4FD5FF&" in second_line[2]
 
 
 def test_named_center_uses_native_alignment_and_actual_margins(

@@ -507,6 +507,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "placement_mode": "native-style",
         "requested_position": "bottom-center",
         "resolved_position": "bottom-center",
+        "render_strategy": "single-event",
         "margins": {
             "applied": True,
             "left": 115,
@@ -517,6 +518,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "requested": {
             "font_size": "4%",
             "letter_spacing": "0px",
+            "line_height": "auto",
             "backdrop_size": "0px",
             "shadow_size": "4%",
             "margins": {
@@ -531,6 +533,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "resolved": {
             "font_size": 43,
             "letter_spacing": 0,
+            "line_height": 51.6,
             "backdrop_size": 0,
             "shadow_size": 2,
             "margins": {
@@ -550,6 +553,10 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "max_height": 107,
             "width_budget": 1688,
             "line_height": 51.6,
+            "natural_line_height": 51.6,
+            "resolved_line_height": 51.6,
+            "ascent": 43.0,
+            "descent": 8.6,
             "vertical_decoration": 2,
             "line_capacity": 2,
             "font_size": 43,
@@ -559,6 +566,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         },
         "percentage_bases": {
             "letter_spacing": "resolved-font-size",
+            "line_height": "natural-line-height",
             "max_width": "native-width-after-horizontal-margins",
             "max_height": "native-height-after-active-margin",
             "position_x": None,
@@ -599,6 +607,112 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         },
     }
     assert srt_path.exists() and ass_path.exists()
+
+
+def test_line_height_json_and_ass_strategy_are_explicit(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="one two three four",
+        segments=(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "text": "one two three four",
+                "words": [],
+            },
+        ),
+    )
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "line_height": "125%",
+            "max_width": "180px",
+            "max_height": "220px",
+        },
+    )
+
+    json_path, srt_path, ass_path = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        config,
+        geometry=GEOMETRY,
+    )
+
+    rendering = json.loads(Path(json_path).read_text(encoding="utf-8"))["metadata"][
+        "rendering"
+    ]
+    assert rendering["requested"]["line_height"] == "125%"
+    assert rendering["resolved"]["line_height"] == 60
+    assert rendering["render_strategy"] == "positioned-lines"
+    assert rendering["wrapping"]["resolved_line_height"] == 60
+    assert rendering["percentage_bases"]["line_height"] == "natural-line-height"
+    assert (
+        len(
+            [
+                line
+                for line in Path(ass_path).read_text(encoding="utf-8").splitlines()
+                if line.startswith("Dialogue:")
+            ]
+        )
+        >= 2
+    )
+    assert Path(srt_path).read_text(encoding="utf-8").count("\n\n") == 1
+
+
+def test_explicit_line_height_reports_single_event_for_one_line(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="one-unbreakable-long-token",
+        segments=(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "text": "one-unbreakable-long-token",
+                "words": [],
+            },
+        ),
+    )
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "line_height": "125%",
+            "max_width": "100px",
+            "max_height": "220px",
+        },
+    )
+
+    json_path, _, ass_path = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        config,
+        geometry=GEOMETRY,
+    )
+
+    rendering = json.loads(Path(json_path).read_text(encoding="utf-8"))["metadata"][
+        "rendering"
+    ]
+    dialogue = [
+        line
+        for line in Path(ass_path).read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert rendering["render_strategy"] == "single-event"
+    assert len(dialogue) == 1
+    assert r"\pos(" not in dialogue[0]
 
 
 def test_write_transcription_artifacts_does_not_load_model_runtime(

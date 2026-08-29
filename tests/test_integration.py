@@ -392,6 +392,93 @@ def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
 
 
 @pytest.mark.integration
+def test_explicit_line_height_libass_uses_measured_baseline_spacing(
+    tmp_path: Path,
+):
+    """Compile positioned lines and verify their PlayRes baseline delta."""
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    font_match = subprocess.run(
+        ["fc-match", "-f", "%{family}", "DejaVu Sans"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if "DejaVu Sans" not in font_match:
+        pytest.skip("The controlled DejaVu Sans font is not available")
+
+    input_path = tmp_path / "line-height-input.mp4"
+    subtitle_path = tmp_path / "line-height.ass"
+    output_path = tmp_path / "line-height-output.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x180:d=0.4",
+            "-t",
+            "0.4",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font": "DejaVu Sans", "backdrop": "none"},
+        relative_values={
+            "font_size": "20px",
+            "line_height": "40px",
+            "shadow_weight": "0px",
+            "max_width": "80%",
+            "max_height": "80%",
+        },
+    )
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.4, "text": "FIRST\nSECOND"}],
+        config,
+        geometry,
+        preserve_line_breaks=True,
+    )
+    ass_lines = [
+        line
+        for line in subtitle_path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue: 1,")
+    ]
+    assert len(ass_lines) == 2
+    positions = [
+        int(match.group("y"))
+        for line in ass_lines
+        if (match := re.search(r"\\pos\(160,(?P<y>\d+)\)", line))
+    ]
+    assert len(positions) == 2
+    assert positions[1] - positions[0] == 40
+
+    embed_subtitles(
+        input_path,
+        subtitle_path,
+        tmp_path,
+        output_path=output_path,
+        geometry=geometry,
+    )
+    assert output_path.exists()
+    assert output_path.stat().st_size > 0
+
+
+@pytest.mark.integration
 def test_ffmpeg_libass_render_supports_video_without_audio(tmp_path: Path):
     if shutil.which("ffmpeg") is None:
         pytest.skip("FFmpeg is not installed")

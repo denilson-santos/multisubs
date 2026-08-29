@@ -247,6 +247,8 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
             "4.5%",
             "--letter-spacing",
             "2px",
+            "--line-height",
+            "125%",
             "--backdrop-size",
             "6%",
             "--shadow-size",
@@ -270,6 +272,9 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
     assert str(font_size.value) == "4.5"
     assert request.subtitle_config.appearance.letter_spacing == parse_relative_length(
         "2px"
+    )
+    assert request.subtitle_config.appearance.line_height == parse_relative_length(
+        "125%"
     )
     margin_left = request.subtitle_config.layout.margin_left
     margin_right = request.subtitle_config.layout.margin_right

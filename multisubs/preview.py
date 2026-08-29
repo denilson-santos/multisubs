@@ -25,7 +25,11 @@ from .models import (
     SubtitlePosition,
     VideoGeometry,
 )
-from .wrapping import fit_first_text_segment, normalise_display_text
+from .wrapping import (
+    fit_first_text_segment,
+    has_multiple_visual_lines,
+    normalise_display_text,
+)
 
 DEFAULT_PREVIEW_TEXT = (
     "Example subtitle preview text that demonstrates a readable two-line "
@@ -125,6 +129,7 @@ def build_preview_ass(
             geometry,
             metrics,
             timestamp,
+            display_text=display_text,
             requested_config=request.subtitle_config,
         )
         if request.guides
@@ -137,6 +142,7 @@ def build_preview_ass(
         geometry,
         guide_events=guide_events,
         preserve_line_breaks=True,
+        wrapping_metrics=metrics,
     )
     return resolved_config, display_text
 
@@ -147,6 +153,7 @@ def build_preview_guide_events(
     metrics: WrappingMetrics,
     timestamp: float,
     *,
+    display_text: str,
     requested_config: SubtitleConfig | None = None,
 ) -> tuple[AssDrawingEvent, ...]:
     """Build generated ASS diagnostics for the resolved placement and envelope."""
@@ -201,6 +208,16 @@ def build_preview_guide_events(
         if requested_config is not None
         else f"{int(metrics.letter_spacing)}px"
     )
+    requested_line_height = (
+        _format_preview_length(requested_config.appearance.line_height)
+        if requested_config is not None
+        else f"{int(metrics.resolved_line_height)}px"
+    )
+    render_strategy = (
+        "positioned-lines"
+        if _line_height_is_explicit(config) and has_multiple_visual_lines(display_text)
+        else "single-event"
+    )
     label = (
         f"{{\\an7\\pos(12,12)\\fs{_GUIDE_FONT_SIZE}\\bord2\\shad0"
         f"\\1c{_GUIDE_COLOR}\\3c{_GUIDE_OUTLINE}}}"
@@ -209,16 +226,32 @@ def build_preview_guide_events(
         f"\\NEnvelope: {int(metrics.max_width)}x{int(metrics.max_height)}px"
         f"\\NLetter spacing: {requested_spacing}"
         f" ({int(metrics.letter_spacing)}px resolved)"
+        f"\\NLine height: {requested_line_height}"
+        f" ({metrics.resolved_line_height:.1f}px resolved; "
+        f"natural {metrics.natural_line_height:.1f}px)"
+        f"\\NLine capacity: {metrics.line_capacity}"
+        f"\\NRender strategy: {render_strategy}"
         f"\\NPlayRes: {geometry.render_width}x{geometry.render_height}"
     )
     events.append(AssDrawingEvent(0.0, end, label))
     return tuple(events)
 
 
-def _format_preview_length(value: int | RelativeLength) -> str:
+def _format_preview_length(value: int | float | RelativeLength | str) -> str:
+    if isinstance(value, str):
+        return value
     if isinstance(value, RelativeLength):
         return value.original
     return f"{value}px"
+
+
+def _line_height_is_explicit(config: SubtitleConfig) -> bool:
+    value = (
+        config.appearance.line_height_requested
+        if config.appearance.line_height_requested is not None
+        else config.appearance.line_height
+    )
+    return not (isinstance(value, str) and value.casefold() == "auto")
 
 
 def _native_anchor_point(

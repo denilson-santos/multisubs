@@ -141,6 +141,25 @@ def test_letter_spacing_is_a_typed_appearance_length():
     assert config.appearance.letter_spacing == parse_relative_length("4.5%")
 
 
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [("auto", "auto"), ("AUTO", "auto"), ("125%", parse_relative_length("125%"))],
+)
+def test_line_height_accepts_auto_or_positive_typed_lengths(raw_value, expected):
+    config = validate_subtitle_config(
+        None,
+        relative_values={"line_height": raw_value},
+    )
+
+    assert config.appearance.line_height == expected
+
+
+@pytest.mark.parametrize("raw_value", ["0px", "0%", "64", "-1px", "1em"])
+def test_line_height_rejects_non_positive_or_unitless_values(raw_value):
+    with pytest.raises(ValidationError, match="line-height"):
+        validate_subtitle_config(None, relative_values={"line_height": raw_value})
+
+
 def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
     assert LAYOUT_PRESET_CHOICES == tuple(
         preset.value for preset in SubtitleLayoutPreset

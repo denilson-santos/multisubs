@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
+from numbers import Real
 from pathlib import Path
 from types import MappingProxyType
 
@@ -116,6 +117,7 @@ _RELATIVE_LENGTH_PATTERN = re.compile(
 _RELATIVE_FIELDS = {
     "font_size",
     "letter_spacing",
+    "line_height",
     "outline_weight",
     "shadow_weight",
     "margin_left",
@@ -142,6 +144,7 @@ _LAYOUT_OVERRIDE_FIELDS = frozenset(
 DEFAULT_FONT = "Roboto"
 DEFAULT_FONT_SIZE = "4%"
 DEFAULT_LETTER_SPACING = "0px"
+DEFAULT_LINE_HEIGHT = "auto"
 DEFAULT_TEXT_COLOR = "#FFFFFF"
 DEFAULT_FONT_WEIGHT = FontWeight.REGULAR
 DEFAULT_ITALIC = False
@@ -172,6 +175,21 @@ def parse_relative_length(raw_value: str) -> RelativeLength:
     if not value.is_finite():
         raise ValidationError("length must be a finite decimal number")
     return RelativeLength(value=value, unit=match.group("unit"), original=original)
+
+
+def parse_line_height(raw_value: object) -> str | RelativeLength:
+    """Parse ``auto`` or one positive, unit-bearing line-height value."""
+    if isinstance(raw_value, str) and raw_value.strip().casefold() == "auto":
+        return "auto"
+    if not isinstance(raw_value, str):
+        raise ValidationError("line-height must be auto or a positive length")
+    try:
+        value = parse_relative_length(raw_value)
+    except ValidationError as exc:
+        raise ValidationError(f"line-height: {exc}") from exc
+    if value.value <= 0:
+        raise ValidationError("line-height must be greater than zero")
+    return value
 
 
 def parse_font_weight(value: object) -> FontWeight:
@@ -468,6 +486,13 @@ def validate_subtitle_config(
         _validate_relative_length(raw_value, field)
         parsed_relative_values[field] = raw_value
 
+    parsed_length_values: dict[str, RelativeLength] = {
+        key: value
+        for key, value in parsed_relative_values.items()
+        if isinstance(value, RelativeLength)
+    }
+    parsed_line_height = parsed_relative_values.get("line_height", DEFAULT_LINE_HEIGHT)
+
     has_position_x = "position_x" in parsed_relative_values
     has_position_y = "position_y" in parsed_relative_values
     has_custom_coordinates = has_position_x or has_position_y
@@ -494,10 +519,10 @@ def validate_subtitle_config(
     config = SubtitleConfig(
         appearance=SubtitleAppearance(
             font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
-            font_size=parsed_relative_values.get(
+            font_size=parsed_length_values.get(
                 "font_size", parse_relative_length(DEFAULT_FONT_SIZE)
             ),
-            letter_spacing=parsed_relative_values.get(
+            letter_spacing=parsed_length_values.get(
                 "letter_spacing", parse_relative_length(DEFAULT_LETTER_SPACING)
             ),
             text_color=_validate_color(
@@ -515,32 +540,33 @@ def validate_subtitle_config(
                 appearance_overrides.get("backdrop_color", DEFAULT_BACKDROP_COLOR),
                 "backdrop-color",
             ),
-            backdrop_size=parsed_relative_values.get(
+            backdrop_size=parsed_length_values.get(
                 "outline_weight", parse_relative_length(DEFAULT_BACKDROP_SIZE)
             ),
-            shadow_size=parsed_relative_values.get(
+            shadow_size=parsed_length_values.get(
                 "shadow_weight", parse_relative_length(DEFAULT_SHADOW_SIZE)
             ),
             fonts_dir=_coerce_fonts_dir(appearance_overrides.get("fonts_dir")),
             font_weight_input=font_weight_input,
             font_weight_input_form=font_weight_input_form,
+            line_height=parsed_line_height,
         ),
         layout=SubtitleLayout(
             position=resolved_position or DEFAULT_POSITION,
-            margin_left=parsed_relative_values.get("margin_left", 0),
-            margin_right=parsed_relative_values.get("margin_right", 0),
-            margin_top=parsed_relative_values.get("margin_top", 0),
-            margin_bottom=parsed_relative_values.get("margin_bottom", 0),
+            margin_left=parsed_length_values.get("margin_left", 0),
+            margin_right=parsed_length_values.get("margin_right", 0),
+            margin_top=parsed_length_values.get("margin_top", 0),
+            margin_bottom=parsed_length_values.get("margin_bottom", 0),
             placement_mode=(
                 SubtitlePlacementMode.EXPLICIT
                 if has_custom_coordinates
                 else SubtitlePlacementMode.NATIVE_STYLE
             ),
-            position_x=parsed_relative_values.get("position_x"),
-            position_y=parsed_relative_values.get("position_y"),
+            position_x=parsed_length_values.get("position_x"),
+            position_y=parsed_length_values.get("position_y"),
             anchor=resolved_anchor if has_custom_coordinates else None,
-            max_width=parsed_relative_values.get("max_width"),
-            max_height=parsed_relative_values.get("max_height"),
+            max_width=parsed_length_values.get("max_width"),
+            max_height=parsed_length_values.get("max_height"),
         ),
         layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
         layout_overrides=frozenset(layout_overrides),
@@ -600,7 +626,7 @@ def get_layout_preset(value: SubtitleLayoutPreset | str) -> LayoutPreset:
 
 def _validate_relative_values(
     values: Mapping[str, RelativeLength | str] | None,
-) -> dict[str, RelativeLength]:
+) -> dict[str, RelativeLength | str]:
     if not values:
         return {}
     unknown = set(values).difference(_RELATIVE_FIELDS)
@@ -608,8 +634,11 @@ def _validate_relative_values(
         names = ", ".join(sorted(unknown))
         raise ValidationError(f"Unknown relative value(s): {names}")
 
-    parsed: dict[str, RelativeLength] = {}
+    parsed: dict[str, RelativeLength | str] = {}
     for key, value in values.items():
+        if key == "line_height" and isinstance(value, str):
+            parsed[key] = parse_line_height(value)
+            continue
         if isinstance(value, str):
             value = parse_relative_length(value)
         _validate_relative_length(value, key)
@@ -724,6 +753,11 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     _validate_backdrop(config.appearance.backdrop)
     _validate_color(config.appearance.backdrop_color, "backdrop-color")
     _coerce_fonts_dir(config.appearance.fonts_dir)
+    _validate_line_height_value(config.appearance.line_height, "line-height")
+    if config.appearance.line_height_requested is not None:
+        _validate_line_height_value(
+            config.appearance.line_height_requested, "line-height-requested"
+        )
     _validate_effects(config.effects)
     relative_fields = {
         "font_size": config.appearance.font_size,
@@ -770,6 +804,31 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
                 f"{field.replace('_', '-')} must be a non-negative integer or "
                 "relative length"
             )
+
+
+def _validate_line_height_value(value: object, field: str) -> None:
+    """Validate a requested or resolved line-height representation."""
+    if isinstance(value, str):
+        try:
+            parsed = parse_line_height(value)
+        except ValidationError as exc:
+            raise ValidationError(f"{field}: {exc}") from exc
+        if parsed == "auto":
+            return
+        _validate_line_height_value(parsed, field)
+        return
+    if isinstance(value, RelativeLength):
+        _validate_relative_length(value, field)
+        if value.value <= 0:
+            raise ValidationError(f"{field} must be greater than zero")
+        return
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValidationError(
+            f"{field} must be auto, a positive number, or a relative length"
+        )
+    number = float(value)
+    if number <= 0 or number != number or number in {float("inf"), float("-inf")}:
+        raise ValidationError(f"{field} must be greater than zero")
 
 
 def _validate_font(value: object) -> str:
