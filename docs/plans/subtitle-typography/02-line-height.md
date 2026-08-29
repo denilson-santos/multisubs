@@ -1,6 +1,8 @@
 # Line height
 
-Status: Planned
+Status: In review
+
+Delivery branch: `feat/subtitle-line-height`
 
 Depends on:
 
@@ -40,8 +42,9 @@ Excluded:
 - `auto` preserves the current font-metric line height and existing single ASS
   dialogue event path.
 - An explicit percentage means a percentage of the measured natural line
-  height, so `100%` is the explicit equivalent of the resolved automatic value.
-  A pixel value is the requested baseline-to-baseline advance.
+  height, so `100%` is mathematically equivalent to the automatic value before
+  deterministic integer PlayRes rounding. A pixel value is the requested
+  baseline-to-baseline advance.
 - After font resolution, an explicit value smaller than the natural line height
   is rejected. The initial feature supports increasing or preserving line
   height, not intentional overlap.
@@ -117,25 +120,26 @@ height is active.
   difference is documented in JSON and README. Active-word mode reuses its
   existing interval boundaries across every visible line.
 - Preview uses the same visual-line model and ASS compiler. Guides show natural
-  and resolved line height, line capacity, and the final block envelope.
+  and resolved line height, line capacity, the actual single-event or
+  positioned-lines strategy, and the final block envelope.
 
 ## Implementation tasks
 
-- [ ] Add `auto`/length parsing, typed configuration, CLI help, and validation.
-- [ ] Expose measured ascent, descent, natural line height, and estimated
+- [x] Add `auto`/length parsing, typed configuration, CLI help, and validation.
+- [x] Expose measured ascent, descent, natural line height, and estimated
   fallback metrics without leaking font paths.
-- [ ] Update maximum-height capacity and wrapping metadata with the multi-line
+- [x] Update maximum-height capacity and wrapping metadata with the multi-line
   block-height formula.
-- [ ] Introduce typed visual lines and anchor-relative baseline positioning for
+- [x] Introduce typed visual lines and anchor-relative baseline positioning for
   native and explicit modes.
-- [ ] Add layered ASS serialization for line events and one shared box backdrop
+- [x] Add layered ASS serialization for line events and one shared box backdrop
   while preserving safe escaping.
-- [ ] Make ordinary, progressive karaoke, active-word, and preview compilation
+- [x] Make ordinary, progressive karaoke, active-word, and preview compilation
   consume the same positioned-line model.
-- [ ] Add JSON render-strategy and requested/resolved line-height diagnostics.
-- [ ] Add focused unit, controlled libass integration, visual regression, and
+- [x] Add JSON render-strategy and requested/resolved line-height diagnostics.
+- [x] Add focused unit, controlled libass integration, visual regression, and
   zero-default tests.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, docs/conventions.md
+- [x] Update README.md, docs/prd.md, docs/architecture.md, docs/conventions.md
   where the new rendering boundary is reusable, and roadmap status.
 
 ## Unit tests
@@ -148,6 +152,10 @@ height is active.
 - Capacity boundaries for one, two, and several lines using the formula above,
   including backdrop/shadow allowances and insufficient `max-height`.
 - Equivalent preview and transcription wrapping decisions for the same metrics.
+- Single-line cues preserve the traditional ASS path and indivisible-token
+  overflow behavior even when line height was requested explicitly.
+- Preview and retained JSON report positioned-lines only when the final display
+  text actually expands into multiple visual lines.
 - Baseline offsets for all nine anchors, asymmetric native margins, and explicit
   coordinates.
 - Block bounds and one shared box drawing for left-, center-, and right-aligned

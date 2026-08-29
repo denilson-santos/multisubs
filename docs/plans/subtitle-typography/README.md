@@ -67,12 +67,12 @@ This table is the source of truth for the package. Status values follow the
 | Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
 | 0 | [Font weight](00-font-weight.md) | Done | Subtitle positioning and karaoke packages | [#42](https://github.com/denilson-santos/multisubs/pull/42) |
-| 1 | [Letter spacing](01-letter-spacing.md) | In review | 0 | `feat/subtitle-letter-spacing` |
-| 2 | [Line height](02-line-height.md) | Planned | 0, 1 | — |
+| 1 | [Letter spacing](01-letter-spacing.md) | Done | 0 | [#43](https://github.com/denilson-santos/multisubs/pull/43) |
+| 2 | [Line height](02-line-height.md) | In review | 0, 1 | `feat/subtitle-line-height` |
 | 3 | [Subtitle opacity](03-opacity.md) | Planned | 0, 1, 2 | — |
 | 4 | [Text case](04-text-case.md) | Planned | 0, 1, 2, 3 | — |
 
-Package progress: 1 of 5 plans done. Plan 1 is in review.
+Package progress: 2 of 5 plans done. Plan 2 is in review.
 
 ## Dependencies and delivery order
 

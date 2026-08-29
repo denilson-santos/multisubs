@@ -221,6 +221,12 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
 - Must keep generated ASS overrides (placement, colors, and karaoke timing) on a trusted compiler path separate from independently escaped transcript fragments. Never parse or re-escape a completed generated override string as ordinary user text.
+- When explicit line height expands an ordinary cue into per-line events, each
+  event must use the same cue timing and stable anchor while a `backdrop=box`
+  is one lower-layer vector drawing for the complete measured block. Karaoke
+  may instead use adjacent cue-relative intervals at validated word boundaries.
+  Text events must not duplicate the box for every visual line; generated
+  drawing coordinates remain separate from escaped transcript fragments.
 - Word-timed effects must preserve exact display-fragment reconstruction and use only validated aligned timestamps; missing or lossy mappings must fall back without inventing timing tokens.
 - When a word-timed effect expands one cue into multiple ASS events, those events must be adjacent and non-overlapping, retain the complete cue text and placement, and never layer duplicate full-cue glyphs at the same timestamp.
 - Must pass subtitle appearance and layout through typed configuration objects.
@@ -252,6 +258,15 @@ Update a higher-level document when a proposed change intentionally modifies the
   their base cluster, while spaces and punctuation remain measurable clusters.
   Explicit line breaks reset the gap count; raw code-point or byte counts are
   not valid substitutes.
+- Must expose natural ascent/descent metrics to the layout boundary and derive
+  multi-line capacity from the first natural line plus the resolved baseline
+  advance. `auto` preserves the existing single-event ASS path; explicit line
+  height cannot be below the natural metric and must use one deterministic
+  PlayRes rounding policy.
+- Must keep the visual-line model shared by preview, ordinary cues, progressive
+  karaoke, and active-word karaoke. Synchronized per-line events may overlap in
+  time only across distinct visual lines; they must never duplicate a line's
+  glyphs or backdrop layer.
 
 ### JSON contract
 

@@ -110,6 +110,7 @@ multisubs \
 | --font NAME | Roboto | Select the subtitle font family. |
 | --font-size LENGTH | 4% | Set font size relative to the shorter render edge or in PlayRes pixels. |
 | --letter-spacing LENGTH | 0px | Add non-negative spacing between rendered grapheme clusters; percentages use the resolved font size and pixels use PlayRes space. |
+| --line-height auto\|LENGTH | auto | Set the baseline distance between visual lines; auto keeps the measured font metrics. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
 | --font-weight WEIGHT | regular (400) | Select a named or numeric font weight from 100 through 900. |
 | --bold, --no-bold | off | Compatibility shorthand for bold (700) or regular (400). |
@@ -207,6 +208,18 @@ resolved font size, for example `--letter-spacing 2px` or
 `--letter-spacing 4%`. The default is `0px`; values above four times the
 resolved font size are rejected to keep wrapping bounded.
 
+`--line-height` controls the baseline-to-baseline distance for multi-line
+subtitles. `auto` (the default) keeps the selected font's measured natural
+metrics and preserves the existing single-event ASS output. An explicit
+percentage is relative to that natural line height, while a pixel value is an
+absolute PlayRes distance, for example `--line-height 125%` or
+`--line-height 64px`. Values smaller than the natural line height are rejected
+after the font is resolved, so explicit leading cannot make glyphs overlap.
+The resolved advance is also used when calculating `--max-height` capacity.
+When explicit leading is active for a multi-line cue, ASS uses synchronized
+per-line events and one shared backdrop drawing; JSON records this as the
+`positioned-lines` render strategy while SRT remains one logical cue.
+
 ### Word-timed karaoke highlighting
 
 Enable the opt-in effect with `--karaoke`. Each eligible displayed word changes
@@ -258,6 +271,7 @@ replacements:
 | `--style-outline-weight`, `--style-shadow-weight` | `--backdrop-size`, `--shadow-size` |
 | `--style-margin-l`, `--style-margin-r`, `--style-margin-v` | `--margin-left`, `--margin-right`, `--margin-top`, `--margin-bottom` |
 | `--style-spacing` | `--letter-spacing` with an explicit `%` or `px` suffix |
+| `--style-line-height` | `--line-height auto` or a positive `%`/`px` value |
 
 `--style-secondary-color`, `--style-underline`, `--style-strikeout`,
 `--style-scale-x`, `--style-scale-y`, and `--style-angle` have no replacement
@@ -339,7 +353,7 @@ the preset's alignment:
 
 Subtitle cues are first built from semantic word and timing boundaries. The
 selected layout then supplies maximum width and height, font size, letter
-spacing, and backdrop/shadow allowances. Whenever the requested or substituted font
+spacing, line height, and backdrop/shadow allowances. Whenever the requested or substituted font
 can be resolved, Pillow measures its glyph advances with the resolved size and
 style; RAQM supplies direction- and language-aware shaping when available. If a
 concrete face cannot be resolved, a Unicode-aware fallback estimates
@@ -349,8 +363,8 @@ semantics and recorded as `metric_size`; it is not a second user-facing font
 size.
 
 A cue that fits completely remains on one line. The line capacity is calculated
-from `max-height`, measured font line height, backdrop, and shadow; it is not a
-fixed `max-lines` setting. When a break is necessary, the layout engine
+from `max-height`, the natural first-line height, the resolved baseline
+advance, backdrop, and shadow; it is not a fixed `max-lines` setting. When a break is necessary, the layout engine
 evaluates partitions up to that capacity, preserves semantic boundary priority,
 and avoids an unnecessary one-word final line before comparing visual balance.
 Long unbroken tokens remain intact and may overflow; text is never truncated or
@@ -410,6 +424,7 @@ The typed layout options accept an explicit unit suffix:
 | --- | --- |
 | `--font-size` | Shorter autorotated render edge |
 | `--letter-spacing` | Resolved font size |
+| `--line-height` | Natural measured font line height for `%`; PlayRes space for `px` |
 | `--backdrop-size`, `--shadow-size` | Resolved font size |
 | `--margin-left`, `--margin-right` | Render width |
 | `--margin-top`, `--margin-bottom` | Render height |
@@ -437,6 +452,15 @@ Combining marks and emoji zero-width-joiner sequences remain attached to their
 base cluster. The default `0px` leaves existing wrapping and rendering
 unchanged, and spacing above four times the resolved font size is rejected as
 unsafe.
+
+`--line-height` accepts `auto` or a positive `%`/`px` value. Percentages scale
+the selected face's measured natural line height; pixels are PlayRes baseline
+advances. Explicit values below the natural metric are rejected after font
+resolution. `--max-height` remains the authoritative envelope: its capacity is
+`natural_line_height + (line_count - 1) * resolved_line_height`, plus backdrop
+and shadow allowances. Explicit line height may therefore split a cue earlier;
+if a measured positioned block still exceeds its declared envelope, validation
+fails rather than moving or clipping the subtitle.
 
 ### Exact subtitle coordinates
 
