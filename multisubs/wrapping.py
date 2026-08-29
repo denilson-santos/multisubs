@@ -7,7 +7,7 @@ from functools import cache
 from typing import Any
 
 from .layout import WrappingMetrics, estimate_text_width
-from .models import SubtitleDisplayFragment
+from .models import SubtitleDisplayFragment, SubtitleVisualLine
 
 PAUSE_BREAK_THRESHOLD = 0.45
 
@@ -15,6 +15,12 @@ PAUSE_BREAK_THRESHOLD = 0.45
 def normalise_display_text(text: str) -> str:
     """Normalize physical line endings and whitespace for display text."""
     return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
+
+
+def has_multiple_visual_lines(text: str) -> bool:
+    """Return whether display text contains more than one visual line."""
+    normalised = text.replace("\r\n", "\n").replace("\r", "\n")
+    return len(normalised.split("\n")) > 1
 
 
 def wrap_subtitle_text(
@@ -130,6 +136,49 @@ def build_display_fragments(
     ):
         return None
     return tuple(fragments)
+
+
+def build_visual_lines(
+    display_text: str,
+    fragments: Sequence[SubtitleDisplayFragment] | None,
+    metrics: WrappingMetrics,
+) -> tuple[SubtitleVisualLine, ...]:
+    """Split display fragments into measured lines for explicit rendering.
+
+    The wrapped text is already the source of truth for line boundaries. This
+    helper only partitions those boundaries while retaining word indexes so
+    karaoke compilers can reuse the exact aligned fragments on each line.
+    """
+    normalised = display_text.replace("\r\n", "\n").replace("\r", "\n")
+    line_texts = normalised.split("\n")
+    line_fragments: list[list[SubtitleDisplayFragment]] = [[] for _ in line_texts]
+    if fragments is None:
+        for index, line in enumerate(line_texts):
+            if line:
+                line_fragments[index].append(SubtitleDisplayFragment(line))
+    else:
+        line_index = 0
+        for fragment in fragments:
+            if not isinstance(fragment, SubtitleDisplayFragment):
+                continue
+            parts = fragment.text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            for part_index, part in enumerate(parts):
+                if part:
+                    line_fragments[line_index].append(
+                        SubtitleDisplayFragment(part, fragment.word_index)
+                    )
+                if part_index < len(parts) - 1 and line_index + 1 < len(line_texts):
+                    line_index += 1
+
+    return tuple(
+        SubtitleVisualLine(
+            text=line,
+            fragments=tuple(line_fragments[index]),
+            width=metrics.text_measurer.measure(line),
+            index=index,
+        )
+        for index, line in enumerate(line_texts)
+    )
 
 
 def join_text_parts(parts: Sequence[str] | Any) -> str:
