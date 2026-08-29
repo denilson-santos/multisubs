@@ -1,6 +1,6 @@
 # Letter spacing
 
-Status: Planned
+Status: In review
 
 Depends on:
 
@@ -39,6 +39,9 @@ Excluded:
   bytes. Combining marks and zero-width joiner sequences do not independently
   consume added tracking in the fallback estimator.
 - `0px` must preserve current wrapping and ASS rendering behavior.
+- A resolved value may not exceed four times the resolved font size; this keeps
+  measurement and partition search bounded while allowing intentionally loose
+  display typography.
 - Pillow and libass can differ in shaping details. The controlled-font
   integration test defines a tolerance and JSON continues identifying whether
   measurement used a concrete face or the Unicode estimate.
@@ -76,17 +79,17 @@ the resolved spacing in PlayRes pixels and keeps transcript text escaped.
 
 ## Implementation tasks
 
-- [ ] Add typed configuration, default, CLI flag, parsing, resolution, and
+- [x] Add typed configuration, default, CLI flag, parsing, resolution, and
   validation.
-- [ ] Add a grapheme-aware spacing adjustment to the common text measurer.
-- [ ] Compile the value into ASS and preserve zero-spacing output behavior.
-- [ ] Add JSON metadata and preview-guide typography diagnostics without
+- [x] Add a grapheme-aware spacing adjustment to the common text measurer.
+- [x] Compile the value into ASS and preserve zero-spacing output behavior.
+- [x] Add JSON metadata and preview-guide typography diagnostics without
   leaking raw ASS tags.
-- [ ] Create `tests/test_wrapping.py` for direct shared-wrapping coverage rather
+- [x] Create `tests/test_wrapping.py` for direct shared-wrapping coverage rather
   than relying only on transcriber and preview tests.
-- [ ] Cover wrapping, cue splitting, preview truncation, karaoke, and fallback
+- [x] Cover wrapping, cue splitting, preview truncation, karaoke, and fallback
   measurement with focused tests.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, and roadmap status.
+- [x] Update README.md, docs/prd.md, docs/architecture.md, and roadmap status.
 
 ## Unit tests
 

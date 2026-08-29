@@ -11,7 +11,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Subtitle positioning | Done | 9/9 | Complete | [Open dashboard](subtitle-positioning/README.md) |
 | Karaoke subtitles | Done | 1/1 | Complete | [Open dashboard](karaoke-subtitles/README.md) |
 | Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
-| Subtitle typography | In review | 0/5 | Font weight | [Open dashboard](subtitle-typography/README.md) |
+| Subtitle typography | In review | 1/5 | Letter spacing | [Open dashboard](subtitle-typography/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

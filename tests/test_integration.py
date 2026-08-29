@@ -154,6 +154,120 @@ def test_resolved_font_measurement_tracks_libass_bounds(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    ("canvas", "letter_spacing", "expected_spacing"),
+    [
+        ((1920, 1080), "0px", 0),
+        ((1920, 1080), "2px", 2),
+        ((1920, 1080), "4%", 2),
+        ((1080, 1920), "0px", 0),
+        ((1080, 1920), "2px", 2),
+        ((1080, 1920), "4%", 2),
+    ],
+)
+def test_resolved_font_letter_spacing_tracks_libass_bounds(
+    tmp_path: Path,
+    canvas: tuple[int, int],
+    letter_spacing: str,
+    expected_spacing: int,
+):
+    """Keep measured tracking and the native ASS spacing field aligned."""
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    width, height = canvas
+    input_path = tmp_path / "letter-spacing-input.mp4"
+    subtitle_path = tmp_path / "letter-spacing.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=black:s={width}x{height}:d=0.2",
+            "-t",
+            "0.2",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font": "Roboto", "backdrop": "none"},
+        relative_values={
+            "font_size": "43px",
+            "letter_spacing": letter_spacing,
+            "shadow_weight": "0px",
+            "margin_left": "0px",
+            "margin_right": "0px",
+            "max_width": "100%",
+        },
+    )
+    resolved = resolve_subtitle_config(config, geometry)
+    text = "Spacing changes measured subtitle width"
+    display, metrics = layout_subtitle_cues(
+        [{"id": 0, "start": 0.0, "end": 0.2, "text": text, "words": []}],
+        resolved,
+        geometry,
+    )
+    if (
+        metrics.text_measurer.info.mode != "font-metrics"
+        or metrics.text_measurer.info.resolved_font != "Roboto"
+    ):
+        pytest.skip("A controlled Roboto face is not available through fontconfig")
+
+    assert metrics.letter_spacing == expected_spacing
+    assert display[0]["text"] == text
+    write_ass(subtitle_path, display, config, geometry)
+    style_fields = (
+        subtitle_path.read_text(encoding="utf-8")
+        .split("Style: Default,", 1)[1]
+        .split(",")
+    )
+    assert style_fields[12] == str(expected_spacing)
+    assert r"{\fsp" not in subtitle_path.read_text(encoding="utf-8")
+
+    output_path = Path(
+        embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
+    )
+    bbox = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(output_path),
+            "-vf",
+            "bbox=min_val=32",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    matches = re.findall(r"x1:\d+ x2:\d+ y1:\d+ y2:\d+ w:(\d+)", bbox.stderr)
+    assert matches, bbox.stderr
+    rendered_width = int(matches[-1])
+    measured_width = metrics.text_measurer.measure(text)
+    tolerance = max(40.0, measured_width * 0.08)
+    assert abs(rendered_width - measured_width) <= tolerance
+
+
+@pytest.mark.integration
 def test_ffmpeg_libass_render_round_trip(tmp_path: Path):
     if shutil.which("ffmpeg") is None:
         pytest.skip("FFmpeg is not installed")

@@ -23,6 +23,7 @@ from .models import (
 from .text_measurement import TextMeasurer, build_text_measurer
 
 _MAX_FONT_SIZE_PIXELS = 512
+_MAX_LETTER_SPACING_FACTOR = 4
 _LANDSCAPE_ASPECT_THRESHOLD = Fraction(11, 10)
 _PORTRAIT_ASPECT_THRESHOLD = Fraction(9, 10)
 
@@ -84,6 +85,13 @@ def resolve_subtitle_config(
     )
     if font_size <= 0:
         raise ValidationError("font-size must resolve to a value greater than zero")
+
+    letter_spacing = resolve_relative_length(
+        validated.appearance.letter_spacing,
+        font_size,
+        field="letter-spacing",
+        maximum=font_size * _MAX_LETTER_SPACING_FACTOR,
+    )
 
     outline_weight = resolve_relative_length(
         validated.appearance.backdrop_size,
@@ -234,6 +242,7 @@ def resolve_subtitle_config(
         appearance=replace(
             validated.appearance,
             font_size=font_size,
+            letter_spacing=letter_spacing,
             backdrop_size=outline_weight,
             shadow_size=shadow_weight,
         ),
@@ -292,6 +301,7 @@ class WrappingMetrics:
     vertical_decoration: int
     line_capacity: int
     font_size: int
+    letter_spacing: int
     backdrop_size: int
     shadow_size: int
     anchor: SubtitlePosition | None
@@ -381,6 +391,9 @@ def _build_wrapping_metrics(
         line_capacity=line_capacity,
         font_size=_require_resolved_layout_int(
             config.appearance.font_size, "font-size"
+        ),
+        letter_spacing=_require_resolved_layout_int(
+            config.appearance.letter_spacing, "letter-spacing"
         ),
         backdrop_size=backdrop_size,
         shadow_size=shadow_size,

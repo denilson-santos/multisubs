@@ -39,6 +39,7 @@ def _use_hermetic_text_measurement(monkeypatch):
             font_weight=appearance.font_weight,
             font_weight_input=appearance.font_weight_input,
             font_weight_input_form=appearance.font_weight_input_form,
+            letter_spacing=appearance.letter_spacing,
         )
 
     monkeypatch.setattr("multisubs.layout.build_text_measurer", build)
@@ -515,6 +516,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         },
         "requested": {
             "font_size": "4%",
+            "letter_spacing": "0px",
             "backdrop_size": "0px",
             "shadow_size": "4%",
             "margins": {
@@ -528,6 +530,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         },
         "resolved": {
             "font_size": 43,
+            "letter_spacing": 0,
             "backdrop_size": 0,
             "shadow_size": 2,
             "margins": {
@@ -550,10 +553,12 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "vertical_decoration": 2,
             "line_capacity": 2,
             "font_size": 43,
+            "letter_spacing": 0,
             "backdrop_size": 0,
             "shadow_size": 2,
         },
         "percentage_bases": {
+            "letter_spacing": "resolved-font-size",
             "max_width": "native-width-after-horizontal-margins",
             "max_height": "native-height-after-active-margin",
             "position_x": None,
@@ -684,6 +689,7 @@ def test_json_records_requested_font_weight_without_machine_path(tmp_path: Path)
         validate_subtitle_config(
             None,
             appearance_values={"font_weight": "300"},
+            relative_values={"font_size": "40px", "letter_spacing": "50%"},
         ),
         geometry=GEOMETRY,
     )
@@ -698,6 +704,10 @@ def test_json_records_requested_font_weight_without_machine_path(tmp_path: Path)
     assert measurement["resolved_weight"] is None
     assert measurement["weight_substituted"] is None
     assert "font_path" not in measurement
+    rendering = payload["metadata"]["rendering"]
+    assert rendering["requested"]["letter_spacing"] == "50%"
+    assert rendering["resolved"]["letter_spacing"] == 20
+    assert rendering["percentage_bases"]["letter_spacing"] == "resolved-font-size"
 
 
 def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):

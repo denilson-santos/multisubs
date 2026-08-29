@@ -19,6 +19,7 @@ from .layout import (
 from .models import (
     AssDrawingEvent,
     PreviewRequest,
+    RelativeLength,
     SubtitleConfig,
     SubtitlePlacementMode,
     SubtitlePosition,
@@ -119,7 +120,13 @@ def build_preview_ass(
     )
     end = max(1.0, timestamp + 1.0)
     guide_events = (
-        build_preview_guide_events(resolved_config, geometry, metrics, timestamp)
+        build_preview_guide_events(
+            resolved_config,
+            geometry,
+            metrics,
+            timestamp,
+            requested_config=request.subtitle_config,
+        )
         if request.guides
         else ()
     )
@@ -139,6 +146,8 @@ def build_preview_guide_events(
     geometry: VideoGeometry,
     metrics: WrappingMetrics,
     timestamp: float,
+    *,
+    requested_config: SubtitleConfig | None = None,
 ) -> tuple[AssDrawingEvent, ...]:
     """Build generated ASS diagnostics for the resolved placement and envelope."""
     timestamp = resolve_preview_timestamp(timestamp, geometry)
@@ -187,16 +196,29 @@ def build_preview_guide_events(
         events = [_rectangle_event(end, *envelope)]
         events.append(_crosshair_event(end, placement.position_x, placement.position_y))
 
+    requested_spacing = (
+        _format_preview_length(requested_config.appearance.letter_spacing)
+        if requested_config is not None
+        else f"{int(metrics.letter_spacing)}px"
+    )
     label = (
         f"{{\\an7\\pos(12,12)\\fs{_GUIDE_FONT_SIZE}\\bord2\\shad0"
         f"\\1c{_GUIDE_COLOR}\\3c{_GUIDE_OUTLINE}}}"
         f"Preview guides\\N{escape_ass_text(mode_detail)}"
         f"\\NPreset: {config.layout_preset.value}"
         f"\\NEnvelope: {int(metrics.max_width)}x{int(metrics.max_height)}px"
+        f"\\NLetter spacing: {requested_spacing}"
+        f" ({int(metrics.letter_spacing)}px resolved)"
         f"\\NPlayRes: {geometry.render_width}x{geometry.render_height}"
     )
     events.append(AssDrawingEvent(0.0, end, label))
     return tuple(events)
+
+
+def _format_preview_length(value: int | RelativeLength) -> str:
+    if isinstance(value, RelativeLength):
+        return value.original
+    return f"{value}px"
 
 
 def _native_anchor_point(

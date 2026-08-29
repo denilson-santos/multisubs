@@ -21,6 +21,7 @@ from .config import (
     DEFAULT_ITALIC,
     DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
     DEFAULT_KARAOKE_MODE,
+    DEFAULT_LETTER_SPACING,
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_COLOR,
     FONT_WEIGHT_ALIASES,
@@ -281,6 +282,12 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_FONT_SIZE.replace('%', '%%')}).",
         ),
         (
+            "--letter-spacing",
+            "Additional space between rendered grapheme clusters as a percentage "
+            "of the resolved font size or in PlayRes pixels "
+            f"(default: {DEFAULT_LETTER_SPACING.replace('%', '%%')}).",
+        ),
+        (
             "--backdrop-size",
             "Backdrop/outline size as a percentage of the resolved font size "
             f"or pixels (default: {DEFAULT_BACKDROP_SIZE.replace('%', '%%')}).",
@@ -448,6 +455,7 @@ def _build_request(
         key: value
         for key, value in {
             "font_size": args.font_size,
+            "letter_spacing": args.letter_spacing,
             "outline_weight": args.backdrop_size,
             "shadow_weight": args.shadow_size,
             "margin_left": args.margin_left,

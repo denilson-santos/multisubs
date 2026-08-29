@@ -109,6 +109,24 @@ def test_semantic_backdrops_compile_to_private_ass_fields(
     assert style["italic"] == -1
 
 
+def test_letter_spacing_compiles_to_ass_style_spacing_without_event_tag(
+    tmp_path: Path,
+):
+    path = tmp_path / "spacing.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={"letter_spacing": "2px"},
+    )
+
+    style = _compile_style(resolve_subtitle_config(config, GEOMETRY))
+    write_ass(path, [{"start": 0.0, "end": 1.0, "text": "sample"}], config, GEOMETRY)
+
+    assert style["spacing"] == 2
+    content = path.read_text(encoding="utf-8")
+    assert r"{\fsp" not in content
+    assert r"{\b400}sample" in content
+
+
 @pytest.mark.parametrize("font_weight", list(FontWeight))
 def test_all_font_weights_compile_to_exact_event_override(
     tmp_path: Path, font_weight: FontWeight

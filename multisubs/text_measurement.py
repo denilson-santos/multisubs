@@ -78,9 +78,11 @@ class TextMeasurer:
         measure: Callable[[str], float],
         *,
         line_height: float | None = None,
+        letter_spacing: float = 0.0,
     ) -> None:
         self.info = info
         self._measure = measure
+        self.letter_spacing = max(0.0, float(letter_spacing))
         self.line_height = max(
             1.0,
             float(line_height if line_height is not None else info.metric_size or 1),
@@ -94,6 +96,8 @@ class TextMeasurer:
             self._cache.move_to_end(text)
             return cached
         width = max(0.0, float(self._measure(text)))
+        if self.letter_spacing:
+            width += self.letter_spacing * _letter_spacing_gaps(text)
         self._cache[text] = width
         if len(self._cache) > _MEASUREMENT_CACHE_LIMIT:
             self._cache.popitem(last=False)
@@ -156,6 +160,9 @@ def build_text_measurer(
     font_size = appearance.font_size
     if isinstance(font_size, bool) or not isinstance(font_size, int):
         raise ValueError("font size must be resolved before text measurement")
+    letter_spacing = appearance.letter_spacing
+    if isinstance(letter_spacing, bool) or not isinstance(letter_spacing, int):
+        raise ValueError("letter spacing must be resolved before text measurement")
 
     pillow = _load_pillow()
     if pillow is not None:
@@ -201,6 +208,7 @@ def build_text_measurer(
                 ),
                 measure,
                 line_height=resolved.line_height,
+                letter_spacing=letter_spacing,
             )
 
     return build_unicode_text_measurer(
@@ -209,6 +217,7 @@ def build_text_measurer(
         font_weight=appearance.font_weight,
         font_weight_input=appearance.font_weight_input,
         font_weight_input_form=appearance.font_weight_input_form,
+        letter_spacing=letter_spacing,
     )
 
 
@@ -219,6 +228,7 @@ def build_unicode_text_measurer(
     font_weight: FontWeight = FontWeight.REGULAR,
     font_weight_input: str = FontWeight.REGULAR.canonical_name,
     font_weight_input_form: FontWeightInputForm = FontWeightInputForm.DEFAULT,
+    letter_spacing: int = 0,
 ) -> TextMeasurer:
     """Build the deterministic fallback used when no concrete face is known."""
     return TextMeasurer(
@@ -240,6 +250,7 @@ def build_unicode_text_measurer(
         ),
         lambda text: estimate_unicode_text_width(text, font_size),
         line_height=font_size * 1.2,
+        letter_spacing=letter_spacing,
     )
 
 
@@ -554,6 +565,29 @@ def _grapheme_clusters(text: str) -> list[str]:
     if current:
         clusters.append(current)
     return clusters
+
+
+def _letter_spacing_gaps(text: str) -> int:
+    """Return rendered grapheme gaps, keeping explicit lines independent."""
+    gaps = 0
+    normalised = text.replace("\r\n", "\n").replace("\r", "\n")
+    for line in normalised.split("\n"):
+        rendered = sum(
+            1 for cluster in _grapheme_clusters(line) if _cluster_has_advance(cluster)
+        )
+        gaps += max(0, rendered - 1)
+    return gaps
+
+
+def _cluster_has_advance(cluster: str) -> bool:
+    """Return whether a grapheme contains a base character with an advance."""
+    return bool(
+        cluster
+        and not all(
+            unicodedata.category(character) in {"Mn", "Me", "Cf"}
+            for character in cluster
+        )
+    )
 
 
 def _is_wide_character(character: str) -> bool:

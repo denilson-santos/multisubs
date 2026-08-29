@@ -25,10 +25,12 @@ def _appearance(
     fonts_dir: Path | None = None,
     font_weight: FontWeight = FontWeight.REGULAR,
     italic: bool = False,
+    letter_spacing: int = 0,
 ):
     return SubtitleAppearance(
         font=font,
         font_size=40,
+        letter_spacing=letter_spacing,
         text_color="#FFFFFF",
         font_weight=font_weight,
         italic=italic,
@@ -295,6 +297,50 @@ def test_explicit_unicode_measurer_never_claims_exact_font_metrics():
     assert measurer.info.mode == "unicode-estimate"
     assert measurer.info.resolved_font is None
     assert measurer.measure("test") > 0
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_gaps"),
+    [
+        ("abc", 2),
+        ("e\u0301f", 1),
+        ("👩\u200d💻!", 1),
+        ("字幕", 1),
+        ("a b", 2),
+        ("a!", 1),
+        ("ab\ncd", 2),
+    ],
+)
+def test_letter_spacing_counts_rendered_grapheme_gaps(text, expected_gaps):
+    measurer = build_unicode_text_measurer("Unknown", 20, letter_spacing=3)
+    base = estimate_unicode_text_width(text, 20)
+
+    assert measurer.measure(text) == pytest.approx(base + expected_gaps * 3)
+
+
+def test_letter_spacing_zero_preserves_base_measurement():
+    text = "e\u0301 👩\u200d💻"
+    measurer = build_unicode_text_measurer("Unknown", 20)
+
+    assert measurer.measure(text) == pytest.approx(
+        estimate_unicode_text_width(text, 20)
+    )
+
+
+def test_pillow_measurement_applies_shared_letter_spacing(tmp_path: Path, monkeypatch):
+    font_path = tmp_path / "fixture.ttf"
+    font_path.write_bytes(b"fixture")
+    fake_font = _FakeFont("Fixture Sans", "Regular")
+    monkeypatch.setattr(
+        "multisubs.text_measurement._load_pillow",
+        lambda: (_FakeImageFont(fake_font), _FakeFeatures()),
+    )
+
+    measurer = build_text_measurer(
+        _appearance(fonts_dir=tmp_path, letter_spacing=3), language="pt"
+    )
+
+    assert measurer.measure("abc") == pytest.approx(36)
 
 
 class _FakeFeatures:

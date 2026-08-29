@@ -243,6 +243,16 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.
 
+### Typography measurement
+
+- Must apply letter spacing in the shared measurement layer used by both
+  concrete-font and Unicode-estimate modes before wrapping or cue splitting.
+- Must count one tracking gap between consecutive rendered grapheme clusters on
+  each visual line. Combining marks and zero-width joiner sequences stay with
+  their base cluster, while spaces and punctuation remain measurable clusters.
+  Explicit line breaks reset the gap count; raw code-point or byte counts are
+  not valid substitutes.
+
 ### JSON contract
 
 - Must keep the documented JSON top-level shape and required metadata fields backward compatible within a release line. See [architecture.md](architecture.md#json).
