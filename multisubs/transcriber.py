@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from decimal import Decimal
 from fractions import Fraction
 from numbers import Real
 from pathlib import Path
@@ -17,6 +18,7 @@ from typing import Any, cast
 from .ass import (
     allocate_active_word_intervals,
     allocate_karaoke_durations,
+    resolve_subtitle_palettes,
     write_ass,
 )
 from .config import (
@@ -947,6 +949,9 @@ def _write_json(
     native_region = (
         None if explicit else resolve_native_layout_region(geometry, resolved_layout)
     )
+    base_palette, effective_palette = resolve_subtitle_palettes(
+        resolved_subtitle_config
+    )
     json_data = {
         "schema_version": 1,
         "metadata": {
@@ -1074,6 +1079,27 @@ def _write_json(
                     "position_y": "render-height" if explicit else None,
                 },
                 "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
+                "opacity": {
+                    "requested": subtitle_config.appearance.opacity.original,
+                    "percentage": _decimal_json_number(
+                        resolved_subtitle_config.appearance.opacity.percentage
+                    ),
+                    "normalized": _decimal_json_number(
+                        resolved_subtitle_config.appearance.opacity.normalized
+                    ),
+                    "base_colors": {
+                        "text": base_palette.text_color,
+                        "backdrop": base_palette.backdrop_color,
+                        "shadow": base_palette.backdrop_color,
+                        "karaoke_highlight": base_palette.highlight_color,
+                    },
+                    "effective_colors": {
+                        "text": effective_palette.text_color,
+                        "backdrop": effective_palette.backdrop_color,
+                        "shadow": effective_palette.backdrop_color,
+                        "karaoke_highlight": effective_palette.highlight_color,
+                    },
+                },
                 "effects": {
                     "karaoke": {
                         "enabled": resolved_subtitle_config.effects.karaoke,
@@ -1134,6 +1160,11 @@ def _write_json(
 
 def _format_fraction(value: Fraction) -> str:
     return f"{value.numerator}:{value.denominator}"
+
+
+def _decimal_json_number(value: Decimal) -> int | float:
+    """Return a readable JSON number while retaining integral percentages."""
+    return int(value) if value == value.to_integral_value() else float(value)
 
 
 def _format_requested_length(value: object) -> str | None:

@@ -321,6 +321,42 @@ def test_karaoke_color_overrides_preserve_color_and_alpha_channels():
     assert rgba_to_ass_color_override("#11223380", 1) == (r"\1c&H332211&\1a&H7F&")
 
 
+@pytest.mark.parametrize("karaoke_mode", ["progressive", "active-word"])
+def test_karaoke_colors_use_once_composed_global_opacity(
+    tmp_path: Path,
+    karaoke_mode: str,
+):
+    path = tmp_path / f"{karaoke_mode}-opacity.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"text_color": "#FFFFFF80", "opacity": "50%"},
+        effects_values={
+            "karaoke": True,
+            "karaoke_mode": karaoke_mode,
+            "highlight_color": "#112233C0",
+        },
+    )
+    segment = {
+        "start": 0.0,
+        "end": 1.0,
+        "text": "Hello",
+        "_karaoke_cue": KaraokeCue(
+            (SubtitleDisplayFragment("Hello", 0),),
+            (100,),
+            ((0, 100),),
+        ),
+    }
+
+    write_ass(path, [segment], config, GEOMETRY)
+
+    content = path.read_text(encoding="utf-8")
+    assert r"\1c&H332211&\1a&H9F&" in content
+    if karaoke_mode == "progressive":
+        assert r"\2c&HFFFFFF&\2a&HBF&" in content
+    else:
+        assert r"\1c&HFFFFFF&\1a&HBF&" in content
+
+
 def test_disabled_karaoke_keeps_plain_ass_output_unchanged(tmp_path: Path):
     default_path = tmp_path / "default.ass"
     explicit_disabled_path = tmp_path / "explicit-disabled.ass"

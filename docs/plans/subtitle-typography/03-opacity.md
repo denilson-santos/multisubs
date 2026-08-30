@@ -1,6 +1,8 @@
 # Subtitle opacity
 
-Status: Planned
+Status: In review
+
+Delivery branch: `feat/subtitle-opacity`
 
 Depends on:
 
@@ -98,15 +100,15 @@ markup. These additive fields keep `schema_version` unchanged.
 
 ## Implementation tasks
 
-- [ ] Add the default, strict percentage parser, typed field, and revalidation.
-- [ ] Wire `--opacity` into CLI help and request construction.
-- [ ] Implement conventional-alpha multiplication with documented rounding.
-- [ ] Apply the effective palette once across ordinary ASS, karaoke overrides,
+- [x] Add the default, strict percentage parser, typed field, and revalidation.
+- [x] Wire `--opacity` into CLI help and request construction.
+- [x] Implement conventional-alpha multiplication with documented rounding.
+- [x] Apply the effective palette once across ordinary ASS, karaoke overrides,
   boxes or outlines, shadows, explicit line-height events, and preview.
-- [ ] Add opacity and base/effective palette diagnostics to JSON.
-- [ ] Add focused configuration, CLI, color, ASS, karaoke, preview, metadata,
+- [x] Add opacity and base/effective palette diagnostics to JSON.
+- [x] Add focused configuration, CLI, color, ASS, karaoke, preview, metadata,
   and default-output tests.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, and package status.
+- [x] Update README.md, docs/prd.md, docs/architecture.md, and package status.
 
 ## Unit tests
 

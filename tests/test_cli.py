@@ -119,6 +119,8 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
             "22px",
             "--text-color",
             "#abcdef80",
+            "--opacity",
+            "32.5%",
             "--bold",
             "--italic",
             "--backdrop",
@@ -133,6 +135,7 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
     assert request.subtitle_config.appearance.font == "Inter"
     assert request.subtitle_config.appearance.font_size == parse_relative_length("22px")
     assert request.subtitle_config.appearance.text_color == "#ABCDEF80"
+    assert request.subtitle_config.appearance.opacity.original == "32.5%"
     assert request.subtitle_config.appearance.font_weight is FontWeight.BOLD
     assert (
         request.subtitle_config.appearance.font_weight_input_form
@@ -381,6 +384,7 @@ def test_help_exposes_semantic_options_without_ass_style_flags():
     assert "spacesandunderscoresnormalizetohyphens" in compact_help
     assert "--bold, --no-bold" in help_text
     assert "--backdrop {none,outline,box}" in help_text
+    assert "--opacity PERCENT" in help_text
     assert "--max-height LENGTH" in help_text
     assert "--style-" not in help_text
 
@@ -393,6 +397,18 @@ def test_relative_layout_options_require_explicit_units(tmp_path: Path, value: s
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--font-size", value])
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("value", ["50", "-1%", "100.1%", "1px", "nan%"])
+def test_opacity_requires_bounded_explicit_percentage(tmp_path: Path, value: str):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["-i", str(input_path), "--opacity", value])
 
     assert error.value.code == 2
 

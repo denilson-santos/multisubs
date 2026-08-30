@@ -20,6 +20,19 @@ class RelativeLength:
     original: str
 
 
+@dataclass(frozen=True)
+class SubtitleOpacity:
+    """One validated global subtitle opacity percentage."""
+
+    percentage: Decimal
+    original: str
+
+    @property
+    def normalized(self) -> Decimal:
+        """Return the equivalent zero-to-one multiplier."""
+        return self.percentage / Decimal(100)
+
+
 class SubtitleBackdrop(str, Enum):
     """Supported semantic background treatments for subtitle text."""
 
@@ -86,6 +99,9 @@ class SubtitleAppearance:
     # per-line ASS strategy from the backwards-compatible automatic path.
     line_height: float | int | RelativeLength | str = "auto"
     line_height_requested: float | int | RelativeLength | str | None = None
+    opacity: SubtitleOpacity = field(
+        default_factory=lambda: SubtitleOpacity(Decimal(100), "100%")
+    )
 
 
 @dataclass(frozen=True)

@@ -183,6 +183,35 @@ def test_preview_ass_uses_the_same_exact_font_weight_as_normal_output(
     assert r"{\b600}" in content
 
 
+def test_preview_ass_uses_global_opacity_for_the_effective_palette(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "text_color": "#FFFFFF80",
+            "backdrop_color": "#00000099",
+            "opacity": "50%",
+        },
+    )
+    path = tmp_path / "preview-opacity.ass"
+
+    build_preview_ass(
+        path,
+        _request(tmp_path, subtitle_config=config),
+        GEOMETRY,
+        0.0,
+    )
+
+    style_fields = (
+        path.read_text(encoding="utf-8").split("Style: Default,", 1)[1].split(",")
+    )
+    assert style_fields[2:6] == [
+        "&HBFFFFFFF",
+        "&HBFFFFFFF",
+        "&HB2000000",
+        "&HB2000000",
+    ]
+
+
 def test_preview_renders_only_the_first_segment_that_fits_the_envelope(
     tmp_path: Path,
 ):
@@ -373,6 +402,26 @@ def test_preview_guides_report_requested_and_resolved_line_height():
     assert any("Line height: 125%" in event.text for event in events)
     assert any("Line capacity:" in event.text for event in events)
     assert any("Render strategy: positioned-lines" in event.text for event in events)
+
+
+def test_preview_guides_report_global_opacity():
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"opacity": "32.5%"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
+
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        0.0,
+        display_text="sample",
+        requested_config=config,
+    )
+
+    assert any("Opacity: 32.5%" in event.text for event in events)
 
 
 def test_preview_guides_report_single_event_for_one_visual_line():
