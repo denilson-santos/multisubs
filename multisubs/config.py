@@ -26,6 +26,7 @@ from .models import (
     SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
+    TextCase,
 )
 
 SUPPORTED_LANGUAGES = (
@@ -92,6 +93,7 @@ BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
 KARAOKE_MODE_CHOICES = tuple(mode.value for mode in KaraokeMode)
 FONT_WEIGHT_NAMES = tuple(weight.canonical_name for weight in FontWeight)
 FONT_WEIGHT_RANKS = tuple(weight.rank for weight in FontWeight)
+TEXT_CASE_CHOICES = tuple(text_case.value for text_case in TextCase)
 
 _FONT_WEIGHT_BY_NAME = MappingProxyType(
     {weight.canonical_name: weight for weight in FontWeight}
@@ -148,6 +150,7 @@ DEFAULT_FONT_SIZE = "4%"
 DEFAULT_LETTER_SPACING = "0px"
 DEFAULT_LINE_HEIGHT = "auto"
 DEFAULT_OPACITY = "100%"
+DEFAULT_TEXT_CASE = TextCase.ORIGINAL
 DEFAULT_TEXT_COLOR = "#FFFFFF"
 DEFAULT_FONT_WEIGHT = FontWeight.REGULAR
 DEFAULT_ITALIC = False
@@ -210,6 +213,20 @@ def parse_opacity(raw_value: object) -> SubtitleOpacity:
     if not percentage.is_finite() or percentage < 0 or percentage > 100:
         raise ValidationError("opacity must be between 0% and 100%")
     return SubtitleOpacity(percentage=percentage, original=original)
+
+
+def parse_text_case(raw_value: object) -> TextCase:
+    """Parse one canonical, case-insensitive display casing mode."""
+    if isinstance(raw_value, TextCase):
+        return raw_value
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise ValidationError("text-case must be original, uppercase, or lowercase")
+    try:
+        return TextCase(raw_value.strip().casefold())
+    except ValueError as exc:
+        raise ValidationError(
+            "text-case must be original, uppercase, or lowercase"
+        ) from exc
 
 
 def parse_font_weight(value: object) -> FontWeight:
@@ -425,6 +442,7 @@ def validate_subtitle_config(
         "backdrop",
         "backdrop_color",
         "opacity",
+        "text_case",
         "fonts_dir",
     }
     unknown_appearance_fields = set(appearance_overrides).difference(
@@ -574,6 +592,9 @@ def validate_subtitle_config(
             font_weight_input_form=font_weight_input_form,
             line_height=parsed_line_height,
             opacity=opacity,
+            text_case=parse_text_case(
+                appearance_overrides.get("text_case", DEFAULT_TEXT_CASE)
+            ),
         ),
         layout=SubtitleLayout(
             position=resolved_position or DEFAULT_POSITION,
@@ -777,6 +798,8 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     _validate_backdrop(config.appearance.backdrop)
     _validate_color(config.appearance.backdrop_color, "backdrop-color")
     _validate_opacity(config.appearance.opacity)
+    if not isinstance(config.appearance.text_case, TextCase):
+        raise ValidationError("text-case must use the typed TextCase contract")
     _coerce_fonts_dir(config.appearance.fonts_dir)
     _validate_line_height_value(config.appearance.line_height, "line-height")
     if config.appearance.line_height_requested is not None:

@@ -14,6 +14,7 @@ from multisubs.models import (
     RunRequest,
     SubtitleBackdrop,
     SubtitleLayoutPreset,
+    TextCase,
     TranscriptDocument,
     TranscriptionPaths,
     VideoGeometry,
@@ -121,6 +122,8 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
             "#abcdef80",
             "--opacity",
             "32.5%",
+            "--text-case",
+            "UPPERCASE",
             "--bold",
             "--italic",
             "--backdrop",
@@ -136,6 +139,7 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
     assert request.subtitle_config.appearance.font_size == parse_relative_length("22px")
     assert request.subtitle_config.appearance.text_color == "#ABCDEF80"
     assert request.subtitle_config.appearance.opacity.original == "32.5%"
+    assert request.subtitle_config.appearance.text_case is TextCase.UPPERCASE
     assert request.subtitle_config.appearance.font_weight is FontWeight.BOLD
     assert (
         request.subtitle_config.appearance.font_weight_input_form
@@ -385,6 +389,7 @@ def test_help_exposes_semantic_options_without_ass_style_flags():
     assert "--bold, --no-bold" in help_text
     assert "--backdrop {none,outline,box}" in help_text
     assert "--opacity PERCENT" in help_text
+    assert "--text-case {original,uppercase,lowercase}" in help_text
     assert "--max-height LENGTH" in help_text
     assert "--style-" not in help_text
 
@@ -409,6 +414,18 @@ def test_opacity_requires_bounded_explicit_percentage(tmp_path: Path, value: str
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--opacity", value])
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("value", ["", "title", "upper"])
+def test_text_case_rejects_unknown_values_before_runtime(tmp_path: Path, value: str):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["-i", str(input_path), "--text-case", value])
 
     assert error.value.code == 2
 

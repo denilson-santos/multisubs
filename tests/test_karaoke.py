@@ -222,6 +222,50 @@ def test_layout_preserves_lossless_word_fragments_and_line_breaks():
     ] == [0, 1]
 
 
+@pytest.mark.parametrize("karaoke_mode", ["progressive", "active-word"])
+def test_karaoke_text_case_preserves_word_identity_and_timing(
+    tmp_path: Path, karaoke_mode: str
+):
+    config = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            appearance_values={"text_case": "uppercase"},
+            effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
+        ),
+        GEOMETRY,
+    )
+    words = [
+        _word("Straße", 0.0, 0.4),
+        _word("groß", 0.5, 1.0),
+    ]
+
+    display, _ = layout_subtitle_cues(
+        [{"start": 0.0, "end": 1.0, "text": "Straße groß", "words": words}],
+        config,
+        GEOMETRY,
+    )
+    prepared, fallback_count = prepare_karaoke_cues(display, config)
+
+    assert fallback_count == 0
+    assert display[0]["text"] == "STRASSE GROSS"
+    assert [word["word"] for word in display[0]["words"]] == ["Straße", "groß"]
+    cue = prepared[0]["_karaoke_cue"]
+    assert "".join(fragment.text for fragment in cue.fragments) == "STRASSE GROSS"
+    assert [
+        fragment.word_index
+        for fragment in cue.fragments
+        if fragment.word_index is not None
+    ] == [0, 1]
+    assert sum(cue.durations) == 100
+
+    path = tmp_path / f"{karaoke_mode}-uppercase.ass"
+    write_ass(path, prepared, config, GEOMETRY)
+    content = path.read_text(encoding="utf-8")
+    assert "STRASSE" in content
+    assert "GROSS" in content
+    assert "Straße" not in content
+
+
 def test_prepare_karaoke_cues_falls_back_without_word_timings():
     config = resolve_subtitle_config(
         validate_subtitle_config(None, effects_values={"karaoke": True}),

@@ -25,6 +25,7 @@ from .config import (
     DEFAULT_LINE_HEIGHT,
     DEFAULT_OPACITY,
     DEFAULT_SHADOW_SIZE,
+    DEFAULT_TEXT_CASE,
     DEFAULT_TEXT_COLOR,
     FONT_WEIGHT_ALIASES,
     FONT_WEIGHT_NAMES,
@@ -35,9 +36,11 @@ from .config import (
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
+    TEXT_CASE_CHOICES,
     parse_line_height,
     parse_opacity,
     parse_relative_length,
+    parse_text_case,
     validate_subtitle_config,
 )
 from .errors import ArtifactError, MultisubsError, ValidationError
@@ -52,6 +55,7 @@ from .models import (
     RunArtifacts,
     RunRequest,
     SubtitleOpacity,
+    TextCase,
     TranscriptionPaths,
 )
 from .preview import DEFAULT_PREVIEW_TEXT, parse_preview_timestamp
@@ -251,6 +255,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     appearance_group.add_argument(
+        "--text-case",
+        type=_text_case_argument_type,
+        default=None,
+        metavar="{" + ",".join(TEXT_CASE_CHOICES) + "}",
+        help=(
+            "Subtitle display casing: original, uppercase, or lowercase "
+            f"(default: {DEFAULT_TEXT_CASE.value})."
+        ),
+    )
+    appearance_group.add_argument(
         "--fonts-dir",
         default=None,
         metavar="DIR",
@@ -433,6 +447,13 @@ def _opacity_argument_type(raw_value: str) -> SubtitleOpacity:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _text_case_argument_type(raw_value: str) -> TextCase:
+    try:
+        return parse_text_case(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _preview_timestamp_argument_type(raw_value: str) -> float:
     try:
         return parse_preview_timestamp(raw_value)
@@ -479,6 +500,7 @@ def _build_request(
             "backdrop": args.backdrop,
             "backdrop_color": args.backdrop_color,
             "opacity": args.opacity,
+            "text_case": args.text_case,
             "fonts_dir": args.fonts_dir,
         }.items()
         if value is not None
