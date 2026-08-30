@@ -1,8 +1,8 @@
 # Line height
 
-Status: In review
+Status: Done
 
-Delivery branch: `feat/subtitle-line-height`
+Delivery: [#44](https://github.com/denilson-santos/multisubs/pull/44)
 
 Depends on:
 
