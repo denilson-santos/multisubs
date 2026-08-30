@@ -23,6 +23,7 @@ from .models import (
     SubtitleEffects,
     SubtitleLayout,
     SubtitleLayoutPreset,
+    SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
 )
@@ -114,6 +115,7 @@ _RELATIVE_LENGTH_PATTERN = re.compile(
     r"^(?P<number>(?:0|[1-9][0-9]{0,5})(?:\.[0-9]{1,3})?)"
     r"(?P<unit>%|px)$"
 )
+_OPACITY_PATTERN = re.compile(r"^(?P<number>(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,3})?)%$")
 _RELATIVE_FIELDS = {
     "font_size",
     "letter_spacing",
@@ -145,6 +147,7 @@ DEFAULT_FONT = "Roboto"
 DEFAULT_FONT_SIZE = "4%"
 DEFAULT_LETTER_SPACING = "0px"
 DEFAULT_LINE_HEIGHT = "auto"
+DEFAULT_OPACITY = "100%"
 DEFAULT_TEXT_COLOR = "#FFFFFF"
 DEFAULT_FONT_WEIGHT = FontWeight.REGULAR
 DEFAULT_ITALIC = False
@@ -190,6 +193,23 @@ def parse_line_height(raw_value: object) -> str | RelativeLength:
     if value.value <= 0:
         raise ValidationError("line-height must be greater than zero")
     return value
+
+
+def parse_opacity(raw_value: object) -> SubtitleOpacity:
+    """Parse one explicit percentage between zero and one hundred."""
+    if not isinstance(raw_value, str):
+        raise ValidationError("opacity must be a percentage from 0% through 100%")
+    original = raw_value.strip()
+    match = _OPACITY_PATTERN.fullmatch(original)
+    if match is None:
+        raise ValidationError("opacity must be a percentage from 0% through 100%")
+    try:
+        percentage = Decimal(match.group("number"))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValidationError("opacity must be a finite percentage") from exc
+    if not percentage.is_finite() or percentage < 0 or percentage > 100:
+        raise ValidationError("opacity must be between 0% and 100%")
+    return SubtitleOpacity(percentage=percentage, original=original)
 
 
 def parse_font_weight(value: object) -> FontWeight:
@@ -404,6 +424,7 @@ def validate_subtitle_config(
         "italic",
         "backdrop",
         "backdrop_color",
+        "opacity",
         "fonts_dir",
     }
     unknown_appearance_fields = set(appearance_overrides).difference(
@@ -428,6 +449,8 @@ def validate_subtitle_config(
         font_weight = DEFAULT_FONT_WEIGHT
         font_weight_input = DEFAULT_FONT_WEIGHT.canonical_name
         font_weight_input_form = FontWeightInputForm.DEFAULT
+
+    opacity = _validate_opacity(appearance_overrides.get("opacity", DEFAULT_OPACITY))
 
     if "karaoke_highlight_color" in effects_overrides:
         if "highlight_color" in effects_overrides:
@@ -550,6 +573,7 @@ def validate_subtitle_config(
             font_weight_input=font_weight_input,
             font_weight_input_form=font_weight_input_form,
             line_height=parsed_line_height,
+            opacity=opacity,
         ),
         layout=SubtitleLayout(
             position=resolved_position or DEFAULT_POSITION,
@@ -752,6 +776,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     _validate_boolean(config.appearance.italic, "italic")
     _validate_backdrop(config.appearance.backdrop)
     _validate_color(config.appearance.backdrop_color, "backdrop-color")
+    _validate_opacity(config.appearance.opacity)
     _coerce_fonts_dir(config.appearance.fonts_dir)
     _validate_line_height_value(config.appearance.line_height, "line-height")
     if config.appearance.line_height_requested is not None:
@@ -829,6 +854,22 @@ def _validate_line_height_value(value: object, field: str) -> None:
     number = float(value)
     if number <= 0 or number != number or number in {float("inf"), float("-inf")}:
         raise ValidationError(f"{field} must be greater than zero")
+
+
+def _validate_opacity(value: object) -> SubtitleOpacity:
+    """Validate the typed opacity value and its retained public token."""
+    if isinstance(value, str):
+        return parse_opacity(value)
+    if not isinstance(value, SubtitleOpacity):
+        raise ValidationError("opacity must use the typed SubtitleOpacity contract")
+    if not isinstance(value.percentage, Decimal) or not value.percentage.is_finite():
+        raise ValidationError("opacity must contain a finite decimal percentage")
+    if value.percentage < 0 or value.percentage > 100:
+        raise ValidationError("opacity must be between 0% and 100%")
+    parsed = parse_opacity(value.original)
+    if parsed.percentage != value.percentage:
+        raise ValidationError("opacity metadata is inconsistent")
+    return value
 
 
 def _validate_font(value: object) -> str:

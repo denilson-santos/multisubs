@@ -1,4 +1,5 @@
 from dataclasses import replace
+from decimal import Decimal
 from typing import Any, cast
 
 import pytest
@@ -16,6 +17,7 @@ from multisubs.config import (
     get_layout_preset,
     parse_font_weight,
     parse_layout_preset,
+    parse_opacity,
     parse_position,
     parse_relative_length,
     validate_subtitle_config,
@@ -28,6 +30,7 @@ from multisubs.models import (
     SubtitleBackdrop,
     SubtitleConfig,
     SubtitleLayoutPreset,
+    SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
 )
@@ -106,6 +109,7 @@ def test_default_appearance_is_semantic_and_resolution_independent():
     assert appearance.backdrop_color == "#00000099"
     assert appearance.backdrop_size == parse_relative_length("0px")
     assert appearance.shadow_size == parse_relative_length("4%")
+    assert appearance.opacity == SubtitleOpacity(Decimal("100"), "100%")
     assert appearance.fonts_dir is None
     assert BACKDROP_CHOICES == ("none", "outline", "box")
 
@@ -158,6 +162,31 @@ def test_line_height_accepts_auto_or_positive_typed_lengths(raw_value, expected)
 def test_line_height_rejects_non_positive_or_unitless_values(raw_value):
     with pytest.raises(ValidationError, match="line-height"):
         validate_subtitle_config(None, relative_values={"line_height": raw_value})
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "percentage"),
+    [("0%", "0"), ("75%", "75"), ("32.5%", "32.5"), ("100%", "100")],
+)
+def test_opacity_accepts_explicit_bounded_percentages(raw_value, percentage):
+    opacity = parse_opacity(raw_value)
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"opacity": opacity},
+    )
+
+    assert config.appearance.opacity == opacity
+    assert opacity.percentage == Decimal(percentage)
+    assert opacity.normalized == Decimal(percentage) / Decimal(100)
+
+
+@pytest.mark.parametrize(
+    "raw_value",
+    ["", "50", "-1%", "100.1%", "101%", "1px", "nan%", "inf%", True, 50],
+)
+def test_opacity_rejects_ambiguous_or_out_of_range_values(raw_value):
+    with pytest.raises(ValidationError, match="opacity"):
+        parse_opacity(raw_value)
 
 
 def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
@@ -498,6 +527,20 @@ def test_typed_letter_spacing_is_revalidated():
     )
 
     with pytest.raises(ValidationError, match="letter-spacing"):
+        validate_subtitle_config(inconsistent)
+
+
+def test_typed_opacity_metadata_is_revalidated():
+    config = validate_subtitle_config(None)
+    inconsistent = replace(
+        config,
+        appearance=replace(
+            config.appearance,
+            opacity=SubtitleOpacity(Decimal("50"), "75%"),
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="opacity metadata"):
         validate_subtitle_config(inconsistent)
 
 

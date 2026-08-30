@@ -23,6 +23,7 @@ from .config import (
     DEFAULT_KARAOKE_MODE,
     DEFAULT_LETTER_SPACING,
     DEFAULT_LINE_HEIGHT,
+    DEFAULT_OPACITY,
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_COLOR,
     FONT_WEIGHT_ALIASES,
@@ -35,6 +36,7 @@ from .config import (
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     parse_line_height,
+    parse_opacity,
     parse_relative_length,
     validate_subtitle_config,
 )
@@ -49,6 +51,7 @@ from .models import (
     RelativeLength,
     RunArtifacts,
     RunRequest,
+    SubtitleOpacity,
     TranscriptionPaths,
 )
 from .preview import DEFAULT_PREVIEW_TEXT, parse_preview_timestamp
@@ -238,6 +241,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Outline, box, and shadow color (default: {DEFAULT_BACKDROP_COLOR}).",
     )
     appearance_group.add_argument(
+        "--opacity",
+        type=_opacity_argument_type,
+        default=None,
+        metavar="PERCENT",
+        help=(
+            "Global subtitle opacity from 0%% through 100%%, multiplied with each "
+            f"component color alpha (default: {DEFAULT_OPACITY.replace('%', '%%')})."
+        ),
+    )
+    appearance_group.add_argument(
         "--fonts-dir",
         default=None,
         metavar="DIR",
@@ -413,6 +426,13 @@ def _line_height_argument_type(raw_value: str) -> str | RelativeLength:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _opacity_argument_type(raw_value: str) -> SubtitleOpacity:
+    try:
+        return parse_opacity(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _preview_timestamp_argument_type(raw_value: str) -> float:
     try:
         return parse_preview_timestamp(raw_value)
@@ -458,6 +478,7 @@ def _build_request(
             "italic": args.italic,
             "backdrop": args.backdrop,
             "backdrop_color": args.backdrop_color,
+            "opacity": args.opacity,
             "fonts_dir": args.fonts_dir,
         }.items()
         if value is not None

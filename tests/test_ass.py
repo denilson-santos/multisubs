@@ -6,13 +6,14 @@ import pytest
 from multisubs.ass import (
     _ass_alignment_for_position,
     _compile_style,
+    compose_rgba_opacity,
     escape_ass_text,
     format_ass_time,
     rgba_to_ass_color,
     serialize_ass_placement,
     write_ass,
 )
-from multisubs.config import validate_subtitle_config
+from multisubs.config import parse_opacity, validate_subtitle_config
 from multisubs.errors import ArtifactError
 from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import (
@@ -84,6 +85,75 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
 )
 def test_rgba_color_conversion_uses_bgr_and_inverted_alpha(rgba, ass):
     assert rgba_to_ass_color(rgba) == ass
+
+
+@pytest.mark.parametrize(
+    ("rgba", "opacity", "effective"),
+    [
+        ("#112233", "100%", "#112233FF"),
+        ("#112233", "50%", "#11223380"),
+        ("#11223380", "50%", "#11223340"),
+        ("#11223301", "50%", "#11223301"),
+        ("#112233FF", "0%", "#11223300"),
+    ],
+)
+def test_rgba_opacity_composes_conventional_alpha_once(rgba, opacity, effective):
+    assert compose_rgba_opacity(rgba, parse_opacity(opacity)) == effective
+
+
+def test_opacity_compiles_text_backdrop_shadow_and_positioned_box_once(
+    tmp_path: Path,
+):
+    path = tmp_path / "opacity.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "text_color": "#11223380",
+            "backdrop_color": "#44556699",
+            "opacity": "50%",
+        },
+        relative_values={
+            "line_height": "64px",
+            "max_width": "600px",
+            "max_height": "200px",
+        },
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "first\nsecond"}],
+        config,
+        GEOMETRY,
+        preserve_line_breaks=True,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    default_style = next(
+        line for line in content.splitlines() if line.startswith("Style: Default,")
+    ).split(",")
+    assert default_style[3:7] == [
+        "&HBF332211",
+        "&HBF332211",
+        "&HB2665544",
+        "&HB2665544",
+    ]
+    assert r"\1c&H665544&\1a&HB2&" in content
+
+
+def test_explicit_full_opacity_preserves_default_ass_bytes(tmp_path: Path):
+    default_path = tmp_path / "default-opacity.ass"
+    explicit_path = tmp_path / "explicit-opacity.ass"
+    segment = {"start": 0.0, "end": 1.0, "text": "sample"}
+
+    write_ass(default_path, [segment], validate_subtitle_config(None), GEOMETRY)
+    write_ass(
+        explicit_path,
+        [segment],
+        validate_subtitle_config(None, appearance_values={"opacity": "100%"}),
+        GEOMETRY,
+    )
+
+    assert default_path.read_bytes() == explicit_path.read_bytes()
 
 
 @pytest.mark.parametrize(

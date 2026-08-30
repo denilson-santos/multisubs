@@ -588,6 +588,23 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "resolved_weight": None,
             "weight_substituted": None,
         },
+        "opacity": {
+            "requested": "100%",
+            "percentage": 100,
+            "normalized": 1,
+            "base_colors": {
+                "text": "#FFFFFFFF",
+                "backdrop": "#00000099",
+                "shadow": "#00000099",
+                "karaoke_highlight": None,
+            },
+            "effective_colors": {
+                "text": "#FFFFFFFF",
+                "backdrop": "#00000099",
+                "shadow": "#00000099",
+                "karaoke_highlight": None,
+            },
+        },
         "effects": {
             "karaoke": {
                 "enabled": False,
@@ -713,6 +730,71 @@ def test_explicit_line_height_reports_single_event_for_one_line(tmp_path: Path):
     assert rendering["render_strategy"] == "single-event"
     assert len(dialogue) == 1
     assert r"\pos(" not in dialogue[0]
+
+
+def test_opacity_json_records_base_and_effective_component_colors(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Hello",
+        segments=(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Hello",
+                "words": [_word("Hello", 0.0, 1.0)],
+            },
+        ),
+    )
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "text_color": "#11223380",
+            "backdrop_color": "#44556699",
+            "opacity": "32.5%",
+        },
+        effects_values={
+            "karaoke": True,
+            "highlight_color": "#778899C0",
+        },
+    )
+
+    json_path, _, ass_path = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        config,
+        geometry=GEOMETRY,
+    )
+
+    rendering = json.loads(Path(json_path).read_text(encoding="utf-8"))["metadata"][
+        "rendering"
+    ]
+    assert rendering["opacity"] == {
+        "requested": "32.5%",
+        "percentage": 32.5,
+        "normalized": 0.325,
+        "base_colors": {
+            "text": "#11223380",
+            "backdrop": "#44556699",
+            "shadow": "#44556699",
+            "karaoke_highlight": "#778899C0",
+        },
+        "effective_colors": {
+            "text": "#1122332A",
+            "backdrop": "#44556632",
+            "shadow": "#44556632",
+            "karaoke_highlight": "#7788993E",
+        },
+    }
+    ass = Path(ass_path).read_text(encoding="utf-8")
+    assert "&HD5332211" in ass
+    assert "&HCD665544" in ass
+    assert r"\1c&H998877&\1a&HC1&" in ass
 
 
 def test_write_transcription_artifacts_does_not_load_model_runtime(

@@ -334,6 +334,103 @@ def test_ffmpeg_libass_render_round_trip(tmp_path: Path):
 
 
 @pytest.mark.integration
+def test_subtitle_opacity_changes_intensity_without_moving_libass_bounds(
+    tmp_path: Path,
+):
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("FFmpeg is not installed")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    width, height = 320, 180
+    input_path = tmp_path / "opacity-input.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=black:s={width}x{height}:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+
+    frames: dict[str, bytes] = {}
+    for opacity in ("100%", "50%", "0%"):
+        subtitle_path = tmp_path / f"opacity-{opacity[:-1]}.ass"
+        config = validate_subtitle_config(
+            None,
+            appearance_values={
+                "font": "DejaVu Sans",
+                "backdrop": "none",
+                "text_color": "#FFFFFFFF",
+                "opacity": opacity,
+            },
+            relative_values={
+                "font_size": "40px",
+                "shadow_weight": "0px",
+            },
+        )
+        write_ass(
+            subtitle_path,
+            [{"start": 0.0, "end": 0.3, "text": "Opacity"}],
+            config,
+            geometry,
+        )
+        frames[opacity] = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                "0.1",
+                "-i",
+                str(input_path),
+                "-vf",
+                f"ass={subtitle_path}",
+                "-frames:v",
+                "1",
+                "-pix_fmt",
+                "gray",
+                "-f",
+                "rawvideo",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+        ).stdout
+
+    assert all(len(frame) == width * height for frame in frames.values())
+    intensities = {opacity: sum(frame) for opacity, frame in frames.items()}
+    assert intensities["100%"] > intensities["50%"] > intensities["0%"]
+    assert intensities["0%"] == 0
+    ratio = intensities["50%"] / intensities["100%"]
+    assert 0.4 <= ratio <= 0.6
+
+    def bounds(frame: bytes) -> tuple[int, int, int, int]:
+        foreground = [index for index, value in enumerate(frame) if value > 10]
+        assert foreground
+        x_values = [index % width for index in foreground]
+        y_values = [index // width for index in foreground]
+        return min(x_values), max(x_values), min(y_values), max(y_values)
+
+    assert bounds(frames["100%"]) == bounds(frames["50%"])
+
+
+@pytest.mark.integration
 def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
     if shutil.which("ffmpeg") is None:
         pytest.skip("FFmpeg is not installed")

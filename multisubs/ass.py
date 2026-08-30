@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from numbers import Real
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from .models import (
     SubtitleBackdrop,
     SubtitleConfig,
     SubtitleDisplayFragment,
+    SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
     SubtitleVisualLine,
@@ -82,6 +84,15 @@ class _PositionedLine:
     block_bounds: tuple[int, int, int, int]
 
 
+@dataclass(frozen=True)
+class SubtitlePalette:
+    """Conventional RGBA colors used by one compiled subtitle composition."""
+
+    text_color: str
+    backdrop_color: str
+    highlight_color: str | None
+
+
 def write_ass(
     path: Path,
     segments: Sequence[Mapping[str, Any]],
@@ -113,7 +124,8 @@ def write_ass(
     metrics = wrapping_metrics
     if explicit_line_height and metrics is None:
         metrics = resolve_wrapping_metrics(config, geometry)
-    style = _compile_style(config, geometry)
+    _, effective_palette = resolve_subtitle_palettes(config)
+    style = _compile_style(config, geometry, palette=effective_palette)
     default_placement = resolve_cue_placement(config, geometry)
     if placements is not None and len(placements) != len(segments):
         raise ArtifactError("ASS cue placements must match the segment count")
@@ -222,7 +234,7 @@ def write_ass(
                     cue_start,
                     cue_end,
                     current_backdrop_bounds,
-                    config.appearance.backdrop_color,
+                    effective_palette.backdrop_color,
                     metrics.shadow_size,
                     style_name=positioned_style_name,
                 )
@@ -253,6 +265,7 @@ def write_ass(
                         config,
                         cue_start,
                         cue_end,
+                        palette=effective_palette,
                     ):
                         _append_dialogue_line(
                             lines,
@@ -280,6 +293,7 @@ def write_ass(
                         config,
                         cue_start,
                         cue_end,
+                        palette=effective_palette,
                     ):
                         _append_dialogue_line(
                             lines,
@@ -315,6 +329,7 @@ def write_ass(
                 config,
                 cue_start,
                 cue_end,
+                palette=effective_palette,
             ):
                 _append_dialogue_line(
                     lines,
@@ -328,6 +343,7 @@ def write_ass(
             serialize_karaoke_cue(
                 karaoke_cue,
                 config,
+                palette=effective_palette,
             )
             if config.effects.mode is KaraokeMode.PROGRESSIVE
             else None
@@ -567,9 +583,13 @@ def _append_guide_event(lines: list[str], event: AssDrawingEvent) -> None:
 def _compile_style(
     config: SubtitleConfig,
     geometry: VideoGeometry | None = None,
+    *,
+    palette: SubtitlePalette | None = None,
 ) -> dict[str, str | int]:
     """Compile semantic layout into the private numeric ASS style fields."""
     appearance = config.appearance
+    if palette is None:
+        _, palette = resolve_subtitle_palettes(config)
     layout = config.layout
     backdrop_size = _resolved_style_int(appearance.backdrop_size, "backdrop-size")
     margin_top = _resolved_style_int(layout.margin_top, "margin-top")
@@ -584,7 +604,7 @@ def _compile_style(
         if layout.position.value.startswith("bottom-")
         else 0
     )
-    backdrop_color = rgba_to_ass_color(appearance.backdrop_color)
+    backdrop_color = rgba_to_ass_color(palette.backdrop_color)
     if explicit:
         margin_l = 0
         margin_r = 0
@@ -594,10 +614,10 @@ def _compile_style(
     return {
         "font": appearance.font,
         "font_size": _resolved_style_int(appearance.font_size, "font-size"),
-        "primary_color": rgba_to_ass_color(appearance.text_color),
+        "primary_color": rgba_to_ass_color(palette.text_color),
         # SecondaryColour is mandatory in a V4+ Style. It remains the neutral
         # inactive color for ordinary cues; karaoke events override both colors.
-        "secondary_color": rgba_to_ass_color(appearance.text_color),
+        "secondary_color": rgba_to_ass_color(palette.text_color),
         "outline_color": backdrop_color,
         "back_color": backdrop_color,
         # Exact weight is emitted as a trusted event-level \b override because
@@ -626,8 +646,57 @@ def _compile_style(
     }
 
 
-def rgba_to_ass_color(value: str) -> str:
-    """Convert #RRGGBB[AA] into ASS &HAABBGGRR notation."""
+def resolve_subtitle_palettes(
+    config: SubtitleConfig,
+) -> tuple[SubtitlePalette, SubtitlePalette]:
+    """Return canonical base colors and their once-composed effective palette."""
+    base = SubtitlePalette(
+        text_color=_canonical_rgba(config.appearance.text_color),
+        backdrop_color=_canonical_rgba(config.appearance.backdrop_color),
+        highlight_color=(
+            _canonical_rgba(config.effects.highlight_color)
+            if config.effects.highlight_color is not None
+            else None
+        ),
+    )
+    opacity = config.appearance.opacity
+    effective = SubtitlePalette(
+        text_color=compose_rgba_opacity(base.text_color, opacity),
+        backdrop_color=compose_rgba_opacity(base.backdrop_color, opacity),
+        highlight_color=(
+            compose_rgba_opacity(base.highlight_color, opacity)
+            if base.highlight_color is not None
+            else None
+        ),
+    )
+    return base, effective
+
+
+def compose_rgba_opacity(value: str, opacity: SubtitleOpacity) -> str:
+    """Multiply conventional RGBA alpha by one validated global opacity."""
+    canonical = _canonical_rgba(value)
+    if not isinstance(opacity, SubtitleOpacity):
+        raise ArtifactError("Subtitle opacity must use the typed opacity contract")
+    percentage = opacity.percentage
+    if (
+        not isinstance(percentage, Decimal)
+        or not percentage.is_finite()
+        or percentage < 0
+        or percentage > 100
+    ):
+        raise ArtifactError("Subtitle opacity must be between 0% and 100%")
+    base_alpha = int(canonical[7:9], 16)
+    effective_alpha = int(
+        (Decimal(base_alpha) * percentage / Decimal(100)).quantize(
+            Decimal(1), rounding=ROUND_HALF_UP
+        )
+    )
+    effective_alpha = min(255, max(0, effective_alpha))
+    return canonical[:7] + f"{effective_alpha:02X}"
+
+
+def _canonical_rgba(value: str) -> str:
+    """Validate a conventional color and return uppercase #RRGGBBAA."""
     if (
         not isinstance(value, str)
         or len(value) not in {7, 9}
@@ -635,12 +704,19 @@ def rgba_to_ass_color(value: str) -> str:
     ):
         raise ArtifactError("ASS colors require #RRGGBB or #RRGGBBAA notation")
     try:
-        red = int(value[1:3], 16)
-        green = int(value[3:5], 16)
-        blue = int(value[5:7], 16)
-        conventional_alpha = int(value[7:9], 16) if len(value) == 9 else 255
+        int(value[1:], 16)
     except ValueError as exc:
         raise ArtifactError("ASS colors require hexadecimal digits") from exc
+    return value.upper() + ("FF" if len(value) == 7 else "")
+
+
+def rgba_to_ass_color(value: str) -> str:
+    """Convert #RRGGBB[AA] into ASS &HAABBGGRR notation."""
+    canonical = _canonical_rgba(value)
+    red = int(canonical[1:3], 16)
+    green = int(canonical[3:5], 16)
+    blue = int(canonical[5:7], 16)
+    conventional_alpha = int(canonical[7:9], 16)
     ass_alpha = 255 - conventional_alpha
     return f"&H{ass_alpha:02X}{blue:02X}{green:02X}{red:02X}"
 
@@ -780,6 +856,8 @@ def _quantized_karaoke_boundaries(
 def serialize_karaoke_cue(
     cue: object,
     config: SubtitleConfig,
+    *,
+    palette: SubtitlePalette | None = None,
 ) -> str | None:
     """Compile one prepared karaoke cue without escaping generated overrides."""
     if (
@@ -787,26 +865,27 @@ def serialize_karaoke_cue(
         or config.effects.mode is not KaraokeMode.PROGRESSIVE
     ):
         return None
-    highlight_color = config.effects.highlight_color
-    if highlight_color is None:
+    if palette is None:
+        _, palette = resolve_subtitle_palettes(config)
+    if palette.highlight_color is None:
         raise ArtifactError("Karaoke highlight color is not resolved")
     _validate_karaoke_cue(cue)
-    return _serialize_karaoke_fragments(cue.fragments, cue.durations, config)
+    return _serialize_karaoke_fragments(cue.fragments, cue.durations, palette)
 
 
 def _serialize_karaoke_fragments(
     fragments: Sequence[SubtitleDisplayFragment],
     durations: Sequence[int],
-    config: SubtitleConfig,
+    palette: SubtitlePalette,
 ) -> str:
     """Serialize one visual line while retaining cue-global word durations."""
-    highlight_color = config.effects.highlight_color
+    highlight_color = palette.highlight_color
     if highlight_color is None:
         raise ArtifactError("Karaoke highlight color is not resolved")
     result = (
         "{"
         + rgba_to_ass_color_override(highlight_color, 1)
-        + rgba_to_ass_color_override(config.appearance.text_color, 2)
+        + rgba_to_ass_color_override(palette.text_color, 2)
         + "}"
     )
     for fragment in fragments:
@@ -823,6 +902,8 @@ def serialize_active_word_events(
     config: SubtitleConfig,
     cue_start: int,
     cue_end: int,
+    *,
+    palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Split one cue into stable full-text intervals with one active word."""
     if config.effects.mode is not KaraokeMode.ACTIVE_WORD:
@@ -832,6 +913,8 @@ def serialize_active_word_events(
         raise ArtifactError("Karaoke cue timestamps are invalid")
     if len(cue.active_intervals) != len(cue.durations):
         raise ArtifactError("Active-word intervals must match karaoke word count")
+    if palette is None:
+        _, palette = resolve_subtitle_palettes(config)
 
     plain_text = escape_ass_text("".join(fragment.text for fragment in cue.fragments))
     events: list[tuple[int, int, str]] = []
@@ -853,7 +936,7 @@ def serialize_active_word_events(
             events.append((cursor, start, plain_text))
         if start < end:
             events.append(
-                (start, end, _serialize_active_word_text(cue, config, word_index))
+                (start, end, _serialize_active_word_text(cue, palette, word_index))
             )
         cursor = end
     if cursor < cue_end:
@@ -869,6 +952,8 @@ def serialize_progressive_line_events(
     config: SubtitleConfig,
     cue_start: int,
     cue_end: int,
+    *,
+    palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Serialize one visual line with cue-relative progressive colors.
 
@@ -886,6 +971,8 @@ def serialize_progressive_line_events(
     duration = cue_end - cue_start
     if sum(cue.durations) != duration:
         raise ArtifactError("Karaoke durations must conserve cue duration")
+    if palette is None:
+        _, palette = resolve_subtitle_palettes(config)
 
     boundaries = [cue_start]
     for word_duration in cue.durations:
@@ -903,7 +990,7 @@ def serialize_progressive_line_events(
                 end,
                 _serialize_progressive_state(
                     fragments,
-                    config,
+                    palette,
                     activated_count,
                     duration=end - start,
                 ),
@@ -916,7 +1003,7 @@ def serialize_progressive_line_events(
                 cue_end,
                 _serialize_progressive_state(
                     fragments,
-                    config,
+                    palette,
                     len(cue.durations),
                 ),
             )
@@ -926,7 +1013,7 @@ def serialize_progressive_line_events(
 
 def _serialize_progressive_state(
     fragments: Sequence[SubtitleDisplayFragment],
-    config: SubtitleConfig,
+    palette: SubtitlePalette,
     activated_count: int,
     *,
     duration: int | None = None,
@@ -938,19 +1025,17 @@ def _serialize_progressive_state(
     later words remain in the normal color.  This keeps the word sweep while
     ensuring a line event starts at the cue-global word boundary.
     """
-    highlight_color = config.effects.highlight_color
+    highlight_color = palette.highlight_color
     if highlight_color is None:
         raise ArtifactError("Karaoke highlight color is not resolved")
     if activated_count < 0:
         raise ArtifactError("Progressive activation count must be non-negative")
-    normal_override = (
-        "{" + rgba_to_ass_color_override(config.appearance.text_color, 1) + "}"
-    )
+    normal_override = "{" + rgba_to_ass_color_override(palette.text_color, 1) + "}"
     highlight_override = "{" + rgba_to_ass_color_override(highlight_color, 1) + "}"
     progressive_setup = (
         "{"
         + rgba_to_ass_color_override(highlight_color, 1)
-        + rgba_to_ass_color_override(config.appearance.text_color, 2)
+        + rgba_to_ass_color_override(palette.text_color, 2)
         + "}"
     )
     result = normal_override
@@ -980,6 +1065,8 @@ def serialize_active_word_line_events(
     config: SubtitleConfig,
     cue_start: int,
     cue_end: int,
+    *,
+    palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Serialize active-word intervals for one visual line of a cue."""
     if config.effects.mode is not KaraokeMode.ACTIVE_WORD:
@@ -987,6 +1074,8 @@ def serialize_active_word_line_events(
     _validate_karaoke_cue(cue)
     if cue_end < cue_start or len(cue.active_intervals) != len(cue.durations):
         raise ArtifactError("Karaoke line timestamps are invalid")
+    if palette is None:
+        _, palette = resolve_subtitle_palettes(config)
     plain_text = escape_ass_text("".join(fragment.text for fragment in fragments))
     events: list[tuple[int, int, str]] = []
     cursor = cue_start
@@ -1012,7 +1101,7 @@ def serialize_active_word_line_events(
                     end,
                     _serialize_active_word_fragments(
                         fragments,
-                        config,
+                        palette,
                         word_index,
                     ),
                 )
@@ -1027,24 +1116,22 @@ def serialize_active_word_line_events(
 
 def _serialize_active_word_text(
     cue: KaraokeCue,
-    config: SubtitleConfig,
+    palette: SubtitlePalette,
     active_word_index: int,
 ) -> str:
-    return _serialize_active_word_fragments(cue.fragments, config, active_word_index)
+    return _serialize_active_word_fragments(cue.fragments, palette, active_word_index)
 
 
 def _serialize_active_word_fragments(
     fragments: Sequence[SubtitleDisplayFragment],
-    config: SubtitleConfig,
+    palette: SubtitlePalette,
     active_word_index: int,
 ) -> str:
     """Apply one active-word color to a fragment subset."""
-    highlight_color = config.effects.highlight_color
+    highlight_color = palette.highlight_color
     if highlight_color is None:
         raise ArtifactError("Karaoke highlight color is not resolved")
-    normal_override = (
-        "{" + rgba_to_ass_color_override(config.appearance.text_color, 1) + "}"
-    )
+    normal_override = "{" + rgba_to_ass_color_override(palette.text_color, 1) + "}"
     highlight_override = "{" + rgba_to_ass_color_override(highlight_color, 1) + "}"
     result = normal_override
     for fragment in fragments:

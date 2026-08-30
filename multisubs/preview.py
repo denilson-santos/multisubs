@@ -230,6 +230,7 @@ def build_preview_guide_events(
         f" ({metrics.resolved_line_height:.1f}px resolved; "
         f"natural {metrics.natural_line_height:.1f}px)"
         f"\\NLine capacity: {metrics.line_capacity}"
+        f"\\NOpacity: {config.appearance.opacity.original}"
         f"\\NRender strategy: {render_strategy}"
         f"\\NPlayRes: {geometry.render_width}x{geometry.render_height}"
     )
