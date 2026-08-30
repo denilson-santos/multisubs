@@ -1,8 +1,8 @@
 # Text case
 
-Status: In review
+Status: Done
 
-Delivery branch: `feat/subtitle-text-case`
+Delivery: [#47](https://github.com/denilson-santos/multisubs/pull/47)
 
 Depends on:
 

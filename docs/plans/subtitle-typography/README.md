@@ -1,6 +1,6 @@
 # Subtitle typography roadmap
 
-Status: In progress
+Status: Done
 
 This package adds semantic typography controls without exposing raw ASS field
 names. It owns font weight, letter spacing, line height, global opacity, and
@@ -70,9 +70,9 @@ This table is the source of truth for the package. Status values follow the
 | 1 | [Letter spacing](01-letter-spacing.md) | Done | 0 | [#43](https://github.com/denilson-santos/multisubs/pull/43) |
 | 2 | [Line height](02-line-height.md) | Done | 0, 1 | [#44](https://github.com/denilson-santos/multisubs/pull/44) |
 | 3 | [Subtitle opacity](03-opacity.md) | Done | 0, 1, 2 | [#46](https://github.com/denilson-santos/multisubs/pull/46) |
-| 4 | [Text case](04-text-case.md) | In review | 0, 1, 2, 3 | `feat/subtitle-text-case` |
+| 4 | [Text case](04-text-case.md) | Done | 0, 1, 2, 3 | [#47](https://github.com/denilson-santos/multisubs/pull/47) |
 
-Package progress: 4 of 5 plans done. Plan 4, text case, is in review.
+Package progress: 5 of 5 plans done. The subtitle typography package is complete.
 
 ## Dependencies and delivery order
 
