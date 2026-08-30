@@ -233,6 +233,11 @@ Update a higher-level document when a proposed change intentionally modifies the
   Public inputs use semantic names and conventional color notation; ASS field
   ordering, fixed internal defaults, color conversion, and numeric codes belong
   only in the ASS serializer.
+- Must compose global opacity in conventional alpha space (`00` transparent,
+  `FF` opaque) exactly once, using Decimal half-up rounding for
+  `base_alpha * percentage / 100`, before ASS alpha inversion. Preview,
+  ordinary text, karaoke overrides, backdrop/outline, shadow, and generated
+  vector boxes must consume the same effective palette.
 - Must keep the ASS style Bold field neutral and compile canonical font weights
   as trusted event-level `\\b100` through `\\b900` overrides so older libass
   style parsers receive the same exact OpenType rank used by font measurement.

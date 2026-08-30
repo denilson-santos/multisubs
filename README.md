@@ -112,6 +112,7 @@ multisubs \
 | --letter-spacing LENGTH | 0px | Add non-negative spacing between rendered grapheme clusters; percentages use the resolved font size and pixels use PlayRes space. |
 | --line-height auto\|LENGTH | auto | Set the baseline distance between visual lines; auto keeps the measured font metrics. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
+| --opacity PERCENT | 100% | Multiply the opacity of the complete subtitle composition while preserving component alpha. |
 | --font-weight WEIGHT | regular (400) | Select a named or numeric font weight from 100 through 900. |
 | --bold, --no-bold | off | Compatibility shorthand for bold (700) or regular (400). |
 | --italic, --no-italic | off | Enable or disable italic text. |
@@ -219,6 +220,23 @@ The resolved advance is also used when calculating `--max-height` capacity.
 When explicit leading is active for a multi-line cue, ASS uses synchronized
 per-line events and one shared backdrop drawing; JSON records this as the
 `positioned-lines` render strategy while SRT remains one logical cue.
+
+`--opacity` accepts an explicit percentage from `0%` through `100%`, including
+decimals such as `32.5%`. It multiplies the existing alpha of every subtitle
+component—text, karaoke highlight, box or outline, and shadow—without changing
+layout, wrapping, timing, or cue content:
+
+~~~
+multisubs -i ./video.mp4 --opacity 75%
+multisubs -i ./video.mp4 --text-color '#FFFFFF80' --opacity 50%
+~~~
+
+The effective conventional alpha is `round_half_up(base_alpha * opacity / 100)`.
+Thus an opaque component at `50%` resolves near alpha `80`, while a component
+already configured as `#RRGGBB80` resolves near alpha `40`. `100%` preserves
+the configured colors and `0%` makes all subtitle layers transparent without
+removing their cues. Preview and final rendering use the same effective palette;
+JSON records both base and effective component colors.
 
 ### Word-timed karaoke highlighting
 
