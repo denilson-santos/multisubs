@@ -31,11 +31,6 @@ WhisperX must download model assets that are not already cached.
 | 🧠 Adaptive wrapping | Font-aware wrapping that favors readable language and timing boundaries. |
 | 🛡️ Safe outputs | Collision-safe names and temporary rendering prevent existing or partial files from being overwritten. |
 
-```text
-video ──► WhisperX transcription ──► JSON + SRT + ASS ──► FFmpeg ──► subtitled video
-  └──────────────────── preview layout without transcription ────────────────────┘
-```
-
 ## 📋 Requirements
 
 - Python 3.10 through 3.13. WhisperX 3.8.6 does not support Python 3.14.
