@@ -64,6 +64,9 @@ from .wrapping import (
     grapheme_clusters as _wrapping_grapheme_clusters,
 )
 from .wrapping import (
+    has_multiple_visual_lines as _wrapping_has_multiple_visual_lines,
+)
+from .wrapping import (
     has_significant_pause as _wrapping_has_significant_pause,
 )
 from .wrapping import (
@@ -340,7 +343,13 @@ def write_transcription_artifacts(
     _write_srt(paths.srt_path, display_segments)
     _report(progress, "Completed SRT transcript.")
 
-    write_ass(paths.ass_path, display_segments, resolved_config, geometry)
+    write_ass(
+        paths.ass_path,
+        display_segments,
+        resolved_config,
+        geometry,
+        wrapping_metrics=resolved_wrapping_metrics,
+    )
     _report(progress, "Completed ASS transcript.")
     return paths.as_tuple()
 
@@ -968,6 +977,10 @@ def _write_json(
                 "resolved_position": (
                     None if explicit else resolved_layout.position.value
                 ),
+                "render_strategy": _line_height_render_strategy(
+                    resolved_subtitle_config,
+                    segments,
+                ),
                 "margins": {
                     "applied": not explicit,
                     "left": resolved_layout.margin_left,
@@ -981,6 +994,11 @@ def _write_json(
                     ),
                     "letter_spacing": _format_requested_length(
                         subtitle_config.appearance.letter_spacing
+                    ),
+                    "line_height": _format_requested_length(
+                        subtitle_config.appearance.line_height_requested
+                        if subtitle_config.appearance.line_height_requested is not None
+                        else subtitle_config.appearance.line_height
                     ),
                     "backdrop_size": _format_requested_length(
                         subtitle_config.appearance.backdrop_size
@@ -1006,6 +1024,7 @@ def _write_json(
                     "letter_spacing": (
                         resolved_subtitle_config.appearance.letter_spacing
                     ),
+                    "line_height": resolved_subtitle_config.appearance.line_height,
                     "backdrop_size": resolved_subtitle_config.appearance.backdrop_size,
                     "shadow_size": resolved_subtitle_config.appearance.shadow_size,
                     "margins": {
@@ -1025,6 +1044,10 @@ def _write_json(
                     "max_height": wrapping_metrics.max_height,
                     "width_budget": wrapping_metrics.width_budget,
                     "line_height": wrapping_metrics.line_height,
+                    "natural_line_height": wrapping_metrics.natural_line_height,
+                    "resolved_line_height": wrapping_metrics.resolved_line_height,
+                    "ascent": wrapping_metrics.text_measurer.ascent,
+                    "descent": wrapping_metrics.text_measurer.descent,
                     "vertical_decoration": wrapping_metrics.vertical_decoration,
                     "line_capacity": wrapping_metrics.line_capacity,
                     "font_size": wrapping_metrics.font_size,
@@ -1034,6 +1057,7 @@ def _write_json(
                 },
                 "percentage_bases": {
                     "letter_spacing": "resolved-font-size",
+                    "line_height": "natural-line-height",
                     "max_width": (
                         "render-width"
                         if explicit
@@ -1115,9 +1139,26 @@ def _format_fraction(value: Fraction) -> str:
 def _format_requested_length(value: object) -> str | None:
     if value is None:
         return None
+    if isinstance(value, str):
+        return value
     if isinstance(value, RelativeLength):
         return value.original
     return f"{value}px"
+
+
+def _line_height_render_strategy(
+    config: SubtitleConfig,
+    segments: Sequence[Mapping[str, Any]],
+) -> str:
+    requested = config.appearance.line_height_requested
+    if requested is None:
+        requested = config.appearance.line_height
+    explicit = not (isinstance(requested, str) and requested.casefold() == "auto")
+    positioned = explicit and any(
+        _wrapping_has_multiple_visual_lines(str(segment.get("text", "")))
+        for segment in segments
+    )
+    return "positioned-lines" if positioned else "single-event"
 
 
 def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:

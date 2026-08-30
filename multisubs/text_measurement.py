@@ -48,6 +48,12 @@ class TextMeasurementInfo:
     resolved_weight_name: str | None = None
     resolved_weight: int | None = None
     weight_substituted: bool | None = None
+    # Font metrics are kept as optional fields so callers using the historical
+    # metadata contract remain valid while layout can expose precise vertical
+    # geometry when a face was resolved.
+    ascent: float | None = None
+    descent: float | None = None
+    natural_line_height: float | None = None
 
     def as_json(self) -> dict[str, str | int | None]:
         """Return metadata without exposing a machine-specific font path."""
@@ -79,13 +85,42 @@ class TextMeasurer:
         *,
         line_height: float | None = None,
         letter_spacing: float = 0.0,
+        ascent: float | None = None,
+        descent: float | None = None,
     ) -> None:
         self.info = info
         self._measure = measure
         self.letter_spacing = max(0.0, float(letter_spacing))
-        self.line_height = max(
+        self.natural_line_height = max(
             1.0,
-            float(line_height if line_height is not None else info.metric_size or 1),
+            float(
+                line_height
+                if line_height is not None
+                else info.natural_line_height
+                if info.natural_line_height is not None
+                else info.metric_size or 1
+            ),
+        )
+        self.line_height = self.natural_line_height
+        self.ascent = max(
+            0.0,
+            float(
+                ascent
+                if ascent is not None
+                else info.ascent
+                if info.ascent is not None
+                else self.natural_line_height * 0.8
+            ),
+        )
+        self.descent = max(
+            0.0,
+            float(
+                descent
+                if descent is not None
+                else info.descent
+                if info.descent is not None
+                else self.natural_line_height - self.ascent
+            ),
         )
         self._cache: OrderedDict[str, float] = OrderedDict()
 
@@ -148,6 +183,8 @@ class _ResolvedFace:
     shaping: str
     metric_size: int
     line_height: float
+    ascent: float
+    descent: float
     weight: FontWeight
 
 
@@ -205,10 +242,15 @@ def build_text_measurer(
                     resolved_weight_name=resolved.weight.canonical_name,
                     resolved_weight=resolved.weight.rank,
                     weight_substituted=(resolved.weight is not appearance.font_weight),
+                    ascent=resolved.ascent,
+                    descent=resolved.descent,
+                    natural_line_height=resolved.line_height,
                 ),
                 measure,
                 line_height=resolved.line_height,
                 letter_spacing=letter_spacing,
+                ascent=resolved.ascent,
+                descent=resolved.descent,
             )
 
     return build_unicode_text_measurer(
@@ -247,10 +289,15 @@ def build_unicode_text_measurer(
             resolved_weight_name=None,
             resolved_weight=None,
             weight_substituted=None,
+            ascent=font_size,
+            descent=font_size * 0.2,
+            natural_line_height=font_size * 1.2,
         ),
         lambda text: estimate_unicode_text_width(text, font_size),
         line_height=font_size * 1.2,
         letter_spacing=letter_spacing,
+        ascent=font_size,
+        descent=font_size * 0.2,
     )
 
 
@@ -323,6 +370,8 @@ def _resolve_face_from_directory(
                 shaping,
                 metric_size,
                 line_height,
+                ascent,
+                descent,
             ) = loaded
             if _normalise_font_name(loaded_family) != _normalise_font_name(family):
                 continue
@@ -340,6 +389,8 @@ def _resolve_face_from_directory(
                 shaping=shaping,
                 metric_size=metric_size,
                 line_height=line_height,
+                ascent=ascent,
+                descent=descent,
                 weight=loaded_weight,
             )
             if best is None or score < best[0]:
@@ -405,6 +456,8 @@ def _resolve_face_from_fontconfig(
         shaping,
         metric_size,
         line_height,
+        ascent,
+        descent,
     ) = loaded
     return _ResolvedFace(
         font=loaded_font,
@@ -414,6 +467,8 @@ def _resolve_face_from_fontconfig(
         shaping=shaping,
         metric_size=metric_size,
         line_height=line_height,
+        ascent=ascent,
+        descent=descent,
         weight=_weight_from_style(loaded_style or resolved_style),
     )
 
@@ -425,7 +480,7 @@ def _load_face(
     font_size: int,
     *,
     index: int,
-) -> tuple[Any, str, str, str, int, float] | None:
+) -> tuple[Any, str, str, str, int, float, float, float] | None:
     shaping = "raqm" if features.check("raqm") else "basic"
     layout = image_font.Layout.RAQM if shaping == "raqm" else image_font.Layout.BASIC
     try:
@@ -447,8 +502,19 @@ def _load_face(
         ascent, descent = font.getmetrics()
     except (AttributeError, OSError, TypeError, ValueError):
         return None
-    line_height = max(1.0, float(ascent + descent))
-    return font, str(family), str(style), shaping, metric_size, line_height
+    ascent_value = max(0.0, float(ascent))
+    descent_value = max(0.0, float(descent))
+    line_height = max(1.0, ascent_value + descent_value)
+    return (
+        font,
+        str(family),
+        str(style),
+        shaping,
+        metric_size,
+        line_height,
+        ascent_value,
+        descent_value,
+    )
 
 
 def _ass_metric_size(font: Any, ass_font_size: int) -> int:

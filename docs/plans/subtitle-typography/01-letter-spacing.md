@@ -1,6 +1,6 @@
 # Letter spacing
 
-Status: In review
+Status: Done
 
 Depends on:
 

@@ -5,7 +5,10 @@ from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import VideoGeometry
 from multisubs.text_measurement import build_unicode_text_measurer
 from multisubs.wrapping import (
+    build_display_fragments,
+    build_visual_lines,
     fit_first_text_segment,
+    has_multiple_visual_lines,
     split_words_for_layout,
     wrap_subtitle_text,
 )
@@ -74,3 +77,30 @@ def test_preview_first_segment_uses_the_same_spacing_adjusted_budget():
     metrics = _metrics(letter_spacing="10px")
 
     assert fit_first_text_segment("aa bb", metrics=metrics) == "aa\nbb"
+
+
+def test_visual_lines_preserve_word_fragments_and_measure_each_line():
+    metrics = _metrics(max_height="100px")
+    text = "aa\nbb"
+    fragments = build_display_fragments(
+        text,
+        [
+            {"word": "aa", "start": 0.0, "end": 0.2},
+            {"word": "bb", "start": 0.2, "end": 0.4},
+        ],
+    )
+
+    lines = build_visual_lines(text, fragments, metrics)
+
+    assert [line.text for line in lines] == ["aa", "bb"]
+    assert [line.index for line in lines] == [0, 1]
+    assert [[fragment.word_index for fragment in line.fragments] for line in lines] == [
+        [0],
+        [1],
+    ]
+
+
+def test_multiple_visual_lines_normalizes_line_endings():
+    assert not has_multiple_visual_lines("one visual line")
+    assert has_multiple_visual_lines("first\r\nsecond")
+    assert has_multiple_visual_lines("first\rsecond")

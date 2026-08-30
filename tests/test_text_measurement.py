@@ -297,6 +297,9 @@ def test_explicit_unicode_measurer_never_claims_exact_font_metrics():
     assert measurer.info.mode == "unicode-estimate"
     assert measurer.info.resolved_font is None
     assert measurer.measure("test") > 0
+    assert measurer.ascent == pytest.approx(20)
+    assert measurer.descent == pytest.approx(4)
+    assert measurer.natural_line_height == pytest.approx(24)
 
 
 @pytest.mark.parametrize(

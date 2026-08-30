@@ -80,6 +80,12 @@ class SubtitleAppearance:
     fonts_dir: Path | None = None
     font_weight_input: str = "regular"
     font_weight_input_form: FontWeightInputForm = FontWeightInputForm.DEFAULT
+    # ``line_height`` is the resolved baseline advance after geometry/font
+    # resolution, or the requested ``auto``/relative value on a request.
+    # Keeping the original token lets serializers distinguish the explicit
+    # per-line ASS strategy from the backwards-compatible automatic path.
+    line_height: float | int | RelativeLength | str = "auto"
+    line_height_requested: float | int | RelativeLength | str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +122,16 @@ class SubtitleDisplayFragment:
 
     text: str
     word_index: int | None = None
+
+
+@dataclass(frozen=True)
+class SubtitleVisualLine:
+    """One measured visual line retained for explicit line-height rendering."""
+
+    text: str
+    fragments: tuple[SubtitleDisplayFragment, ...]
+    width: float
+    index: int
 
 
 @dataclass(frozen=True)

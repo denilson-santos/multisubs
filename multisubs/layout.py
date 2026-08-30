@@ -70,9 +70,16 @@ def resolve_relative_length(
 def resolve_subtitle_config(
     config: SubtitleConfig,
     geometry: VideoGeometry,
+    *,
+    text_measurer: TextMeasurer | None = None,
 ) -> SubtitleConfig:
-    """Resolve all geometry-dependent subtitle lengths exactly once."""
-    from .config import DEFAULT_POSITION, get_layout_preset, validate_subtitle_config
+    """Resolve all geometry- and font-dependent subtitle lengths exactly once."""
+    from .config import (
+        DEFAULT_POSITION,
+        get_layout_preset,
+        parse_line_height,
+        validate_subtitle_config,
+    )
 
     _validate_geometry(geometry)
     validated = validate_subtitle_config(config)
@@ -104,6 +111,24 @@ def resolve_subtitle_config(
         font_size,
         field="shadow-size",
         maximum=font_size,
+    )
+    measurement_appearance = replace(
+        validated.appearance,
+        font_size=font_size,
+        letter_spacing=letter_spacing,
+    )
+    line_measurer = text_measurer or build_text_measurer(measurement_appearance)
+    requested_line_height = (
+        validated.appearance.line_height_requested
+        if validated.appearance.line_height_requested is not None
+        else validated.appearance.line_height
+    )
+    if isinstance(requested_line_height, str):
+        requested_line_height = parse_line_height(requested_line_height)
+    natural_line_height = line_measurer.natural_line_height
+    line_height = resolve_line_height(
+        requested_line_height,
+        natural_line_height,
     )
     resolved_preset = (
         classify_layout_preset(geometry)
@@ -245,6 +270,8 @@ def resolve_subtitle_config(
             letter_spacing=letter_spacing,
             backdrop_size=outline_weight,
             shadow_size=shadow_weight,
+            line_height=line_height,
+            line_height_requested=requested_line_height,
         ),
         layout=resolved_layout,
         layout_preset=resolved_preset,
@@ -255,6 +282,68 @@ def resolve_subtitle_config(
         _validated_explicit_placement(resolved, geometry)
     else:
         resolve_native_layout_region(geometry, resolved.layout)
+    return resolved
+
+
+def resolve_line_height(value: object, natural_line_height: float) -> float:
+    """Resolve ``auto`` or a positive length against measured font metrics.
+
+    Percentages use the natural font line height as their basis. Explicit
+    values are rounded with the same half-up policy as the other PlayRes
+    lengths and cannot produce a baseline advance smaller than that natural
+    metric.
+    """
+    if natural_line_height <= 0 or not math.isfinite(natural_line_height):
+        raise ValidationError("Font natural line height must be positive and finite")
+    if isinstance(value, str):
+        from .config import parse_line_height
+
+        parsed = parse_line_height(value)
+        if parsed == "auto":
+            return float(natural_line_height)
+        value = parsed
+    if isinstance(value, RelativeLength):
+        if value.unit == "%":
+            decimal_value = (
+                Decimal(str(natural_line_height)) * value.value / Decimal(100)
+            )
+        elif value.unit == "px":
+            decimal_value = value.value
+        else:
+            raise ValidationError("line-height must use % or px units")
+        if decimal_value < Decimal(str(natural_line_height)):
+            raise ValidationError(
+                "line-height resolves below the natural font line height "
+                f"{natural_line_height:.2f}px"
+            )
+        try:
+            resolved = int(decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        except (ArithmeticError, ValueError) as exc:
+            raise ValidationError("line-height could not be resolved safely") from exc
+    elif isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValidationError("line-height must be auto or a positive length")
+    else:
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValidationError("line-height must be finite")
+        if float(value) < natural_line_height:
+            raise ValidationError(
+                "line-height resolves below the natural font line height "
+                f"{natural_line_height:.2f}px"
+            )
+        try:
+            resolved = int(
+                Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+        except (ArithmeticError, ValueError) as exc:
+            raise ValidationError("line-height could not be resolved safely") from exc
+    if resolved <= 0:
+        raise ValidationError("line-height must resolve to a value greater than zero")
+    if resolved + 1e-9 < natural_line_height:
+        # A value equal to the natural metric can round down (for example,
+        # 40.4px with half-up integer PlayRes coordinates).  Keep the
+        # non-overlap guarantee by promoting that boundary to the next pixel;
+        # values that are genuinely below the metric were rejected above.
+        resolved = math.ceil(natural_line_height)
     return resolved
 
 
@@ -298,6 +387,8 @@ class WrappingMetrics:
     max_height: int
     width_budget: int
     line_height: float
+    natural_line_height: float
+    resolved_line_height: float
     vertical_decoration: int
     line_capacity: int
     font_size: int
@@ -323,7 +414,11 @@ def resolve_wrapping_metrics(
     text_measurer: TextMeasurer | None = None,
 ) -> WrappingMetrics:
     """Resolve the geometry-aware inputs used by adaptive cue wrapping."""
-    resolved = resolve_subtitle_config(config, geometry)
+    resolved = resolve_subtitle_config(
+        config,
+        geometry,
+        text_measurer=text_measurer,
+    )
     return _build_wrapping_metrics(
         resolved,
         geometry,
@@ -363,14 +458,19 @@ def _build_wrapping_metrics(
         raise ValidationError(
             "max-width is too small for the configured backdrop and shadow"
         )
-    if content_height < measurer.line_height:
-        required = math.ceil(measurer.line_height + vertical_decoration)
+    natural_line_height = measurer.natural_line_height
+    resolved_line_height = _require_line_height(config.appearance.line_height)
+    if content_height < natural_line_height:
+        required = math.ceil(natural_line_height + vertical_decoration)
         raise ValidationError(
             "max-height resolves to "
             f"{max_height}px, but at least {required}px is required for one "
             "subtitle line with the configured font and decorations"
         )
-    line_capacity = max(1, int(content_height // measurer.line_height))
+    line_capacity = max(
+        1,
+        1 + int((content_height - natural_line_height) // resolved_line_height),
+    )
     placement = _validated_explicit_placement(config, geometry)
     if layout.placement_mode is SubtitlePlacementMode.NATIVE_STYLE:
         region = resolve_native_layout_region(geometry, layout)
@@ -386,7 +486,9 @@ def _build_wrapping_metrics(
         max_width=max_width,
         max_height=max_height,
         width_budget=width_budget,
-        line_height=measurer.line_height,
+        line_height=resolved_line_height,
+        natural_line_height=natural_line_height,
+        resolved_line_height=resolved_line_height,
         vertical_decoration=vertical_decoration,
         line_capacity=line_capacity,
         font_size=_require_resolved_layout_int(
@@ -622,6 +724,17 @@ def _resolved_layout_int(value: int | RelativeLength, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValidationError(f"{field} must be an integer")
     return value
+
+
+def _require_line_height(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValidationError(
+            "line-height must be resolved against font metrics before layout use"
+        )
+    result = float(value)
+    if not math.isfinite(result) or result <= 0:
+        raise ValidationError("line-height must be a positive finite number")
+    return result
 
 
 def _require_resolved_layout_length(

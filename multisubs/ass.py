@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from numbers import Real
 from pathlib import Path
 from typing import Any
 
 from .config import validate_subtitle_config
-from .errors import ArtifactError
+from .errors import ArtifactError, ValidationError
 from .layout import (
+    WrappingMetrics,
     resolve_cue_placement,
+    resolve_native_layout_region,
     resolve_subtitle_config,
+    resolve_wrapping_metrics,
 )
 from .models import (
     AssDrawingEvent,
@@ -24,9 +28,11 @@ from .models import (
     SubtitleDisplayFragment,
     SubtitlePlacementMode,
     SubtitlePosition,
+    SubtitleVisualLine,
     VideoGeometry,
 )
 from .utils import atomic_write_text
+from .wrapping import build_visual_lines
 
 ASS_STYLE_FIELDS = (
     "font",
@@ -65,6 +71,17 @@ _ASS_ALIGNMENT_BY_POSITION = {
 }
 
 
+@dataclass(frozen=True)
+class _PositionedLine:
+    """One visual line and its resolved ASS anchor position."""
+
+    line: SubtitleVisualLine
+    anchor: SubtitlePosition
+    position_x: int
+    position_y: int
+    block_bounds: tuple[int, int, int, int]
+
+
 def write_ass(
     path: Path,
     segments: Sequence[Mapping[str, Any]],
@@ -74,6 +91,7 @@ def write_ass(
     placements: Sequence[CuePlacement | None] | None = None,
     guide_events: Sequence[AssDrawingEvent] | None = None,
     preserve_line_breaks: bool = False,
+    wrapping_metrics: WrappingMetrics | None = None,
 ) -> None:
     """Write safe ASS dialogue on the probed, autorotated video canvas.
 
@@ -85,12 +103,75 @@ def write_ass(
     if geometry.render_width <= 0 or geometry.render_height <= 0:
         raise ArtifactError("ASS canvas dimensions must be positive")
     config = resolve_subtitle_config(
-        validate_subtitle_config(subtitle_config), geometry
+        validate_subtitle_config(subtitle_config),
+        geometry,
+        text_measurer=(
+            wrapping_metrics.text_measurer if wrapping_metrics is not None else None
+        ),
+    )
+    metrics = wrapping_metrics or resolve_wrapping_metrics(
+        config,
+        geometry,
     )
     style = _compile_style(config, geometry)
     default_placement = resolve_cue_placement(config, geometry)
     if placements is not None and len(placements) != len(segments):
         raise ArtifactError("ASS cue placements must match the segment count")
+    positioned_lines: list[tuple[_PositionedLine, ...]] = []
+    backdrop_bounds: list[tuple[int, int, int, int] | None] = []
+    explicit_line_height = _uses_explicit_line_height(config)
+    for segment in segments:
+        karaoke_cue = segment.get("_karaoke_cue")
+        fragments = (
+            karaoke_cue.fragments
+            if isinstance(karaoke_cue, KaraokeCue)
+            else segment.get("display_fragments")
+        )
+        visual_lines = build_visual_lines(
+            str(segment.get("text", "")),
+            fragments
+            if isinstance(fragments, Sequence)
+            and not isinstance(fragments, (str, bytes))
+            and all(isinstance(item, SubtitleDisplayFragment) for item in fragments)
+            else None,
+            metrics,
+        )
+        placement = (
+            placements[len(positioned_lines)]
+            if placements is not None
+            else default_placement
+        )
+        if explicit_line_height and len(visual_lines) > 1:
+            line_layout = _position_visual_lines(
+                visual_lines,
+                config,
+                geometry,
+                metrics,
+                placement,
+            )
+            backdrop_bounds.append(line_layout[0].block_bounds if line_layout else None)
+            positioned_lines.append(line_layout)
+        else:
+            backdrop_bounds.append(None)
+            positioned_lines.append(())
+    needs_shared_backdrop = any(positioned_lines) and (
+        config.appearance.backdrop is SubtitleBackdrop.BOX
+    )
+    positioned_style_name = "Default"
+    positioned_style: dict[str, str | int] | None = None
+    if needs_shared_backdrop:
+        # BorderStyle 4 would draw one box per generated line. Keep Default
+        # unchanged for single-line cues and neutralize only the generated
+        # per-line text style; the vector event owns their complete box.
+        positioned_style_name = "Positioned"
+        positioned_style = dict(style)
+        positioned_style["border_style"] = 1
+        positioned_style["outline_weight"] = 0
+    style_lines = [_serialize_style_line("Default", style)]
+    if positioned_style is not None:
+        style_lines.append(
+            _serialize_style_line(positioned_style_name, positioned_style)
+        )
     lines = [
         "[Script Info]",
         "Title: multisubs generated subtitles",
@@ -105,9 +186,7 @@ def write_ass(
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
         "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, "
         "MarginR, MarginV, Encoding",
-        "Style: Default,"
-        + ",".join(str(style[field]) for field in ASS_STYLE_FIELDS)
-        + ",1",
+        *style_lines,
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
@@ -120,14 +199,105 @@ def write_ass(
         # across those releases, so keep the base style neutral and apply the
         # validated semantic weight through the trusted override path.
         generated_override = rf"{{\b{config.appearance.font_weight.rank}}}"
-        generated_override += (
-            serialize_ass_placement(placement) if placement is not None else ""
-        )
         if preserve_line_breaks:
             generated_override += r"{\q2}"
         cue_start = quantize_ass_centiseconds(segment["start"])
         cue_end = quantize_ass_centiseconds(segment["end"])
         karaoke_cue = segment.get("_karaoke_cue")
+        visual_line_events = positioned_lines[index]
+        if visual_line_events:
+            current_backdrop_bounds = backdrop_bounds[index]
+            if needs_shared_backdrop and current_backdrop_bounds is not None:
+                _append_shared_backdrop_event(
+                    lines,
+                    cue_start,
+                    cue_end,
+                    current_backdrop_bounds,
+                    config.appearance.backdrop_color,
+                    metrics.shadow_size,
+                    style_name=positioned_style_name,
+                )
+            line_overrides = [
+                generated_override
+                + serialize_ass_placement(
+                    CuePlacement(
+                        anchor=item.anchor,
+                        position_x=item.position_x,
+                        position_y=item.position_y,
+                    )
+                )
+                for item in visual_line_events
+            ]
+            if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
+                karaoke_cue, KaraokeCue
+            ):
+                for line_override, item in zip(
+                    line_overrides, visual_line_events, strict=True
+                ):
+                    for (
+                        event_start,
+                        event_end,
+                        event_text,
+                    ) in serialize_active_word_line_events(
+                        karaoke_cue,
+                        item.line.fragments,
+                        config,
+                        cue_start,
+                        cue_end,
+                    ):
+                        _append_dialogue_line(
+                            lines,
+                            event_start,
+                            event_end,
+                            line_override,
+                            event_text,
+                            layer=1,
+                            style_name=positioned_style_name,
+                        )
+                continue
+            if config.effects.mode is KaraokeMode.PROGRESSIVE and isinstance(
+                karaoke_cue, KaraokeCue
+            ):
+                for line_override, item in zip(
+                    line_overrides, visual_line_events, strict=True
+                ):
+                    for (
+                        event_start,
+                        event_end,
+                        event_text,
+                    ) in serialize_progressive_line_events(
+                        karaoke_cue,
+                        item.line.fragments,
+                        config,
+                        cue_start,
+                        cue_end,
+                    ):
+                        _append_dialogue_line(
+                            lines,
+                            event_start,
+                            event_end,
+                            line_override,
+                            event_text,
+                            layer=1,
+                            style_name=positioned_style_name,
+                        )
+                continue
+            for line_override, item in zip(
+                line_overrides, visual_line_events, strict=True
+            ):
+                _append_dialogue_line(
+                    lines,
+                    cue_start,
+                    cue_end,
+                    line_override,
+                    escape_ass_text(item.line.text),
+                    layer=1,
+                    style_name=positioned_style_name,
+                )
+            continue
+        generated_override += (
+            serialize_ass_placement(placement) if placement is not None else ""
+        )
         if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
             karaoke_cue, KaraokeCue
         ):
@@ -176,14 +346,186 @@ def _append_dialogue_line(
     end_centiseconds: int,
     generated_override: str,
     dialogue_text: str,
+    *,
+    layer: int = 0,
+    style_name: str = "Default",
 ) -> None:
     if end_centiseconds < start_centiseconds:
         raise ArtifactError("ASS dialogue end must not precede its start")
     lines.append(
+        f"Dialogue: {layer},"
+        f"{format_ass_centiseconds(start_centiseconds)},"
+        f"{format_ass_centiseconds(end_centiseconds)},"
+        f"{style_name},,0,0,0,,{generated_override}{dialogue_text}"
+    )
+
+
+def _serialize_style_line(
+    name: str,
+    style: Mapping[str, str | int],
+) -> str:
+    """Serialize one trusted internal ASS style in canonical field order."""
+    return (
+        f"Style: {name},"
+        + ",".join(str(style[field]) for field in ASS_STYLE_FIELDS)
+        + ",1"
+    )
+
+
+def _uses_explicit_line_height(config: SubtitleConfig) -> bool:
+    requested = config.appearance.line_height_requested
+    if requested is None:
+        requested = config.appearance.line_height
+    return not (isinstance(requested, str) and requested.casefold() == "auto")
+
+
+def _position_visual_lines(
+    visual_lines: Sequence[SubtitleVisualLine],
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    metrics: WrappingMetrics,
+    placement: CuePlacement | None,
+) -> tuple[_PositionedLine, ...]:
+    """Position visual lines around one stable native or explicit anchor."""
+    layout = config.layout
+    if placement is not None:
+        anchor = placement.anchor
+        anchor_x, anchor_y = placement.position_x, placement.position_y
+    else:
+        region = resolve_native_layout_region(geometry, layout)
+        anchor = layout.position
+        anchor_x, anchor_y = _native_anchor_point(anchor, region)
+
+    content_width = max((line.width for line in visual_lines), default=0.0)
+    padding = metrics.backdrop_size
+    shadow = metrics.shadow_size
+    block_width = _round_playres(content_width + 2 * padding + shadow)
+    block_height = _round_playres(
+        metrics.natural_line_height
+        + (len(visual_lines) - 1) * metrics.resolved_line_height
+        + 2 * padding
+        + shadow
+    )
+    if block_width > metrics.max_width:
+        raise ValidationError(
+            "Measured subtitle lines exceed the configured max-width envelope"
+        )
+    if block_height > metrics.max_height:
+        raise ValidationError(
+            "Measured subtitle lines exceed the configured max-height envelope"
+        )
+    block_left, block_top, block_right, block_bottom = _anchor_bounds(
+        anchor_x,
+        anchor_y,
+        block_width,
+        block_height,
+        anchor,
+    )
+    bounds = (block_left, block_top, block_right, block_bottom)
+    content_top = block_top + padding
+    result: list[_PositionedLine] = []
+    for line in visual_lines:
+        if anchor.value.startswith("top-"):
+            line_y = _round_playres(
+                content_top + line.index * metrics.resolved_line_height
+            )
+        elif anchor.value.startswith("bottom-"):
+            line_y = _round_playres(
+                content_top
+                + line.index * metrics.resolved_line_height
+                + metrics.natural_line_height
+            )
+        else:
+            line_y = _round_playres(
+                content_top
+                + line.index * metrics.resolved_line_height
+                + metrics.natural_line_height / 2
+            )
+        result.append(
+            _PositionedLine(
+                line=line,
+                anchor=anchor,
+                position_x=anchor_x,
+                position_y=line_y,
+                block_bounds=bounds,
+            )
+        )
+    return tuple(result)
+
+
+def _native_anchor_point(
+    position: SubtitlePosition,
+    region: Any,
+) -> tuple[int, int]:
+    if position.value.endswith("left"):
+        x = region.left
+    elif position.value.endswith("right"):
+        x = region.right
+    else:
+        x = (region.left + region.right) // 2
+    if position.value.startswith("top-"):
+        y = region.top
+    elif position.value.startswith("bottom-"):
+        y = region.bottom
+    else:
+        y = (region.top + region.bottom) // 2
+    return x, y
+
+
+def _round_playres(value: float) -> int:
+    return int(math.floor(float(value) + 0.5))
+
+
+def _anchor_bounds(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    anchor: SubtitlePosition,
+) -> tuple[int, int, int, int]:
+    if anchor.value.endswith("left"):
+        left, right = x, x + width
+    elif anchor.value.endswith("right"):
+        left, right = x - width, x
+    else:
+        left, right = x - width // 2, x + (width + 1) // 2
+    if anchor.value.startswith("top-"):
+        top, bottom = y, y + height
+    elif anchor.value.startswith("bottom-"):
+        top, bottom = y - height, y
+    else:
+        top, bottom = y - height // 2, y + (height + 1) // 2
+    return left, top, right, bottom
+
+
+def _append_shared_backdrop_event(
+    lines: list[str],
+    start_centiseconds: int,
+    end_centiseconds: int,
+    bounds: tuple[int, int, int, int],
+    color: str,
+    shadow_size: int,
+    *,
+    style_name: str,
+) -> None:
+    """Append one lower-layer vector backdrop for a positioned visual block."""
+    left, top, right, bottom = bounds
+    ass_color = rgba_to_ass_color(color)
+    alpha = ass_color[2:4]
+    bgr = ass_color[4:10]
+    path = (
+        f"m {left} {top} l {right} {top} l {right} {bottom} "
+        f"l {left} {bottom} l {left} {top}"
+    )
+    text = (
+        f"{{\\an7\\pos(0,0)\\p1\\1c&H{bgr}&\\1a&H{alpha}&"
+        f"\\3a&HFF&\\4a&HFF&\\bord0\\shad{shadow_size}}}{path}{{\\p0}}"
+    )
+    lines.append(
         "Dialogue: 0,"
         f"{format_ass_centiseconds(start_centiseconds)},"
         f"{format_ass_centiseconds(end_centiseconds)},"
-        f"Default,,0,0,0,,{generated_override}{dialogue_text}"
+        f"{style_name},,0,0,0,,{text}"
     )
 
 
@@ -440,8 +782,18 @@ def serialize_karaoke_cue(
     if highlight_color is None:
         raise ArtifactError("Karaoke highlight color is not resolved")
     _validate_karaoke_cue(cue)
-    fragments = cue.fragments
-    durations = cue.durations
+    return _serialize_karaoke_fragments(cue.fragments, cue.durations, config)
+
+
+def _serialize_karaoke_fragments(
+    fragments: Sequence[SubtitleDisplayFragment],
+    durations: Sequence[int],
+    config: SubtitleConfig,
+) -> str:
+    """Serialize one visual line while retaining cue-global word durations."""
+    highlight_color = config.effects.highlight_color
+    if highlight_color is None:
+        raise ArtifactError("Karaoke highlight color is not resolved")
     result = (
         "{"
         + rgba_to_ass_color_override(highlight_color, 1)
@@ -450,6 +802,8 @@ def serialize_karaoke_cue(
     )
     for fragment in fragments:
         if fragment.word_index is not None:
+            if fragment.word_index < 0 or fragment.word_index >= len(durations):
+                raise ArtifactError("Karaoke fragment word indexes are invalid")
             result += f"{{\\k{durations[fragment.word_index]}}}"
         result += escape_ass_text(fragment.text)
     return result
@@ -500,11 +854,182 @@ def serialize_active_word_events(
     return tuple(events)
 
 
+def serialize_progressive_line_events(
+    cue: KaraokeCue,
+    fragments: Sequence[SubtitleDisplayFragment],
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+) -> tuple[tuple[int, int, str], ...]:
+    """Serialize one visual line with cue-relative progressive colors.
+
+    A standalone ASS event starts its karaoke clock at the event start.  A
+    per-line event therefore cannot use only the line's local ``\\k`` tags:
+    words on later visual lines would highlight at cue start.  Explicit
+    line-height rendering uses stable intervals instead, changing each line's
+    color state at the original cue-global word boundaries.
+    """
+    if config.effects.mode is not KaraokeMode.PROGRESSIVE:
+        raise ArtifactError("Progressive line events require progressive karaoke mode")
+    _validate_karaoke_cue(cue)
+    if cue_end < cue_start:
+        raise ArtifactError("Karaoke line timestamps are invalid")
+    duration = cue_end - cue_start
+    if sum(cue.durations) != duration:
+        raise ArtifactError("Karaoke durations must conserve cue duration")
+
+    boundaries = [cue_start]
+    for word_duration in cue.durations:
+        boundaries.append(boundaries[-1] + word_duration)
+
+    events: list[tuple[int, int, str]] = []
+    for activated_count, (start, end) in enumerate(
+        zip(boundaries[:-1], boundaries[1:], strict=True)
+    ):
+        if end <= start:
+            continue
+        events.append(
+            (
+                start,
+                end,
+                _serialize_progressive_state(
+                    fragments,
+                    config,
+                    activated_count,
+                    duration=end - start,
+                ),
+            )
+        )
+    if not events:
+        events.append(
+            (
+                cue_start,
+                cue_end,
+                _serialize_progressive_state(
+                    fragments,
+                    config,
+                    len(cue.durations),
+                ),
+            )
+        )
+    return tuple(events)
+
+
+def _serialize_progressive_state(
+    fragments: Sequence[SubtitleDisplayFragment],
+    config: SubtitleConfig,
+    activated_count: int,
+    *,
+    duration: int | None = None,
+) -> str:
+    """Compile one progressive interval for a visual line.
+
+    The active word, when present on this line, retains a ``\\k`` tag for the
+    interval's original duration.  Earlier words are statically highlighted;
+    later words remain in the normal color.  This keeps the word sweep while
+    ensuring a line event starts at the cue-global word boundary.
+    """
+    highlight_color = config.effects.highlight_color
+    if highlight_color is None:
+        raise ArtifactError("Karaoke highlight color is not resolved")
+    if activated_count < 0:
+        raise ArtifactError("Progressive activation count must be non-negative")
+    normal_override = (
+        "{" + rgba_to_ass_color_override(config.appearance.text_color, 1) + "}"
+    )
+    highlight_override = "{" + rgba_to_ass_color_override(highlight_color, 1) + "}"
+    progressive_setup = (
+        "{"
+        + rgba_to_ass_color_override(highlight_color, 1)
+        + rgba_to_ass_color_override(config.appearance.text_color, 2)
+        + "}"
+    )
+    result = normal_override
+    for fragment in fragments:
+        if not isinstance(fragment, SubtitleDisplayFragment):
+            raise ArtifactError("Karaoke fragments must use the typed display contract")
+        if fragment.word_index is not None:
+            if fragment.word_index < 0:
+                raise ArtifactError("Karaoke fragment word indexes are invalid")
+            if fragment.word_index < activated_count:
+                result += highlight_override
+            elif (
+                duration is not None
+                and fragment.word_index == activated_count
+                and duration > 0
+            ):
+                result += progressive_setup + f"{{\\k{duration}}}"
+            else:
+                result += normal_override
+        result += escape_ass_text(fragment.text)
+    return result
+
+
+def serialize_active_word_line_events(
+    cue: KaraokeCue,
+    fragments: Sequence[SubtitleDisplayFragment],
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+) -> tuple[tuple[int, int, str], ...]:
+    """Serialize active-word intervals for one visual line of a cue."""
+    if config.effects.mode is not KaraokeMode.ACTIVE_WORD:
+        raise ArtifactError("Active-word events require active-word karaoke mode")
+    _validate_karaoke_cue(cue)
+    if cue_end < cue_start or len(cue.active_intervals) != len(cue.durations):
+        raise ArtifactError("Karaoke line timestamps are invalid")
+    plain_text = escape_ass_text("".join(fragment.text for fragment in fragments))
+    events: list[tuple[int, int, str]] = []
+    cursor = cue_start
+    for word_index, interval in enumerate(cue.active_intervals):
+        if (
+            not isinstance(interval, tuple)
+            or len(interval) != 2
+            or any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in interval
+            )
+        ):
+            raise ArtifactError("Active-word intervals must use integer boundaries")
+        start, end = interval
+        if start < cursor or end < start or end > cue_end:
+            raise ArtifactError("Active-word intervals must be ordered inside the cue")
+        if cursor < start:
+            events.append((cursor, start, plain_text))
+        if start < end:
+            events.append(
+                (
+                    start,
+                    end,
+                    _serialize_active_word_fragments(
+                        fragments,
+                        config,
+                        word_index,
+                    ),
+                )
+            )
+        cursor = end
+    if cursor < cue_end:
+        events.append((cursor, cue_end, plain_text))
+    if not events:
+        events.append((cue_start, cue_end, plain_text))
+    return tuple(events)
+
+
 def _serialize_active_word_text(
     cue: KaraokeCue,
     config: SubtitleConfig,
     active_word_index: int,
 ) -> str:
+    return _serialize_active_word_fragments(cue.fragments, config, active_word_index)
+
+
+def _serialize_active_word_fragments(
+    fragments: Sequence[SubtitleDisplayFragment],
+    config: SubtitleConfig,
+    active_word_index: int,
+) -> str:
+    """Apply one active-word color to a fragment subset."""
     highlight_color = config.effects.highlight_color
     if highlight_color is None:
         raise ArtifactError("Karaoke highlight color is not resolved")
@@ -513,7 +1038,7 @@ def _serialize_active_word_text(
     )
     highlight_override = "{" + rgba_to_ass_color_override(highlight_color, 1) + "}"
     result = normal_override
-    for fragment in cue.fragments:
+    for fragment in fragments:
         if fragment.word_index == active_word_index:
             result += (
                 highlight_override + escape_ass_text(fragment.text) + normal_override

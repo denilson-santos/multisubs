@@ -280,7 +280,13 @@ def test_preview_guides_serialize_native_or_explicit_geometry(
         )
     resolved = resolve_subtitle_config(config, GEOMETRY)
     metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
-    events = build_preview_guide_events(resolved, GEOMETRY, metrics, 1.0)
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        1.0,
+        display_text="sample",
+    )
 
     assert events
     assert any("\\p1" in event.text for event in events)
@@ -313,7 +319,13 @@ def test_preview_guide_explicit_anchor_is_custom_coordinate():
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
     metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
-    events = build_preview_guide_events(resolved, GEOMETRY, metrics, 0.0)
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        0.0,
+        display_text="sample",
+    )
     assert any("m 24 684" in event.text for event in events)
 
 
@@ -332,10 +344,55 @@ def test_preview_guides_report_requested_and_resolved_letter_spacing():
         GEOMETRY,
         metrics,
         0.0,
+        display_text="sample",
         requested_config=config,
     )
 
     assert any("Letter spacing: 4% (2px resolved)" in event.text for event in events)
+
+
+def test_preview_guides_report_requested_and_resolved_line_height():
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "line_height": "125%",
+        },
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        0.0,
+        display_text="first\nsecond",
+        requested_config=config,
+    )
+
+    assert any("Line height: 125%" in event.text for event in events)
+    assert any("Line capacity:" in event.text for event in events)
+    assert any("Render strategy: positioned-lines" in event.text for event in events)
+
+
+def test_preview_guides_report_single_event_for_one_visual_line():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"line_height": "125%"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
+
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        0.0,
+        display_text="one visual line",
+        requested_config=config,
+    )
+
+    assert any("Render strategy: single-event" in event.text for event in events)
 
 
 def test_preview_run_branches_before_whisper_runtime_import(
