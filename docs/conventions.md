@@ -256,6 +256,11 @@ Update a higher-level document when a proposed change intentionally modifies the
 
 ### Typography measurement
 
+- Must apply text-case transformations to untrusted plain-text display
+  fragments before measurement, wrapping, and ASS escaping. Use Python's
+  locale-independent Unicode `upper`/`lower` behavior, retain the original
+  aligned-word identity and timing, and never retokenize transformed strings
+  to reconstruct karaoke timing.
 - Must apply letter spacing in the shared measurement layer used by both
   concrete-font and Unicode-estimate modes before wrapping or cue splitting.
 - Must count one tracking gap between consecutive rendered grapheme clusters on

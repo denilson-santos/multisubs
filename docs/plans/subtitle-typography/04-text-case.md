@@ -1,6 +1,8 @@
 # Text case
 
-Status: Planned
+Status: In review
+
+Delivery branch: `feat/subtitle-text-case`
 
 Depends on:
 
@@ -106,17 +108,17 @@ migration decision before coding.
 
 ## Implementation tasks
 
-- [ ] Add the `TextCase` enum, default, strict parser, and typed revalidation.
-- [ ] Wire `--text-case` into CLI help and request construction.
-- [ ] Add one shared Unicode display-fragment transformer before measurement
+- [x] Add the `TextCase` enum, default, strict parser, and typed revalidation.
+- [x] Wire `--text-case` into CLI help and request construction.
+- [x] Add one shared Unicode display-fragment transformer before measurement
   and wrapping while preserving original source data.
-- [ ] Use transformed fragments in normal cues, both karaoke modes, SRT, ASS,
+- [x] Use transformed fragments in normal cues, both karaoke modes, SRT, ASS,
   preview, width measurement, and height capacity.
-- [ ] Record selected mode and transformed display text in JSON without
+- [x] Record selected mode and transformed display text in JSON without
   replacing original transcript and alignment fields.
-- [ ] Add focused configuration, CLI, Unicode, wrapping, SRT, ASS, preview,
+- [x] Add focused configuration, CLI, Unicode, wrapping, SRT, ASS, preview,
   karaoke, metadata, and default-output tests.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, and package status.
+- [x] Update README.md, docs/prd.md, docs/architecture.md, and package status.
 
 ## Unit tests
 
