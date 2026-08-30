@@ -364,6 +364,34 @@ def test_write_ass_reuses_supplied_wrapping_metrics(tmp_path: Path, monkeypatch)
     assert path.exists()
 
 
+def test_auto_line_height_skips_wrapping_metrics_in_ass_writer(
+    tmp_path: Path,
+    monkeypatch,
+):
+    path = tmp_path / "auto-line-height.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "18px",
+            "max_height": "9px",
+        },
+    )
+
+    def reject_resolution(*args, **kwargs):
+        pytest.fail("auto line height resolved wrapping metrics in the ASS writer")
+
+    monkeypatch.setattr("multisubs.ass.resolve_wrapping_metrics", reject_resolution)
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "sample"}],
+        config,
+        GEOMETRY,
+    )
+
+    assert path.exists()
+
+
 def test_explicit_progressive_lines_keep_cue_global_word_boundaries(
     tmp_path: Path,
 ):

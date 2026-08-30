@@ -109,18 +109,23 @@ def write_ass(
             wrapping_metrics.text_measurer if wrapping_metrics is not None else None
         ),
     )
-    metrics = wrapping_metrics or resolve_wrapping_metrics(
-        config,
-        geometry,
-    )
+    explicit_line_height = _uses_explicit_line_height(config)
+    metrics = wrapping_metrics
+    if explicit_line_height and metrics is None:
+        metrics = resolve_wrapping_metrics(config, geometry)
     style = _compile_style(config, geometry)
     default_placement = resolve_cue_placement(config, geometry)
     if placements is not None and len(placements) != len(segments):
         raise ArtifactError("ASS cue placements must match the segment count")
     positioned_lines: list[tuple[_PositionedLine, ...]] = []
     backdrop_bounds: list[tuple[int, int, int, int] | None] = []
-    explicit_line_height = _uses_explicit_line_height(config)
     for segment in segments:
+        if not explicit_line_height:
+            backdrop_bounds.append(None)
+            positioned_lines.append(())
+            continue
+        if metrics is None:
+            raise ArtifactError("Explicit line height requires wrapping metrics")
         karaoke_cue = segment.get("_karaoke_cue")
         fragments = (
             karaoke_cue.fragments
@@ -206,6 +211,10 @@ def write_ass(
         karaoke_cue = segment.get("_karaoke_cue")
         visual_line_events = positioned_lines[index]
         if visual_line_events:
+            if metrics is None:
+                raise ArtifactError(
+                    "Positioned subtitle lines require wrapping metrics"
+                )
             current_backdrop_bounds = backdrop_bounds[index]
             if needs_shared_backdrop and current_backdrop_bounds is not None:
                 _append_shared_backdrop_event(
