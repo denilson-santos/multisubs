@@ -1,8 +1,8 @@
 # Subtitle opacity
 
-Status: In review
+Status: Done
 
-Delivery branch: `feat/subtitle-opacity`
+Delivery: [#46](https://github.com/denilson-santos/multisubs/pull/46)
 
 Depends on:
 

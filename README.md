@@ -113,6 +113,7 @@ multisubs \
 | --line-height auto\|LENGTH | auto | Set the baseline distance between visual lines; auto keeps the measured font metrics. |
 | --text-color COLOR | #FFFFFF | Set text color using #RRGGBB or #RRGGBBAA. |
 | --opacity PERCENT | 100% | Multiply the opacity of the complete subtitle composition while preserving component alpha. |
+| --text-case MODE | original | Preserve the transcription case or display subtitles in uppercase or lowercase. |
 | --font-weight WEIGHT | regular (400) | Select a named or numeric font weight from 100 through 900. |
 | --bold, --no-bold | off | Compatibility shorthand for bold (700) or regular (400). |
 | --italic, --no-italic | off | Enable or disable italic text. |
@@ -237,6 +238,22 @@ already configured as `#RRGGBB80` resolves near alpha `40`. `100%` preserves
 the configured colors and `0%` makes all subtitle layers transparent without
 removing their cues. Preview and final rendering use the same effective palette;
 JSON records both base and effective component colors.
+
+`--text-case` accepts `original`, `uppercase`, or `lowercase`; values are
+case-insensitive and the default is `original`. Conversion uses Python's
+Unicode casing before text measurement and wrapping, so length-changing cases
+such as German `Straße` becoming `STRASSE` can change line or cue breaks:
+
+~~~
+multisubs -i ./video.mp4 --text-case uppercase
+multisubs -i ./video.mp4 --text-case lowercase --preview-layout
+~~~
+
+The transform is locale-independent. It does not infer language-specific rules
+such as Turkish dotted/dotless I. SRT, ASS, preview, and the rendered video use
+the selected display case. JSON retains the original transcript, original cue
+text, and aligned words, and adds each cue's transformed `display_text` plus
+the requested/resolved text-case mode.
 
 ### Word-timed karaoke highlighting
 
@@ -370,8 +387,10 @@ the preset's alignment:
 ### Adaptive subtitle wrapping
 
 Subtitle cues are first built from semantic word and timing boundaries. The
-selected layout then supplies maximum width and height, font size, letter
-spacing, line height, and backdrop/shadow allowances. Whenever the requested or substituted font
+selected text-case transform is applied to display fragments while their
+original word identities and timestamps remain attached. The selected layout
+then supplies maximum width and height, font size, letter spacing, line height,
+and backdrop/shadow allowances. Whenever the requested or substituted font
 can be resolved, Pillow measures its glyph advances with the resolved size and
 style; RAQM supplies direction- and language-aware shaping when available. If a
 concrete face cannot be resolved, a Unicode-aware fallback estimates
@@ -386,8 +405,9 @@ advance, backdrop, and shadow; it is not a fixed `max-lines` setting. When a bre
 evaluates partitions up to that capacity, preserves semantic boundary priority,
 and avoids an unnecessary one-word final line before comparing visual balance.
 Long unbroken tokens remain intact and may overflow; text is never truncated or
-silently changed. SRT and ASS receive the same intentional line breaks, while
-JSON keeps the existing `text` field contract.
+silently changed. SRT and ASS receive the same transformed display text and
+intentional line breaks. JSON keeps original cue text in `text` and records the
+corresponding rendered form in `display_text`.
 
 Use maximum dimensions when the subtitle should occupy a smaller visual area or
 allow a different vertical line capacity:
@@ -414,9 +434,9 @@ multisubs -i ./video.mp4 -o ./previews \
 
 `--preview-at` uses `HH:MM:SS.mmm`. When it is omitted, multisubs uses the
 video midpoint; if the container duration is unavailable, it uses the first
-frame. The sample text is normalized and wrapped with the same resolved font,
-maximum width, maximum height, and line-capacity rules used by a transcription
-run. Appearance, layout, relative-unit, coordinate, and font-directory options
+frame. The sample text is normalized, case-transformed, and wrapped with the
+same resolved font, maximum width, maximum height, and line-capacity rules used
+by a transcription run. Appearance, layout, relative-unit, coordinate, and font-directory options
 are honored. Language, task, and model options are accepted but have no effect
 in preview mode; `--keep-transcriptions` is rejected because previews do not
 create transcription artifacts.

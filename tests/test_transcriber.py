@@ -188,6 +188,62 @@ def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
     assert metrics.line_capacity == 1
 
 
+def test_text_case_expansion_is_measured_before_timed_cue_splitting():
+    words = [_word("Straße", 0.0, 0.4), _word("x", 0.5, 1.0)]
+    semantic = [{"start": 0.0, "end": 1.0, "text": "Straße x", "words": words}]
+    relative_values = {
+        "font_size": "20px",
+        "max_width": "85px",
+        "max_height": "30px",
+        "shadow_weight": "0px",
+    }
+    original = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            appearance_values={"backdrop": "none"},
+            relative_values=relative_values,
+        ),
+        GEOMETRY,
+    )
+    uppercase = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            appearance_values={"backdrop": "none", "text_case": "uppercase"},
+            relative_values=relative_values,
+        ),
+        GEOMETRY,
+    )
+
+    def measurer() -> TextMeasurer:
+        return TextMeasurer(
+            TextMeasurementInfo(
+                mode="font-metrics",
+                requested_font="Roboto",
+                resolved_font="Roboto",
+                resolved_style="Regular",
+                font_source="fonts-dir",
+                shaping="raqm",
+                metric_size=20,
+            ),
+            lambda value: len(value) * 10.0,
+            line_height=20.0,
+        )
+
+    original_display, _ = transcriber.layout_subtitle_cues(
+        semantic, original, GEOMETRY, text_measurer=measurer()
+    )
+    uppercase_display, _ = transcriber.layout_subtitle_cues(
+        semantic, uppercase, GEOMETRY, text_measurer=measurer()
+    )
+
+    assert [cue["text"] for cue in original_display] == ["Straße x"]
+    assert [cue["text"] for cue in uppercase_display] == ["STRASSE", "X"]
+    assert [word["word"] for cue in uppercase_display for word in cue["words"]] == [
+        "Straße",
+        "x",
+    ]
+
+
 def test_adaptive_wrapping_keeps_long_unbroken_tokens_intact():
     config = validate_subtitle_config(
         None,
@@ -588,6 +644,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "resolved_weight": None,
             "weight_substituted": None,
         },
+        "text_case": {"requested": "original", "resolved": "original"},
         "opacity": {
             "requested": "100%",
             "percentage": 100,
@@ -795,6 +852,100 @@ def test_opacity_json_records_base_and_effective_component_colors(tmp_path: Path
     assert "&HD5332211" in ass
     assert "&HCD665544" in ass
     assert r"\1c&H998877&\1a&HC1&" in ass
+
+
+def test_text_case_artifacts_preserve_original_json_and_transform_display_text(
+    tmp_path: Path,
+):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    words = [
+        _word("Olá", 0.0, 0.4, score=0.9),
+        _word("Straße", 0.5, 1.0, score=0.8),
+    ]
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="pt",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Olá Straße",
+        segments=(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Olá Straße",
+                "words": words,
+            },
+        ),
+    )
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"text_case": "uppercase"},
+    )
+
+    json_path, srt_path, ass_path = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        config,
+        geometry=GEOMETRY,
+    )
+
+    payload = json.loads(Path(json_path).read_text(encoding="utf-8"))
+    assert payload["metadata"]["rendering"]["text_case"] == {
+        "requested": "uppercase",
+        "resolved": "uppercase",
+    }
+    assert payload["transcription"]["text"] == "Olá Straße"
+    segment = payload["transcription"]["segments"][0]
+    assert segment["text"] == "Olá Straße"
+    assert segment["display_text"] == "OLÁ STRASSE"
+    assert segment["words"] == words
+    assert "OLÁ STRASSE" in Path(srt_path).read_text(encoding="utf-8")
+    assert "OLÁ STRASSE" in Path(ass_path).read_text(encoding="utf-8")
+    assert "Olá Straße" not in Path(ass_path).read_text(encoding="utf-8")
+
+
+def test_explicit_original_text_case_preserves_default_artifacts(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Mixed Case",
+        segments=(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Mixed Case",
+                "words": [_word("Mixed", 0.0, 0.4), _word("Case", 0.5, 1.0)],
+            },
+        ),
+    )
+
+    default_paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "default",
+        validate_subtitle_config(None),
+        geometry=GEOMETRY,
+    )
+    explicit_paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "explicit",
+        validate_subtitle_config(None, appearance_values={"text_case": "original"}),
+        geometry=GEOMETRY,
+    )
+
+    assert Path(default_paths[1]).read_bytes() == Path(explicit_paths[1]).read_bytes()
+    assert Path(default_paths[2]).read_bytes() == Path(explicit_paths[2]).read_bytes()
+    default_json = json.loads(Path(default_paths[0]).read_text(encoding="utf-8"))
+    explicit_json = json.loads(Path(explicit_paths[0]).read_text(encoding="utf-8"))
+    default_json["metadata"]["created_at"] = None
+    explicit_json["metadata"]["created_at"] = None
+    assert default_json == explicit_json
 
 
 def test_write_transcription_artifacts_does_not_load_model_runtime(

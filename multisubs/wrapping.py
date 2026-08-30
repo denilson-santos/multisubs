@@ -7,7 +7,7 @@ from functools import cache
 from typing import Any
 
 from .layout import WrappingMetrics, estimate_text_width
-from .models import SubtitleDisplayFragment, SubtitleVisualLine
+from .models import SubtitleDisplayFragment, SubtitleVisualLine, TextCase
 
 PAUSE_BREAK_THRESHOLD = 0.45
 
@@ -15,6 +15,17 @@ PAUSE_BREAK_THRESHOLD = 0.45
 def normalise_display_text(text: str) -> str:
     """Normalize physical line endings and whitespace for display text."""
     return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
+
+
+def transform_display_text(text: str, text_case: TextCase) -> str:
+    """Apply one typed, locale-independent case transform to plain text."""
+    if text_case is TextCase.ORIGINAL:
+        return text
+    if text_case is TextCase.UPPERCASE:
+        return text.upper()
+    if text_case is TextCase.LOWERCASE:
+        return text.lower()
+    raise ValueError("text_case must use the typed TextCase contract")
 
 
 def has_multiple_visual_lines(text: str) -> bool:

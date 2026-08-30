@@ -1,8 +1,10 @@
 from fractions import Fraction
 
+import pytest
+
 from multisubs.config import validate_subtitle_config
 from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
-from multisubs.models import VideoGeometry
+from multisubs.models import TextCase, VideoGeometry
 from multisubs.text_measurement import build_unicode_text_measurer
 from multisubs.wrapping import (
     build_display_fragments,
@@ -10,6 +12,7 @@ from multisubs.wrapping import (
     fit_first_text_segment,
     has_multiple_visual_lines,
     split_words_for_layout,
+    transform_display_text,
     wrap_subtitle_text,
 )
 
@@ -56,6 +59,23 @@ def test_shared_wrapping_accounts_for_letter_spacing():
 
     assert wrap_subtitle_text(text, metrics=compact) == text
     assert wrap_subtitle_text(text, metrics=spaced) == "aa\nbb"
+
+
+@pytest.mark.parametrize(
+    ("text", "text_case", "expected"),
+    [
+        ("Olá, ação!", TextCase.UPPERCASE, "OLÁ, AÇÃO!"),
+        ("Straße", TextCase.UPPERCASE, "STRASSE"),
+        ("ΟΣ Σ", TextCase.LOWERCASE, "ος σ"),
+        ("Cafe\u0301", TextCase.UPPERCASE, "CAFE\u0301"),
+        ("字幕 😀 مرحبا", TextCase.UPPERCASE, "字幕 😀 مرحبا"),
+        ("i ı İ I", TextCase.UPPERCASE, "I I İ I"),
+        (r"unsafe {\an9}", TextCase.UPPERCASE, r"UNSAFE {\AN9}"),
+        ("Already Mixed", TextCase.ORIGINAL, "Already Mixed"),
+    ],
+)
+def test_display_text_case_uses_unicode_default_casing(text, text_case, expected):
+    assert transform_display_text(text, text_case) == expected
 
 
 def test_timed_word_splitting_uses_the_same_spacing_adjusted_budget():

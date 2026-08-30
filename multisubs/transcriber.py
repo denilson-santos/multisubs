@@ -41,6 +41,7 @@ from .models import (
     SubtitleLayoutPreset,
     SubtitlePlacementMode,
     SubtitlePosition,
+    TextCase,
     TranscriptDocument,
     TranscriptionPaths,
     VideoGeometry,
@@ -86,6 +87,7 @@ from .wrapping import (
 from .wrapping import (
     split_words_for_layout as _wrapping_split_words_for_layout,
 )
+from .wrapping import transform_display_text as _wrapping_transform_display_text
 from .wrapping import (
     words_to_text as _wrapping_words_to_text,
 )
@@ -765,6 +767,7 @@ def layout_subtitle_cues(
     metrics = wrapping_metrics or resolve_wrapping_metrics(
         resolved_config, geometry, language=language, text_measurer=text_measurer
     )
+    text_case = resolved_config.appearance.text_case
     display_cues: list[dict[str, Any]] = []
     for segment in segments:
         semantic_text = segment.get("semantic_text", segment.get("text", ""))
@@ -781,15 +784,20 @@ def layout_subtitle_cues(
             else []
         )
         if words:
-            groups = _split_words_for_layout(words, metrics)
-            for group in groups:
-                group_text = _words_to_text(group)
+            display_words = _transform_display_words(words, text_case)
+            display_groups = _split_words_for_layout(display_words, metrics)
+            source_offset = 0
+            for display_group in display_groups:
+                source_group = words[source_offset : source_offset + len(display_group)]
+                source_offset += len(display_group)
                 _append_display_cue(
                     display_cues,
-                    group_text,
-                    float(group[0]["start"]),
-                    float(group[-1]["end"]),
-                    group,
+                    _words_to_text(source_group),
+                    _words_to_text(display_group),
+                    float(source_group[0]["start"]),
+                    float(source_group[-1]["end"]),
+                    source_group,
+                    display_group,
                     metrics,
                 )
             continue
@@ -797,8 +805,10 @@ def layout_subtitle_cues(
         _append_display_cue(
             display_cues,
             semantic_text,
+            _transform_display_text(semantic_text, text_case),
             float(segment["start"]),
             float(segment["end"]),
+            [],
             [],
             metrics,
         )
@@ -811,16 +821,24 @@ def layout_subtitle_cues(
 def _append_display_cue(
     cues: list[dict[str, Any]],
     semantic_text: str,
+    unwrapped_display_text: str,
     start: float,
     end: float,
     words: Sequence[Mapping[str, Any]],
+    display_words: Sequence[Mapping[str, Any]],
     metrics: WrappingMetrics,
 ) -> None:
     if end < start or start < 0:
         raise TranscriptionError("Subtitle cue has invalid timestamps")
-    display_text = _wrap_subtitle_text(semantic_text, words, metrics=metrics)
+    display_text = _wrap_subtitle_text(
+        unwrapped_display_text,
+        display_words or None,
+        metrics=metrics,
+    )
     display_fragments = (
-        _wrapping_build_display_fragments(display_text, words) if words else None
+        _wrapping_build_display_fragments(display_text, display_words)
+        if display_words
+        else None
     )
     cues.append(
         {
@@ -836,6 +854,20 @@ def _append_display_cue(
     )
 
 
+def _transform_display_words(
+    words: Sequence[Mapping[str, Any]], text_case: TextCase
+) -> list[dict[str, Any]]:
+    """Transform word text while retaining timing fields and source order."""
+    transformed: list[dict[str, Any]] = []
+    for word in words:
+        display_word = dict(word)
+        display_word["word"] = _transform_display_text(
+            str(word.get("word", "")), text_case
+        )
+        transformed.append(display_word)
+    return transformed
+
+
 def prepare_karaoke_cues(
     segments: Sequence[Mapping[str, Any]],
     resolved_config: SubtitleConfig,
@@ -847,7 +879,9 @@ def prepare_karaoke_cues(
         prepared_segment = dict(segment)
         prepared_segment.pop("_karaoke_cue", None)
         if resolved_config.effects.karaoke:
-            karaoke_cue = _prepare_karaoke_cue(segment)
+            karaoke_cue = _prepare_karaoke_cue(
+                segment, resolved_config.appearance.text_case
+            )
             if karaoke_cue is None:
                 fallback_cues += 1
             else:
@@ -856,7 +890,9 @@ def prepare_karaoke_cues(
     return prepared, fallback_cues
 
 
-def _prepare_karaoke_cue(segment: Mapping[str, Any]) -> KaraokeCue | None:
+def _prepare_karaoke_cue(
+    segment: Mapping[str, Any], text_case: TextCase = TextCase.ORIGINAL
+) -> KaraokeCue | None:
     raw_words = segment.get("words")
     if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
         return None
@@ -880,7 +916,8 @@ def _prepare_karaoke_cue(segment: Mapping[str, Any]) -> KaraokeCue | None:
         fragments = tuple(raw_fragments)
     else:
         fragments = _wrapping_build_display_fragments(
-            str(segment.get("text", "")), words
+            str(segment.get("text", "")),
+            _transform_display_words(words, text_case),
         )
     if fragments is None:
         return None
@@ -1079,6 +1116,10 @@ def _write_json(
                     "position_y": "render-height" if explicit else None,
                 },
                 "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
+                "text_case": {
+                    "requested": subtitle_config.appearance.text_case.value,
+                    "resolved": resolved_subtitle_config.appearance.text_case.value,
+                },
                 "opacity": {
                     "requested": subtitle_config.appearance.opacity.original,
                     "percentage": _decimal_json_number(
@@ -1193,13 +1234,22 @@ def _line_height_render_strategy(
 
 
 def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
-    """Keep internal semantic/display helpers out of the JSON contract."""
-    return {
+    """Expose original and display text without internal rendering helpers."""
+    serializable = {
         key: value
         for key, value in segment.items()
         if key
-        not in {"semantic_text", "display_text", "display_fragments", "_karaoke_cue"}
+        not in {
+            "text",
+            "semantic_text",
+            "display_text",
+            "display_fragments",
+            "_karaoke_cue",
+        }
     }
+    serializable["text"] = segment.get("semantic_text", segment.get("text", ""))
+    serializable["display_text"] = segment.get("display_text", segment.get("text", ""))
+    return serializable
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
@@ -1278,5 +1328,6 @@ _join_text_parts = _wrapping_join_text_parts
 _line_count = _wrapping_line_count
 _normalise_display_text = _wrapping_normalise_display_text
 _split_words_for_layout = _wrapping_split_words_for_layout
+_transform_display_text = _wrapping_transform_display_text
 _wrap_subtitle_text = _wrapping_wrap_subtitle_text
 _words_to_text = _wrapping_words_to_text

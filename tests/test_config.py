@@ -14,12 +14,14 @@ from multisubs.config import (
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
+    TEXT_CASE_CHOICES,
     get_layout_preset,
     parse_font_weight,
     parse_layout_preset,
     parse_opacity,
     parse_position,
     parse_relative_length,
+    parse_text_case,
     validate_subtitle_config,
 )
 from multisubs.errors import ValidationError
@@ -33,6 +35,7 @@ from multisubs.models import (
     SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
+    TextCase,
 )
 
 
@@ -110,8 +113,10 @@ def test_default_appearance_is_semantic_and_resolution_independent():
     assert appearance.backdrop_size == parse_relative_length("0px")
     assert appearance.shadow_size == parse_relative_length("4%")
     assert appearance.opacity == SubtitleOpacity(Decimal("100"), "100%")
+    assert appearance.text_case is TextCase.ORIGINAL
     assert appearance.fonts_dir is None
     assert BACKDROP_CHOICES == ("none", "outline", "box")
+    assert TEXT_CASE_CHOICES == ("original", "uppercase", "lowercase")
 
 
 def test_default_position_is_bottom_center_and_choices_are_named():
@@ -187,6 +192,31 @@ def test_opacity_accepts_explicit_bounded_percentages(raw_value, percentage):
 def test_opacity_rejects_ambiguous_or_out_of_range_values(raw_value):
     with pytest.raises(ValidationError, match="opacity"):
         parse_opacity(raw_value)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("original", TextCase.ORIGINAL),
+        ("UPPERCASE", TextCase.UPPERCASE),
+        (" LowerCase ", TextCase.LOWERCASE),
+        (TextCase.ORIGINAL, TextCase.ORIGINAL),
+    ],
+)
+def test_text_case_accepts_canonical_case_insensitive_values(raw_value, expected):
+    assert parse_text_case(raw_value) is expected
+    assert (
+        validate_subtitle_config(
+            None, appearance_values={"text_case": raw_value}
+        ).appearance.text_case
+        is expected
+    )
+
+
+@pytest.mark.parametrize("raw_value", ["", "titlecase", "upper", 1, True, None])
+def test_text_case_rejects_empty_unknown_or_non_text_values(raw_value):
+    with pytest.raises(ValidationError, match="text-case"):
+        parse_text_case(raw_value)
 
 
 def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
@@ -541,6 +571,17 @@ def test_typed_opacity_metadata_is_revalidated():
     )
 
     with pytest.raises(ValidationError, match="opacity metadata"):
+        validate_subtitle_config(inconsistent)
+
+
+def test_typed_text_case_is_revalidated():
+    config = validate_subtitle_config(None)
+    inconsistent = replace(
+        config,
+        appearance=replace(config.appearance, text_case=cast(Any, "uppercase")),
+    )
+
+    with pytest.raises(ValidationError, match="typed TextCase"):
         validate_subtitle_config(inconsistent)
 
 

@@ -69,6 +69,14 @@ class FontWeightInputForm(str, Enum):
     BOLD_SHORTHAND = "bold-shorthand"
 
 
+class TextCase(str, Enum):
+    """Supported locale-independent subtitle display casing modes."""
+
+    ORIGINAL = "original"
+    UPPERCASE = "uppercase"
+    LOWERCASE = "lowercase"
+
+
 class KaraokeMode(str, Enum):
     """Supported word-highlight timing policies."""
 
@@ -102,6 +110,7 @@ class SubtitleAppearance:
     opacity: SubtitleOpacity = field(
         default_factory=lambda: SubtitleOpacity(Decimal(100), "100%")
     )
+    text_case: TextCase = TextCase.ORIGINAL
 
 
 @dataclass(frozen=True)

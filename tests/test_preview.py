@@ -285,6 +285,64 @@ def test_preview_text_is_escaped_before_ass_serialization(tmp_path: Path):
     assert r"Dialogue: 0,0:00:00.00,0:00:01.00" in content
 
 
+def test_preview_applies_text_case_before_wrapping_and_ass_escaping(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"text_case": "uppercase"},
+        relative_values={"max_width": "1000px", "max_height": "100px"},
+    )
+    source_text = r"Olá Straße {\an9} novamente"
+    path = tmp_path / "uppercase-preview.ass"
+
+    _, display_text = build_preview_ass(
+        path,
+        _request(tmp_path, subtitle_config=config, preview_text=source_text),
+        GEOMETRY,
+        0.0,
+    )
+
+    assert display_text.replace("\n", " ") == r"OLÁ STRASSE {\AN9} NOVAMENTE"
+    content = path.read_text(encoding="utf-8")
+    assert "OLÁ STRASSE" in content
+    assert r"\{\\AN9\}" in content
+
+
+def test_preview_text_case_expansion_still_respects_cue_capacity(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"text_case": "uppercase"},
+        relative_values={"max_width": "180px", "max_height": "54px"},
+    )
+    source_text = "Straße erneut später"
+
+    _, display_text = build_preview_ass(
+        tmp_path / "uppercase-capacity.ass",
+        _request(tmp_path, subtitle_config=config, preview_text=source_text),
+        GEOMETRY,
+        0.0,
+    )
+
+    assert display_text == "STRASSE"
+    assert len(display_text) < len(source_text.upper())
+
+
+def test_explicit_original_text_case_preserves_default_preview_ass(tmp_path: Path):
+    default_path = tmp_path / "default-case.ass"
+    explicit_path = tmp_path / "explicit-original-case.ass"
+    request = _request(tmp_path, preview_text="Mixed Case preview")
+    explicit_request = replace(
+        request,
+        subtitle_config=validate_subtitle_config(
+            None, appearance_values={"text_case": "original"}
+        ),
+    )
+
+    build_preview_ass(default_path, request, GEOMETRY, 0.0)
+    build_preview_ass(explicit_path, explicit_request, GEOMETRY, 0.0)
+
+    assert default_path.read_bytes() == explicit_path.read_bytes()
+
+
 @pytest.mark.parametrize("explicit", [False, True])
 def test_preview_guides_serialize_native_or_explicit_geometry(
     tmp_path: Path, explicit: bool
@@ -422,6 +480,26 @@ def test_preview_guides_report_global_opacity():
     )
 
     assert any("Opacity: 32.5%" in event.text for event in events)
+
+
+def test_preview_guides_report_text_case():
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"text_case": "lowercase"},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
+
+    events = build_preview_guide_events(
+        resolved,
+        GEOMETRY,
+        metrics,
+        0.0,
+        display_text="sample",
+        requested_config=config,
+    )
+
+    assert any("Text case: lowercase" in event.text for event in events)
 
 
 def test_preview_guides_report_single_event_for_one_visual_line():

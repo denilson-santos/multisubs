@@ -29,6 +29,7 @@ from .wrapping import (
     fit_first_text_segment,
     has_multiple_visual_lines,
     normalise_display_text,
+    transform_display_text,
 )
 
 DEFAULT_PREVIEW_TEXT = (
@@ -119,9 +120,11 @@ def build_preview_ass(
     timestamp = resolve_preview_timestamp(timestamp, geometry)
     resolved_config = resolve_subtitle_config(request.subtitle_config, geometry)
     metrics = resolve_wrapping_metrics(resolved_config, geometry)
-    display_text = fit_first_text_segment(
-        normalise_preview_text(request.preview_text), metrics=metrics
+    transformed_text = transform_display_text(
+        normalise_preview_text(request.preview_text),
+        resolved_config.appearance.text_case,
     )
+    display_text = fit_first_text_segment(transformed_text, metrics=metrics)
     end = max(1.0, timestamp + 1.0)
     guide_events = (
         build_preview_guide_events(
@@ -231,6 +234,7 @@ def build_preview_guide_events(
         f"natural {metrics.natural_line_height:.1f}px)"
         f"\\NLine capacity: {metrics.line_capacity}"
         f"\\NOpacity: {config.appearance.opacity.original}"
+        f"\\NText case: {config.appearance.text_case.value}"
         f"\\NRender strategy: {render_strategy}"
         f"\\NPlayRes: {geometry.render_width}x{geometry.render_height}"
     )

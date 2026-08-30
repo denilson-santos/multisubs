@@ -431,6 +431,101 @@ def test_subtitle_opacity_changes_intensity_without_moving_libass_bounds(
 
 
 @pytest.mark.integration
+def test_subtitle_text_case_reaches_real_libass_rendering(tmp_path: Path):
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+    font_match = subprocess.run(
+        ["fc-match", "-f", "%{family}", "DejaVu Sans"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if "DejaVu Sans" not in font_match:
+        pytest.skip("The controlled DejaVu Sans font is not available")
+
+    width, height = 320, 180
+    input_path = tmp_path / "text-case-input.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=black:s={width}x{height}:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    frames: dict[str, bytes] = {}
+
+    for text_case, expected in (("original", "Straße"), ("uppercase", "STRASSE")):
+        subtitle_path = tmp_path / f"text-case-{text_case}.ass"
+        config = validate_subtitle_config(
+            None,
+            appearance_values={
+                "font": "DejaVu Sans",
+                "backdrop": "none",
+                "text_case": text_case,
+            },
+            relative_values={
+                "font_size": "40px",
+                "shadow_weight": "0px",
+                "max_width": "260px",
+                "max_height": "80px",
+            },
+        )
+        resolved = resolve_subtitle_config(config, geometry)
+        display, _ = layout_subtitle_cues(
+            [{"start": 0.0, "end": 0.3, "text": "Straße", "words": []}],
+            resolved,
+            geometry,
+        )
+        assert display[0]["text"] == expected
+        write_ass(subtitle_path, display, config, geometry)
+        frames[text_case] = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                "0.1",
+                "-i",
+                str(input_path),
+                "-vf",
+                f"ass={subtitle_path}",
+                "-frames:v",
+                "1",
+                "-pix_fmt",
+                "gray",
+                "-f",
+                "rawvideo",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+        ).stdout
+
+    assert all(len(frame) == width * height for frame in frames.values())
+    assert sum(frames["original"]) > 0
+    assert sum(frames["uppercase"]) > 0
+    assert frames["original"] != frames["uppercase"]
+
+
+@pytest.mark.integration
 def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
     if shutil.which("ffmpeg") is None:
         pytest.skip("FFmpeg is not installed")
