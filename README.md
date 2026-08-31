@@ -342,10 +342,9 @@ tr, uk, ur, vi, zh
 For `video.mp4` with language `pt`:
 
 ```text
-# Default: JSON is kept; transient SRT and ASS are removed after success
+# Default: only the rendered video is kept; all subtitle artifacts are transient
 output/
-├── video-pt.mp4
-└── video-pt.json
+└── video-pt.mp4
 
 # With --keep-transcriptions
 output/
@@ -365,9 +364,10 @@ directory. Completed artifacts are published only after FFmpeg succeeds. If
 processing fails, transcription artifacts are retained there for diagnosis;
 partial final media is not published.
 
-The versioned JSON transcript includes source and processing metadata, original
-and displayed cue text, render geometry, resolved layout and typography,
-wrapping diagnostics, and optional karaoke metadata.
+When `--keep-transcriptions` is enabled, the versioned JSON transcript includes
+source and processing metadata, original and displayed cue text, render
+geometry, resolved layout and typography, wrapping diagnostics, and optional
+karaoke metadata.
 
 ## 🧪 Development
 

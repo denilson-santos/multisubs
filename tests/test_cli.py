@@ -458,7 +458,7 @@ def test_unknown_layout_preset_is_argparse_error(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_default_publication_keeps_json_and_video_only(tmp_path: Path):
+def test_default_publication_keeps_video_only(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     output_dir = tmp_path / "output"
@@ -468,25 +468,25 @@ def test_default_publication_keeps_json_and_video_only(tmp_path: Path):
 
     assert result == output_dir / "video-pt.mp4"
     assert (output_dir / "video-pt.mp4").read_bytes() == b"video"
-    assert (output_dir / "video-pt.json").exists()
+    assert not (output_dir / "video-pt.json").exists()
     assert not (output_dir / "video-pt.srt").exists()
     assert not (output_dir / "video-pt.ass").exists()
 
 
-def test_default_publication_suffixes_dangling_output_links(
+def test_default_publication_suffixes_dangling_video_links(
     tmp_path: Path,
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    (output_dir / "video-pt.json").symlink_to(output_dir / "missing.json")
+    (output_dir / "video-pt.mp4").symlink_to(output_dir / "missing.mp4")
     artifacts = _artifacts(tmp_path, input_path)
 
     result = cli._publish_default_artifacts(artifacts, _request(input_path, output_dir))
 
     assert result == output_dir / "video-pt (1).mp4"
-    assert (output_dir / "video-pt (1).json").exists()
+    assert not (output_dir / "video-pt (1).json").exists()
 
 
 def test_retained_publication_uses_subtitles_directory_and_collision_suffix(
@@ -582,10 +582,7 @@ def test_run_request_cleans_private_work_dir_after_default_success(
 
     assert result == output_dir / "video-pt.mp4"
     assert not list(output_dir.glob(".multisubs-*"))
-    assert sorted(path.name for path in output_dir.iterdir()) == [
-        "video-pt.json",
-        "video-pt.mp4",
-    ]
+    assert sorted(path.name for path in output_dir.iterdir()) == ["video-pt.mp4"]
 
 
 def test_run_request_retains_private_work_dir_after_processing_failure(

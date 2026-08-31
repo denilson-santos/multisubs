@@ -49,7 +49,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-8 | The tool must render the ASS subtitles into a new video with FFmpeg. |
 | FR-9 | The user must be able to select a complete subtitle layout preset (`auto`, `landscape`, `portrait`, `square`, `vertical-social`, `upper-third`, or `centered`) and override its appearance and layout through explicit CLI options, including font family, named or 100-step numeric font weight, unit-bearing font size, non-negative letter spacing, automatic or explicit line height, complete-composition opacity, original/uppercase/lowercase display text, backdrop, shadow, margins, maximum width, maximum height, nine named subtitle positions, or a global PlayRes X/Y coordinate paired with one of the nine anchors. Opacity must preserve the relative alpha of every visual component. Case conversion must preserve original transcription and aligned-word data in JSON. Named positions must use native ASS alignment and margins. Explicit coordinates must ignore margins, require explicit maximum dimensions, and reject any complete subtitle envelope that would leave the canvas. |
 | FR-10 | With --keep-transcriptions, the tool must retain JSON, SRT, and ASS files in a subtitles subdirectory next to the rendered video. |
-| FR-11 | Without --keep-transcriptions, a successful run must retain the JSON transcript and remove the temporary SRT and ASS files after rendering. |
+| FR-11 | Without --keep-transcriptions, a successful run must retain only the rendered video and remove the temporary JSON, SRT, and ASS files after rendering. |
 | FR-12 | Generated files and output directories must receive a numeric suffix when a collision would otherwise occur. |
 | FR-13 | Invalid arguments and paths must exit with a non-zero status before model loading; processing and rendering failures must also exit non-zero with an actionable diagnostic. |
 | FR-14 | Transient connection failures while loading WhisperX model, VAD, or alignment assets must be retried automatically before the processing run is reported as failed. |
@@ -84,7 +84,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 1. A user can install the package, run multisubs --help, and see the supported options.
 2. A valid transcription command generates a subtitle-burned video without overwriting existing output.
 3. A retained run creates JSON, SRT, and ASS assets under an output subtitles directory.
-4. A non-retained successful run leaves the rendered video and JSON transcript while removing its intermediate SRT and ASS files.
+4. A non-retained successful run leaves only the rendered video and removes its intermediate JSON, SRT, and ASS files.
 5. A translation request using turbo or an English-only model is rejected before transcription begins.
 6. The JSON output contains metadata and timed subtitle segments.
 7. A user can change an exposed semantic appearance option, including letter spacing, or choose a named position and see it reflected in the generated ASS style definition and rendered video without providing raw ASS field names, ASS alignment codes, or ASS color syntax.
@@ -119,5 +119,5 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 
 - Favor a local, command-line workflow over hosted processing.
 - Favor hard subtitles for a straightforward, portable final-video result.
-- Retain JSON by default because it is a compact, machine-readable record of the transcription; make SRT and ASS retention opt-in to avoid clutter.
+- Keep generated subtitle artifacts out of the default output; retain JSON, SRT, and ASS together only when the user requests `--keep-transcriptions`.
 - Prefer semantic cue boundaries over rigid splitting when the two conflict.
