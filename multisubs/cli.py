@@ -759,18 +759,12 @@ def _publish_run(artifacts: RunArtifacts, request: RunRequest) -> Path:
 
 def _publish_default_artifacts(artifacts: RunArtifacts, request: RunRequest) -> Path:
     stem = f"{request.input_path.stem}-{request.language}"
-    suffixes = (request.input_path.suffix, ".json", ".srt", ".ass")
+    suffixes = (request.input_path.suffix,)
     while True:
         candidate = find_unique_stem(request.output_dir, stem, suffixes)
-        json_target = request.output_dir / f"{candidate}.json"
         video_target = request.output_dir / f"{candidate}{request.input_path.suffix}"
         try:
-            publish_files(
-                {
-                    artifacts.transcripts.json_path: json_target,
-                    artifacts.video_path: video_target,
-                }
-            )
+            publish_files({artifacts.video_path: video_target})
         except FileExistsError:
             continue
         return video_target
