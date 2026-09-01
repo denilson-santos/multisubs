@@ -252,8 +252,8 @@ wrapping consistency across machines.
 | `--position POSITION` | `bottom-center` | Native ASS semantic position. |
 | `--margin-left LENGTH` | `18%` | Native ASS left margin. |
 | `--margin-right LENGTH` | `18%` | Native ASS right margin. |
-| `--margin-top LENGTH` | `5%` | Native ASS top margin. |
-| `--margin-bottom LENGTH` | `5%` | Native ASS bottom margin. |
+| `--margin-top LENGTH` | `0%` | Native ASS margin for top positions. |
+| `--margin-bottom LENGTH` | `5%` | Native ASS margin for bottom positions. |
 | `--max-width LENGTH` | `100%` | Maximum subtitle width. |
 | `--max-height LENGTH` | `10%` | Maximum height used to derive line capacity. |
 | `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
@@ -264,6 +264,13 @@ These defaults are identical for landscape, portrait, square, and rotated
 inputs. Percentages resolve from each video's autorotated render geometry.
 `--position` changes only alignment; margins and maximum dimensions retain their
 defaults unless they are overridden independently.
+
+Only the active vertical margin can be supplied explicitly: top positions use
+`--margin-top`, bottom positions use `--margin-bottom`, and middle positions use
+neither. An inactive vertical margin is rejected with an actionable error. The
+default `bottom-center` layout therefore keeps `--margin-top` at `0%` and uses
+the `5%` bottom inset. A top position needs an explicit `--margin-top` when an
+inset is desired.
 
 Available semantic positions:
 
@@ -302,8 +309,8 @@ multisubs -i ./video.mp4 \
 
 Explicit coordinates require `--position-x`, `--position-y`, `--anchor`,
 `--max-width`, and `--max-height`. They cannot be combined with `--position`,
-and margins are ignored. The complete anchored envelope must fit inside the
-canvas; invalid coordinates are rejected instead of being moved or clipped.
+or explicitly supplied margins. The complete anchored envelope must fit inside
+the canvas; invalid coordinates are rejected instead of being moved or clipped.
 
 ### Adaptive wrapping
 

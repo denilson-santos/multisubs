@@ -65,10 +65,10 @@ flowchart LR
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths verify that the input exists, the output path is not an existing file, semantic colors, appearance values, and effect options are valid, every unit value has an explicit suffix (except the `auto` line-height keyword), global opacity is an explicit finite percentage from 0 through 100, text case is `original`, `uppercase`, or `lowercase`, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values, opacity as SubtitleOpacity, and display casing as TextCase; raw ASS style mappings and `--style-*` options are not accepted. Native configuration begins with fixed position, margin, maximum-width, and maximum-height values before explicit field overrides are applied. Custom X/Y coordinates must be supplied as a pair, cannot be combined with `--position`, and require user-supplied anchor, maximum width, and maximum height values before native defaults are filled. Karaoke is rejected for translation and preview before probing or model loading.
+2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths verify that the input exists, the output path is not an existing file, semantic colors, appearance values, and effect options are valid, every unit value has an explicit suffix (except the `auto` line-height keyword), global opacity is an explicit finite percentage from 0 through 100, text case is `original`, `uppercase`, or `lowercase`, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values, opacity as SubtitleOpacity, and display casing as TextCase; raw ASS style mappings and `--style-*` options are not accepted. Native configuration begins with fixed position, margin, maximum-width, and maximum-height values before explicit field overrides are applied. Explicit inactive vertical margins are rejected for named positions. Custom X/Y coordinates must be supplied as a pair, cannot be combined with `--position` or explicitly supplied margins, and require user-supplied anchor, maximum width, and maximum height values before native defaults are filled. Karaoke is rejected for translation and preview before probing or model loading.
 3. When `--preview-layout` is present, the CLI rejects only misleading conflicts, skips translation/model validation, validates FFmpeg and ffprobe, probes geometry and duration, resolves the layout, and creates a temporary ASS sample. It then calls `render_subtitle_preview()` for exactly one PNG and exits without importing transcriber.py, WhisperX, or PyTorch. Preview temporary files are removed on both success and failure.
 4. For a normal translation task, the CLI rejects turbo and English-only model names before model loading.
-5. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() resolves the complete requested configuration without classifying the video shape, resolves all dimensions, resolves `--line-height` against measured natural font metrics, and rejects explicit leading below that metric. Native placement resolves maximum width after horizontal ASS margins and maximum height after the active top or bottom margin; middle alignment uses the full height. Explicit placement resolves X/Y and both user-supplied maximum dimensions against the full PlayRes canvas, ignores margins, and rejects a complete envelope that crosses an edge. resolve_wrapping_metrics() also validates that at least one decorated line fits before WhisperX is loaded.
+5. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() resolves the complete requested configuration without classifying the video shape, resolves all dimensions, resolves `--line-height` against measured natural font metrics, and rejects explicit leading below that metric. Native placement resolves maximum width after horizontal ASS margins and maximum height after the active top or bottom margin; middle alignment uses the full height. Explicit placement resolves X/Y and both user-supplied maximum dimensions against the full PlayRes canvas, compiles retained native defaults to zero, and rejects a complete envelope that crosses an edge. resolve_wrapping_metrics() also validates that at least one decorated line fits before WhisperX is loaded.
 6. The geometry policy follows explicitly enabled FFmpeg autorotation: 0° and 180° retain the coded axes; 90° and 270° swap the render axes and invert the sample-aspect-ratio axes. Legacy rotate tags are normalized from their sign convention to the display-matrix convention. Contradictory metadata is rejected.
 7. The normal transcription path reports the resolved dimensions and semantic position or explicit envelope, then creates a private temporary work directory inside the output directory.
 8. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
@@ -170,7 +170,7 @@ The JSON artifact has this high-level shape:
         "applied": true,
         "left": 194,
         "right": 194,
-        "top": 96,
+        "top": 0,
         "bottom": 96
       },
       "requested": {
@@ -182,7 +182,7 @@ The JSON artifact has this high-level shape:
         "margins": {
           "left": "18%",
           "right": "18%",
-          "top": "5%",
+          "top": "0%",
           "bottom": "5%"
         },
         "max_width": "100%",
@@ -197,7 +197,7 @@ The JSON artifact has this high-level shape:
         "margins": {
           "left": 194,
           "right": 194,
-          "top": 96,
+          "top": 0,
           "bottom": 96
         },
         "max_width": 692,
@@ -337,8 +337,9 @@ corresponding ASS style Alignment; actual `MarginL`, `MarginR`, and active
 
 Explicit `--position-x` and `--position-y` percentages use the full render axes;
 pixels are absolute PlayRes coordinates. Explicit maximum dimensions also use
-the full axes, all margins compile to zero, and each cue receives the private
-anchor plus `\\pos` event override. layout.py rejects an envelope whose maximum
+the full axes, explicitly supplied margins are rejected before probing, retained
+native margin defaults compile to zero, and each cue receives the private anchor
+plus `\\pos` event override. layout.py rejects an envelope whose maximum
 width or height would cross the canvas for the selected anchor; it does not
 clamp, move, or shrink it. Percentages use Decimal half-up rounding. All resolved
 lengths use PlayRes pixels, and resolved font, backdrop, and shadow values remain

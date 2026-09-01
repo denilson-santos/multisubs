@@ -337,12 +337,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         (
             "--margin-top",
-            "Top margin as a percentage of render height or pixels "
+            "Top-position margin as a percentage of render height or pixels; "
+            "an explicit value is rejected for middle and bottom positions "
             f"(default: {DEFAULT_MARGIN_TOP.replace('%', '%%')}).",
         ),
         (
             "--margin-bottom",
-            "Bottom margin as a percentage of render height or pixels "
+            "Bottom-position margin as a percentage of render height or pixels; "
+            "an explicit value is rejected for top and middle positions "
             f"(default: {DEFAULT_MARGIN_BOTTOM.replace('%', '%%')}).",
         ),
         (
@@ -372,8 +374,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     coordinate_group = parser.add_argument_group(
         "Custom subtitle coordinates",
-        "Attach an explicit anchor to global PlayRes X/Y coordinates. Margins "
-        "are ignored; max-width and max-height are required.",
+        "Attach an explicit anchor to global PlayRes X/Y coordinates. Explicit "
+        "margins are rejected; max-width and max-height are required.",
     )
     coordinate_group.add_argument(
         "--position-x",

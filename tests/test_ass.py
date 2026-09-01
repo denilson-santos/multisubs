@@ -512,7 +512,7 @@ def test_explicit_progressive_lines_keep_cue_global_word_boundaries(
     assert r"\1c&H4FD5FF&" in second_line[2]
 
 
-def test_named_center_uses_native_alignment_and_actual_margins(
+def test_named_center_uses_native_alignment_and_horizontal_margins(
     tmp_path: Path,
 ):
     path = tmp_path / "center.ass"
@@ -522,8 +522,6 @@ def test_named_center_uses_native_alignment_and_actual_margins(
         relative_values={
             "margin_left": "40px",
             "margin_right": "140px",
-            "margin_top": "100px",
-            "margin_bottom": "300px",
         },
     )
 
