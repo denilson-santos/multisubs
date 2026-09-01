@@ -38,7 +38,6 @@ from .models import (
     RelativeLength,
     SubtitleConfig,
     SubtitleDisplayFragment,
-    SubtitleLayoutPreset,
     SubtitlePlacementMode,
     SubtitlePosition,
     TextCase,
@@ -136,7 +135,6 @@ def generate_transcriptions(
     model_name: str = "turbo",
     *,
     position: SubtitlePosition | str | None = None,
-    layout_preset: SubtitleLayoutPreset | str | None = None,
     position_x: RelativeLength | str | None = None,
     position_y: RelativeLength | str | None = None,
     anchor: SubtitlePosition | str | None = None,
@@ -152,7 +150,6 @@ def generate_transcriptions(
     subtitle_config = validate_subtitle_config(
         style_options,
         position=position,
-        layout_preset=layout_preset,
         position_x=position_x,
         position_y=position_y,
         anchor=anchor,
@@ -990,7 +987,7 @@ def _write_json(
         resolved_subtitle_config
     )
     json_data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "metadata": {
             "file_name": file_name,
             "original_path": str(input_path),
@@ -1010,8 +1007,6 @@ def _write_json(
                 "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
                 "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
                 "container_duration": geometry.duration_seconds,
-                "requested_preset": subtitle_config.layout_preset.value,
-                "resolved_preset": resolved_subtitle_config.layout_preset.value,
                 "placement_mode": resolved_layout.placement_mode.value,
                 "requested_position": (
                     None if explicit else requested_layout.position.value

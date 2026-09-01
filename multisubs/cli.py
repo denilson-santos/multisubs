@@ -23,7 +23,14 @@ from .config import (
     DEFAULT_KARAOKE_MODE,
     DEFAULT_LETTER_SPACING,
     DEFAULT_LINE_HEIGHT,
+    DEFAULT_MARGIN_BOTTOM,
+    DEFAULT_MARGIN_LEFT,
+    DEFAULT_MARGIN_RIGHT,
+    DEFAULT_MARGIN_TOP,
+    DEFAULT_MAX_HEIGHT,
+    DEFAULT_MAX_WIDTH,
     DEFAULT_OPACITY,
+    DEFAULT_POSITION,
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_CASE,
     DEFAULT_TEXT_COLOR,
@@ -31,8 +38,6 @@ from .config import (
     FONT_WEIGHT_NAMES,
     FONT_WEIGHT_RANKS,
     KARAOKE_MODE_CHOICES,
-    LAYOUT_PRESET_CHOICES,
-    LAYOUT_PRESETS,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
@@ -161,25 +166,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Draw non-production placement, envelope, and canvas guides.",
     )
     parser.add_argument(
-        "--layout",
-        choices=LAYOUT_PRESET_CHOICES,
-        default="auto",
-        help=(
-            "Named subtitle layout preset. auto selects landscape, portrait, or "
-            "square from the autorotated video geometry (default: auto). "
-            + " ".join(
-                f"{preset.value}: {LAYOUT_PRESETS[preset].description}"
-                for preset in LAYOUT_PRESETS
-            )
-        ),
-    )
-    parser.add_argument(
         "--position",
         choices=POSITION_CHOICES,
         default=None,
         help=(
             "Use native ASS alignment and margins at the selected screen "
-            "position; left and right are physical screen directions."
+            "position; left and right are physical screen directions "
+            f"(default: {DEFAULT_POSITION.value})."
         ),
     )
 
@@ -334,30 +327,35 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         (
             "--margin-left",
-            "Left margin as a percentage of render width or pixels.",
+            "Left margin as a percentage of render width or pixels "
+            f"(default: {DEFAULT_MARGIN_LEFT.replace('%', '%%')}).",
         ),
         (
             "--margin-right",
-            "Right margin as a percentage of render width or pixels.",
+            "Right margin as a percentage of render width or pixels "
+            f"(default: {DEFAULT_MARGIN_RIGHT.replace('%', '%%')}).",
         ),
         (
             "--margin-top",
-            "Top margin as a percentage of render height or pixels.",
+            "Top margin as a percentage of render height or pixels "
+            f"(default: {DEFAULT_MARGIN_TOP.replace('%', '%%')}).",
         ),
         (
             "--margin-bottom",
-            "Bottom margin as a percentage of render height or pixels.",
+            "Bottom margin as a percentage of render height or pixels "
+            f"(default: {DEFAULT_MARGIN_BOTTOM.replace('%', '%%')}).",
         ),
         (
             "--max-width",
             "Maximum subtitle line width. Native percentages use the width "
-            "after horizontal margins; explicit percentages use render width.",
+            "after horizontal margins; explicit percentages use render width "
+            f"(native default: {DEFAULT_MAX_WIDTH.replace('%', '%%')}).",
         ),
         (
             "--max-height",
             "Maximum subtitle box height. Native percentages use the height "
             "after the active vertical margin; explicit percentages use the "
-            "render height.",
+            f"render height (native default: {DEFAULT_MAX_HEIGHT.replace('%', '%%')}).",
         ),
     ):
         relative_group.add_argument(
@@ -538,7 +536,6 @@ def _build_request(
             appearance_values=appearance_values,
             effects_values=effects_values,
             position=args.position,
-            layout_preset=args.layout,
             relative_values=relative_values,
             anchor=args.anchor,
         )
@@ -650,8 +647,7 @@ def _run_request(
         f"(stream {geometry.stream_index}, rotation "
         f"{geometry.rotation_degrees}°, SAR "
         f"{geometry.sample_aspect_ratio.numerator}:"
-        f"{geometry.sample_aspect_ratio.denominator}, {placement_description}, "
-        f"preset {resolved_subtitle_config.layout_preset.value})."
+        f"{geometry.sample_aspect_ratio.denominator}, {placement_description})."
     )
     work_dir = create_work_dir(request.output_dir)
     try:
@@ -725,8 +721,7 @@ def _run_preview_request(request: PreviewRequest, progress: ProgressReporter) ->
         f"{geometry.render_width}x{geometry.render_height} "
         f"(stream {geometry.stream_index}, rotation "
         f"{geometry.rotation_degrees}°, preview at {timestamp:.3f}s, "
-        f"{wrapping_metrics.max_width}x{wrapping_metrics.max_height}px limits, "
-        f"preset {resolved_config.layout_preset.value})."
+        f"{wrapping_metrics.max_width}x{wrapping_metrics.max_height}px limits)."
     )
     work_dir = create_work_dir(request.output_dir)
     try:

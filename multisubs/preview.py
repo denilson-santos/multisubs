@@ -225,7 +225,6 @@ def build_preview_guide_events(
         f"{{\\an7\\pos(12,12)\\fs{_GUIDE_FONT_SIZE}\\bord2\\shad0"
         f"\\1c{_GUIDE_COLOR}\\3c{_GUIDE_OUTLINE}}}"
         f"Preview guides\\N{escape_ass_text(mode_detail)}"
-        f"\\NPreset: {config.layout_preset.value}"
         f"\\NEnvelope: {int(metrics.max_width)}x{int(metrics.max_height)}px"
         f"\\NLetter spacing: {requested_spacing}"
         f" ({int(metrics.letter_spacing)}px resolved)"

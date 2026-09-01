@@ -378,6 +378,7 @@ def test_preview_guides_serialize_native_or_explicit_geometry(
     assert events
     assert any("\\p1" in event.text for event in events)
     assert any("Preview guides" in event.text for event in events)
+    assert all("Preset:" not in event.text for event in events)
     assert any(r"\fs40" in event.text for event in events)
     assert any("Letter spacing: 2px" in event.text for event in events)
     path = tmp_path / ("explicit.ass" if explicit else "native.ass")

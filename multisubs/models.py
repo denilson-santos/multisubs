@@ -182,18 +182,6 @@ class SubtitlePosition(str, Enum):
     BOTTOM_RIGHT = "bottom-right"
 
 
-class SubtitleLayoutPreset(str, Enum):
-    """Named layout families resolved against the autorotated video canvas."""
-
-    AUTO = "auto"
-    LANDSCAPE = "landscape"
-    PORTRAIT = "portrait"
-    SQUARE = "square"
-    VERTICAL_SOCIAL = "vertical-social"
-    UPPER_THIRD = "upper-third"
-    CENTERED = "centered"
-
-
 class SubtitlePlacementMode(str, Enum):
     """How subtitle placement is represented in the generated ASS file."""
 
@@ -243,22 +231,11 @@ class CuePlacement:
 
 
 @dataclass(frozen=True)
-class LayoutPreset:
-    """Immutable source definition for one concrete subtitle layout preset."""
-
-    name: SubtitleLayoutPreset
-    description: str
-    layout: SubtitleLayout
-
-
-@dataclass(frozen=True)
 class SubtitleConfig:
     """Typed subtitle configuration passed through the orchestration layer."""
 
     appearance: SubtitleAppearance
     layout: SubtitleLayout
-    layout_preset: SubtitleLayoutPreset = SubtitleLayoutPreset.AUTO
-    layout_overrides: frozenset[str] = frozenset()
     effects: SubtitleEffects = field(default_factory=SubtitleEffects)
 
 
