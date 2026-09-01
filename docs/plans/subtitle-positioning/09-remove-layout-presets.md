@@ -459,14 +459,14 @@ report the historical regression fixtures, list all commands actually run,
 attach relevant visual evidence, and identify `v3.0.0` as the earliest eligible
 release. The README must remain focused on the resulting current interface.
 
-After merge:
+Release follow-up:
 
-- Mark this plan and the package `Done`, replace the branch with the merged PR
-  link, and recalculate package/catalog progress in the next package-status
-  update.
-- Bump `multisubs.__version__` to `3.0.0` in a normal follow-up pull request.
-- After the exact `main` commit passes staging, create and push the annotated
-  `v3.0.0` tag and let production promote the staged artifacts without rebuild.
+- This plan and its package were marked `Done` after the implementation PRs
+  #54–#57 merged; the package and catalog now show 10 of 10 plans complete.
+- `multisubs.__version__` was bumped to `3.0.0` in follow-up PR #58.
+- The exact staged `main` commit `b7913c9ef906150a96eafaafa94da78511888d4a`
+  was tagged `v3.0.0`, and production promoted its verified artifacts in the
+  [published GitHub Release](https://github.com/denilson-santos/multisubs/releases/tag/v3.0.0).
 
 ## Acceptance criteria
 

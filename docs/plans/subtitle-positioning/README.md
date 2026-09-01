@@ -17,7 +17,7 @@ The dynamically generated --style-* interface is removed by the breaking CLI
 cutover. This is a deliberate compatibility break; internal ASS fields remain
 an implementation detail.
 
-The next major-version increment removes the public `--layout` preset layer.
+Feature 9 removed the public `--layout` preset layer in the v3.0.0 release.
 Position, margins, maximum dimensions, and exact coordinates remain explicit;
 completed preset plans are retained below as v2 implementation history.
 
@@ -52,7 +52,7 @@ Delivery gates are tracked separately from feature progress.
 | Breaking CLI cutover | Done | Plans 0–3 | [#29](https://github.com/denilson-santos/multisubs/pull/29) |
 | Major-version release | Done | CLI cutover | [#30](https://github.com/denilson-santos/multisubs/pull/30), [v2.0.0](https://github.com/denilson-santos/multisubs/releases/tag/v2.0.0) |
 | Preset removal | Done | Plan 9 | [#54](https://github.com/denilson-santos/multisubs/pull/54), [#55](https://github.com/denilson-santos/multisubs/pull/55), [#56](https://github.com/denilson-santos/multisubs/pull/56), [#57](https://github.com/denilson-santos/multisubs/pull/57) |
-| v3 release | In progress | Preset removal | `chore/prepare-3-0-0` |
+| v3 release | Done | Preset removal | [v3.0.0](https://github.com/denilson-santos/multisubs/releases/tag/v3.0.0) |
 
 Version 2.0.0 was promoted from staged `main` commit
 `23667649c5baf9d1a64d6d7d266ec6272ccb49ae` without rebuilding through the
@@ -160,7 +160,7 @@ silent precedence between incompatible options.
 ### Milestone 4: explicit configuration
 
 - Remove public layout presets and automatic aspect classification (Done).
-- Publish the breaking contract in v3.0.0 after staging succeeds.
+- Publish the breaking contract in v3.0.0 after staging succeeds (Done).
 
 ## Commit strategy
 
