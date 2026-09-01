@@ -562,6 +562,8 @@ def test_ffmpeg_libass_karaoke_changes_word_colors_without_moving_layout(
         relative_values={
             "font_size": "20px",
             "shadow_weight": "0px",
+            "margin_left": "0px",
+            "margin_right": "0px",
             "max_width": "150px",
             "max_height": "80px",
         },
@@ -589,6 +591,8 @@ def test_ffmpeg_libass_karaoke_changes_word_colors_without_moving_layout(
         relative_values={
             "font_size": "20px",
             "shadow_weight": "0px",
+            "margin_left": "0px",
+            "margin_right": "0px",
             "max_width": "150px",
             "max_height": "80px",
         },
