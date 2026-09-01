@@ -1,6 +1,6 @@
 # Subtitle positioning roadmap
 
-Status: In review
+Status: Done
 
 This directory contains the implementation plans for redesigning subtitle
 appearance and deterministic positioning in multisubs. The work is intentionally
@@ -37,12 +37,11 @@ This table is the source of truth for the package. Status values follow the
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Done | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
 | 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | Done | 0–6 | [#35](https://github.com/denilson-santos/multisubs/pull/35) |
 | 8 | [Layout preview](08-layout-preview.md) | Done | 0–7 | [#37](https://github.com/denilson-santos/multisubs/pull/37) |
-| 9 | [Remove layout presets and use explicit defaults](09-remove-layout-presets.md) | In review | 0–8 | [#54](https://github.com/denilson-santos/multisubs/pull/54), [#55](https://github.com/denilson-santos/multisubs/pull/55), [#56](https://github.com/denilson-santos/multisubs/pull/56), `fix/reject-ineffective-margins` |
+| 9 | [Remove layout presets and use explicit defaults](09-remove-layout-presets.md) | Done | 0–8 | [#54](https://github.com/denilson-santos/multisubs/pull/54), [#55](https://github.com/denilson-santos/multisubs/pull/55), [#56](https://github.com/denilson-santos/multisubs/pull/56), [#57](https://github.com/denilson-santos/multisubs/pull/57) |
 
-Package progress: 9 of 10 plans done. Feature 9's core implementation merged
-through pull requests #54–#56; its final ineffective-margin validation is in
-review on `fix/reject-ineffective-margins` for v3.0.0. Features 0–8 remain
-complete implementation history.
+Package progress: 10 of 10 plans done. Feature 9's implementation and final
+ineffective-margin validation merged through pull requests #54–#57. Features
+0–8 remain complete implementation history.
 
 ## Delivery-gate status
 
@@ -52,7 +51,8 @@ Delivery gates are tracked separately from feature progress.
 | --- | --- | --- | --- |
 | Breaking CLI cutover | Done | Plans 0–3 | [#29](https://github.com/denilson-santos/multisubs/pull/29) |
 | Major-version release | Done | CLI cutover | [#30](https://github.com/denilson-santos/multisubs/pull/30), [v2.0.0](https://github.com/denilson-santos/multisubs/releases/tag/v2.0.0) |
-| Preset removal and v3 release | Planned | Plan 9 | — |
+| Preset removal | Done | Plan 9 | [#54](https://github.com/denilson-santos/multisubs/pull/54), [#55](https://github.com/denilson-santos/multisubs/pull/55), [#56](https://github.com/denilson-santos/multisubs/pull/56), [#57](https://github.com/denilson-santos/multisubs/pull/57) |
+| v3 release | In progress | Preset removal | `chore/prepare-3-0-0` |
 
 Version 2.0.0 was promoted from staged `main` commit
 `23667649c5baf9d1a64d6d7d266ec6272ccb49ae` without rebuilding through the
@@ -159,7 +159,7 @@ silent precedence between incompatible options.
 
 ### Milestone 4: explicit configuration
 
-- Remove public layout presets and automatic aspect classification (In review).
+- Remove public layout presets and automatic aspect classification (Done).
 - Publish the breaking contract in v3.0.0 after staging succeeds.
 
 ## Commit strategy
