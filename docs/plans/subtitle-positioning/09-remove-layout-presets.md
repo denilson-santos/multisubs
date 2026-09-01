@@ -2,7 +2,8 @@
 
 Status: In review
 
-Delivery: `feat/remove-layout-presets`
+Delivery: [#54](https://github.com/denilson-santos/multisubs/pull/54),
+follow-up `fix/normalize-subtitle-sizing`
 
 Depends on:
 
