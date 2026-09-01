@@ -483,6 +483,8 @@ def test_subtitle_text_case_reaches_real_libass_rendering(tmp_path: Path):
             relative_values={
                 "font_size": "40px",
                 "shadow_weight": "0px",
+                "margin_left": "0px",
+                "margin_right": "0px",
                 "max_width": "260px",
                 "max_height": "80px",
             },
@@ -572,7 +574,7 @@ def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
     ]
     display, metrics = layout_subtitle_cues(semantic, resolved, geometry)
 
-    assert metrics.width_budget == 113
+    assert metrics.width_budget == 82
     assert display[0]["text"].count("\n") <= metrics.line_capacity - 1
     write_ass(subtitle_path, display, config, geometry)
     output_path = Path(
@@ -1010,7 +1012,23 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         "margins",
     ),
     [
-        (320, 180, "default", None, {}, "bottom", (19, 19, 0, 11)),
+        (320, 180, "default", None, {}, "bottom", (58, 58, 9, 9)),
+        (
+            320,
+            180,
+            "historical-landscape",
+            "bottom-center",
+            {
+                "margin_left": "6%",
+                "margin_right": "6%",
+                "margin_top": "0%",
+                "margin_bottom": "6%",
+                "max_width": "100%",
+                "max_height": "10.5%",
+            },
+            "bottom",
+            (19, 19, 0, 11),
+        ),
         (
             180,
             320,

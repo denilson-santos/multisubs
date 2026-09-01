@@ -221,11 +221,21 @@ def test_preview_renders_only_the_first_segment_that_fits_the_envelope(
     )
     compact_config = validate_subtitle_config(
         None,
-        relative_values={"max_width": "300px", "max_height": "54px"},
+        relative_values={
+            "margin_left": "0px",
+            "margin_right": "0px",
+            "max_width": "300px",
+            "max_height": "54px",
+        },
     )
     spacious_config = validate_subtitle_config(
         None,
-        relative_values={"max_width": "1600px", "max_height": "500px"},
+        relative_values={
+            "margin_left": "0px",
+            "margin_right": "0px",
+            "max_width": "1600px",
+            "max_height": "500px",
+        },
     )
     compact_path = tmp_path / "compact.ass"
     spacious_path = tmp_path / "spacious.ass"

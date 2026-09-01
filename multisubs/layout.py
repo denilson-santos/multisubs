@@ -74,12 +74,11 @@ def resolve_subtitle_config(
 
     _validate_geometry(geometry)
     validated = validate_subtitle_config(config)
-    short_edge = min(geometry.render_width, geometry.render_height)
     font_size = resolve_relative_length(
         validated.appearance.font_size,
-        short_edge,
+        geometry.render_height,
         field="font-size",
-        maximum=min(_MAX_FONT_SIZE_PIXELS, short_edge),
+        maximum=min(_MAX_FONT_SIZE_PIXELS, geometry.render_height),
     )
     if font_size <= 0:
         raise ValidationError("font-size must resolve to a value greater than zero")

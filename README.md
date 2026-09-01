@@ -221,7 +221,7 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | Option | Default | Description |
 | --- | --- | --- |
 | `--font NAME` | `Roboto` | Subtitle font family. |
-| `--font-size LENGTH` | `4%` | Size relative to the shorter render edge, or PlayRes pixels. |
+| `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
 | `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
 | `--bold`, `--no-bold` | off | Compatibility shorthand for weight 700 or 400. |
 | `--italic`, `--no-italic` | off | Enable or disable italic text. |
@@ -250,12 +250,12 @@ wrapping consistency across machines.
 | Option | Default | Description |
 | --- | --- | --- |
 | `--position POSITION` | `bottom-center` | Native ASS semantic position. |
-| `--margin-left LENGTH` | `6%` | Native ASS left margin. |
-| `--margin-right LENGTH` | `6%` | Native ASS right margin. |
-| `--margin-top LENGTH` | `0%` | Native ASS top margin. |
-| `--margin-bottom LENGTH` | `6%` | Native ASS bottom margin. |
+| `--margin-left LENGTH` | `18%` | Native ASS left margin. |
+| `--margin-right LENGTH` | `18%` | Native ASS right margin. |
+| `--margin-top LENGTH` | `5%` | Native ASS top margin. |
+| `--margin-bottom LENGTH` | `5%` | Native ASS bottom margin. |
 | `--max-width LENGTH` | `100%` | Maximum subtitle width. |
-| `--max-height LENGTH` | `10.5%` | Maximum height used to derive line capacity. |
+| `--max-height LENGTH` | `10%` | Maximum height used to derive line capacity. |
 | `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
 | `--position-y LENGTH` | — | Explicit global PlayRes Y coordinate. |
 | `--anchor POSITION` | — | Subtitle-box anchor for explicit coordinates. |
@@ -277,7 +277,7 @@ resolution-aware; pixels refer to the generated ASS PlayRes canvas.
 
 | Option | Percentage basis |
 | --- | --- |
-| `--font-size` | Shorter autorotated render edge. |
+| `--font-size` | Autorotated render height. |
 | `--letter-spacing` | Resolved font size. |
 | `--line-height` | Natural measured font line height. |
 | `--backdrop-size`, `--shadow-size` | Resolved font size. |

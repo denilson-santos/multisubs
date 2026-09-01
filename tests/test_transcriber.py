@@ -91,18 +91,18 @@ def test_adaptive_wrapping_uses_resolved_width_and_preserves_timed_words():
 
     display, metrics = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
 
-    assert metrics.width_budget == 1688
-    assert len(display) == 1
-    assert display[0]["text"].count("\n") == 1
-    assert display[0]["semantic_text"].replace(" ", "") == "".join(
+    assert metrics.width_budget == 1226
+    assert len(display) == 2
+    assert all("\n" not in cue["text"] for cue in display)
+    assert "".join(cue["semantic_text"] for cue in display).replace(" ", "") == "".join(
         word["word"] for word in words
     ).replace(" ", "")
-    assert [word["word"] for word in display[0]["words"]] == [
+    assert [word["word"] for cue in display for word in cue["words"]] == [
         word["word"] for word in words
     ]
 
 
-def test_adaptive_wrapping_changes_with_portrait_geometry_and_font_size():
+def test_adaptive_wrapping_metrics_change_with_portrait_geometry_and_font_size():
     portrait_geometry = VideoGeometry(
         stream_index=0,
         coded_width=1080,
@@ -139,9 +139,13 @@ def test_adaptive_wrapping_changes_with_portrait_geometry_and_font_size():
         semantic, portrait_config, portrait_geometry
     )
 
-    assert landscape_metrics.width_budget == 1688
-    assert portrait_metrics.width_budget == 947
-    assert landscape_display[0]["text"] != portrait_display[0]["text"]
+    assert landscape_metrics.width_budget == 1226
+    assert portrait_metrics.width_budget == 686
+    assert landscape_metrics.font_size == 43
+    assert portrait_metrics.font_size == 154
+    assert landscape_metrics.line_capacity == 1
+    assert portrait_metrics.line_capacity == 1
+    assert landscape_display[0]["text"] == portrait_display[0]["text"]
 
 
 @pytest.mark.parametrize(
@@ -564,10 +568,10 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "render_strategy": "single-event",
         "margins": {
             "applied": True,
-            "left": 115,
-            "right": 115,
-            "top": 0,
-            "bottom": 65,
+            "left": 346,
+            "right": 346,
+            "top": 54,
+            "bottom": 54,
         },
         "requested": {
             "font_size": "4%",
@@ -576,13 +580,13 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "backdrop_size": "0px",
             "shadow_size": "4%",
             "margins": {
-                "left": "6%",
-                "right": "6%",
-                "top": "0%",
-                "bottom": "6%",
+                "left": "18%",
+                "right": "18%",
+                "top": "5%",
+                "bottom": "5%",
             },
             "max_width": "100%",
-            "max_height": "10.5%",
+            "max_height": "10%",
         },
         "resolved": {
             "font_size": 43,
@@ -591,34 +595,35 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "backdrop_size": 0,
             "shadow_size": 2,
             "margins": {
-                "left": 115,
-                "right": 115,
-                "top": 0,
-                "bottom": 65,
+                "left": 346,
+                "right": 346,
+                "top": 54,
+                "bottom": 54,
             },
-            "max_width": 1690,
-            "max_height": 107,
-            "line_capacity": 2,
+            "max_width": 1228,
+            "max_height": 103,
+            "line_capacity": 1,
         },
         "wrapping": {
-            "available_width": 1690,
-            "available_height": 1015,
-            "max_width": 1690,
-            "max_height": 107,
-            "width_budget": 1688,
+            "available_width": 1228,
+            "available_height": 1026,
+            "max_width": 1228,
+            "max_height": 103,
+            "width_budget": 1226,
             "line_height": 51.6,
             "natural_line_height": 51.6,
             "resolved_line_height": 51.6,
             "ascent": 43.0,
             "descent": 8.6,
             "vertical_decoration": 2,
-            "line_capacity": 2,
+            "line_capacity": 1,
             "font_size": 43,
             "letter_spacing": 0,
             "backdrop_size": 0,
             "shadow_size": 2,
         },
         "percentage_bases": {
+            "font_size": "render-height",
             "letter_spacing": "resolved-font-size",
             "line_height": "natural-line-height",
             "max_width": "native-width-after-horizontal-margins",
@@ -670,12 +675,12 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             }
         },
         "native_region": {
-            "left": 115,
+            "left": 346,
             "top": 0,
-            "right": 1805,
-            "bottom": 1015,
-            "width": 1690,
-            "height": 1015,
+            "right": 1574,
+            "bottom": 1026,
+            "width": 1228,
+            "height": 1026,
         },
     }
     assert srt_path.exists() and ass_path.exists()
@@ -994,15 +999,15 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     assert rendering["requested"]["margins"] == {
         "left": "8%",
         "right": "8%",
-        "top": "0%",
-        "bottom": "6%",
+        "top": "5%",
+        "bottom": "5%",
     }
     assert rendering["resolved"]["font_size"] == 49
     assert rendering["resolved"]["margins"] == {
         "left": 154,
         "right": 154,
-        "top": 0,
-        "bottom": 65,
+        "top": 54,
+        "bottom": 54,
     }
     assert "requested_preset" not in rendering
     assert "resolved_preset" not in rendering

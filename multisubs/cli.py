@@ -300,7 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
     for option, help_text in (
         (
             "--font-size",
-            "Font size as a percentage of the shorter render edge or pixels "
+            "Font size as a percentage of the render height or pixels "
             f"(default: {DEFAULT_FONT_SIZE.replace('%', '%%')}).",
         ),
         (

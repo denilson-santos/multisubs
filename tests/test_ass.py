@@ -63,8 +63,8 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
         "WrapStyle: 0\n"
     ) in content
     assert (
-        "Style: Default,Roboto,43,&H00FFFFFF,&H00FFFFFF,&H66000000,"
-        "&H66000000,0,0,0,0,100,100,0,0,4,0,2,2,65,65,115,1"
+        "Style: Default,Roboto,77,&H00FFFFFF,&H00FFFFFF,&H66000000,"
+        "&H66000000,0,0,0,0,100,100,0,0,4,0,3,2,194,194,96,1"
     ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert r"{\pos" not in content
@@ -113,6 +113,7 @@ def test_opacity_compiles_text_backdrop_shadow_and_positioned_box_once(
             "opacity": "50%",
         },
         relative_values={
+            "font_size": "43px",
             "line_height": "64px",
             "max_width": "600px",
             "max_height": "200px",
@@ -158,7 +159,7 @@ def test_explicit_full_opacity_preserves_default_ass_bytes(tmp_path: Path):
 
 @pytest.mark.parametrize(
     ("backdrop", "border_style", "outline_weight"),
-    [("none", 1, 0), ("outline", 1, 3), ("box", 4, 3)],
+    [("none", 1, 0), ("outline", 1, 5), ("box", 4, 5)],
 )
 def test_semantic_backdrops_compile_to_private_ass_fields(
     backdrop, border_style, outline_weight
@@ -333,6 +334,7 @@ def test_explicit_line_height_positions_lines_and_shares_box_backdrop(
     config = validate_subtitle_config(
         None,
         relative_values={
+            "font_size": "43px",
             "line_height": "64px",
             "max_width": "600px",
             "max_height": "200px",
@@ -469,6 +471,7 @@ def test_explicit_progressive_lines_keep_cue_global_word_boundaries(
     config = validate_subtitle_config(
         None,
         relative_values={
+            "font_size": "43px",
             "line_height": "64px",
             "max_width": "600px",
             "max_height": "200px",

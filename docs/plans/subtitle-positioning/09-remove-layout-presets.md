@@ -33,6 +33,8 @@ Included:
 - Remove `--layout` and every public preset name from the CLI.
 - Remove automatic landscape, portrait, and square classification.
 - Replace preset-provided native values with centralized field defaults.
+- Resolve percentage font size against autorotated render height so videos with
+  the same output height retain the same resolved size across aspect ratios.
 - Keep every explicit layout field independently overridable.
 - Remove preset types, parsing, merging, progress output, preview labels, and
   JSON metadata.
@@ -52,35 +54,34 @@ Excluded:
 - Making `--position` set margins or maximum dimensions implicitly.
 - Adding a `--safe-area` flag, named safe-area profiles, configuration files,
   environment variables, or platform-specific social-media presets.
-- Changing the nine position names, percentage bases, ASS placement modes, cue
-  segmentation, font measurement, or output-file lifecycle.
+- Changing the nine position names, margin/coordinate/maximum-dimension
+  percentage bases, ASS placement modes, cue segmentation, font measurement,
+  or output-file lifecycle.
 - Automatically translating a removed preset name into a replacement command.
 
 ## Decisions and constraints
 
 ### Fixed native defaults
 
-Use the former `landscape` preset values as the universal native baseline:
+Use one product-selected universal native baseline:
 
 | Field | Default |
 | --- | --- |
 | `position` | `bottom-center` |
-| `margin-left` | `6%` |
-| `margin-right` | `6%` |
-| `margin-top` | `0%` |
-| `margin-bottom` | `6%` |
+| `margin-left` | `18%` |
+| `margin-right` | `18%` |
+| `margin-top` | `5%` |
+| `margin-bottom` | `5%` |
 | `max-width` | `100%` |
-| `max-height` | `10.5%` |
+| `max-height` | `10%` |
 
-This preserves the current default rendering for ordinary landscape input and
-removes aspect-ratio-dependent configuration. Portrait and square defaults
-intentionally change; the historical-equivalence table below records their
-former values for testing and release preparation.
-Because native `max-height` percentages use the available render height while
-font size uses the shorter edge, the universal `10.5%` height can derive more
-than the former calibrated two-line capacity on portrait media. This is an
-intentional changed default; the explicit `portrait` replacement restores its
-former `6%` height and two-line calibration.
+This deliberately changes the previous defaults on every aspect ratio while
+removing aspect-ratio-dependent configuration. The historical-equivalence table
+below records the former concrete values for testing and release preparation.
+Native `max-height` percentages and percentage font size now share render height
+as their vertical reference. This keeps their proportion stable across aspect
+ratios that have the same output height and avoids shrinking text merely because
+a portrait canvas is narrower.
 
 The defaults must be constants in `multisubs/config.py`, parsed through the same
 strict `RelativeLength` path as user values, and copied into each new immutable
@@ -215,12 +216,13 @@ rendering and must continue to return before importing WhisperX/PyTorch.
 This mapping is an internal planning and regression reference. It may support
 concise release notes, but it must not be copied into `README.md`; the README
 documents only the current interface and current features. Omitting layout
-options produces the same configuration as the former `landscape` preset.
+options uses the new universal baseline rather than reproducing one former
+preset.
 
 | Removed value | Replacement layout options |
 | --- | --- |
 | `auto` | No exact equivalent; use the new defaults or choose explicit values for the intended geometry. |
-| `landscape` | No layout options required. |
+| `landscape` | `--position bottom-center --margin-left 6% --margin-right 6% --margin-top 0% --margin-bottom 6% --max-width 100% --max-height 10.5%` |
 | `portrait` | `--position bottom-center --margin-left 8% --margin-right 8% --margin-top 0% --margin-bottom 8% --max-width 100% --max-height 6%` |
 | `square` | `--position bottom-center --margin-left 7% --margin-right 7% --margin-top 0% --margin-bottom 7% --max-width 100% --max-height 10.6%` |
 | `vertical-social` | `--position bottom-center --margin-left 8% --margin-right 12% --margin-top 8% --margin-bottom 16% --max-width 100% --max-height 6.6%` |
@@ -282,6 +284,8 @@ recipes to the README.
       both fail before external work.
 - [x] Preserve explicit-coordinate presence validation before native defaults
       are applied.
+- [x] Resolve percentage font size against render height and verify equal-height
+      landscape and portrait canvases produce the same resolved size.
 - [x] Remove preset output from progress messages and preview guides.
 - [x] Bump JSON to schema 2 and remove preset metadata with serialization tests.
 - [x] Replace preset integration coverage with fixed-default and historical
@@ -299,6 +303,8 @@ recipes to the README.
 - Default native config contains exactly the seven documented values.
 - Landscape, portrait, square, and rotated inputs begin from identical requested
   defaults and resolve only their percentages against their own geometry.
+- Equal-height landscape and portrait inputs resolve the same percentage font
+  size; pixel font sizes remain unchanged.
 - Each explicit layout option overrides only its matching default.
 - Changing `--position` does not mutate margins or maximum dimensions.
 - Top, middle, and bottom positions retain their existing active-margin rules.
@@ -449,10 +455,13 @@ After merge:
 - A removed `--layout` invocation fails before external probing or model work.
 - Every native invocation starts from the documented universal defaults,
   independent of aspect-ratio class; explicit values override only their field.
-- Default landscape rendering matches the former landscape preset within the
-  existing measurement tolerance.
-- Historical portrait, square, vertical-social, upper-third, and centered values
-  remain reproducible in regression tests without remaining public presets.
+- Percentage font size uses autorotated render height and remains equal across
+  landscape and portrait outputs with the same height.
+- Default landscape rendering matches the documented universal baseline within
+  the existing measurement tolerance.
+- Historical landscape, portrait, square, vertical-social, upper-third, and
+  centered values remain reproducible in regression tests without remaining
+  public presets.
 - `--position` changes alignment without applying hidden margins, width, or
   height values.
 - Explicit X/Y mode retains its required fields, global PlayRes axes,

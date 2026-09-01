@@ -78,12 +78,12 @@ Layout:
 
 ~~~
 --position bottom-center
---margin-left 6%
---margin-right 6%
---margin-top 0%
---margin-bottom 6%
+--margin-left 18%
+--margin-right 18%
+--margin-top 5%
+--margin-bottom 5%
 --max-width 100%
---max-height 10.5%
+--max-height 10%
 ~~~
 
 Feature 9 makes those values the universal native defaults and removes
