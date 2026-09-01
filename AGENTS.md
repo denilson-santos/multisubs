@@ -20,8 +20,8 @@ Read the relevant project documentation before changing behavior:
 | multisubs/transcriber.py | WhisperX loading, transcription, word alignment, subtitle-cue construction, and JSON/SRT/ASS generation. |
 | multisubs/ass.py | ASS header, style, timestamp, dialogue escaping, and serialization. |
 | multisubs/subtitler.py | ffprobe geometry detection and FFmpeg invocation that burns an ASS file into the output video. |
-| multisubs/config.py | Default ASS style values. |
-| multisubs/layout.py | Geometry-aware preset resolution, relative units, safe rectangles, and wrapping budgets. |
+| multisubs/config.py | Semantic appearance, effect, and fixed native layout defaults plus typed input validation. |
+| multisubs/layout.py | Geometry-aware relative-unit resolution, native regions, explicit envelopes, and wrapping budgets. |
 | multisubs/text_measurement.py | Font resolution, Pillow/RAQM width measurement, and Unicode fallback estimation. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
 | multisubs/errors.py | User-actionable error types at module boundaries. |
@@ -61,8 +61,13 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 - Preserve the public CLI flags and their defaults unless a breaking change is explicitly intended. Check the [README command reference](README.md#command-reference) and the functional requirements in [docs/prd.md](docs/prd.md#functional-requirements) first.
 - Keep translation restrictions aligned with Whisper capabilities: turbo and models ending in .en cannot translate, and translation output is English. This is a product constraint in [docs/prd.md](docs/prd.md#functional-requirements) and a pipeline constraint in [docs/architecture.md](docs/architecture.md#design-constraints).
 - Preserve collision-safe output behavior through get_unique_path and get_unique_dir_path. Do not silently overwrite user media or subtitle files. See [output layouts](docs/architecture.md#output-layouts) and FR-12 in [docs/prd.md](docs/prd.md#functional-requirements).
-- Keep the --keep-transcriptions lifecycle consistent: retained runs keep JSON/SRT/ASS under a subtitles directory; non-retained successful runs remove only the transient SRT and ASS files. Consult [generated files](README.md#generated-files) and [output layouts](docs/architecture.md#output-layouts).
-- When adding or changing a style value, update DEFAULT_STYLE, ensure the generated --style-* argument has the correct type, and keep the ASS Style field order correct. Update the [style options](README.md#style-options), the architecture's [SRT and ASS contract](docs/architecture.md#srt-and-ass), and the relevant product requirement.
+- Keep the --keep-transcriptions lifecycle consistent: retained runs keep JSON/SRT/ASS under a subtitles directory; non-retained successful runs remove the transient JSON, SRT, and ASS files. Consult [generated files](README.md#generated-files) and [output layouts](docs/architecture.md#output-layouts).
+- When adding or changing an appearance or layout value, update its semantic
+  default in `multisubs/config.py`, keep the explicit CLI argument and type
+  validation aligned, and preserve the private ASS Style field order. Update
+  the README appearance/layout reference, the architecture's
+  [SRT and ASS contract](docs/architecture.md#srt-and-ass), and the relevant
+  product requirement.
 - Keep subtitle-cue logic readable. It intentionally favors sentence punctuation and pauses before character and duration limits; word-timestamp-free segments have a fallback path. Refer to [subtitle-cue construction](docs/architecture.md#subtitle-cue-construction) and FR-7 in [docs/prd.md](docs/prd.md#functional-requirements).
 - Keep FFmpeg-specific behavior isolated in multisubs/subtitler.py. Follow the [FFmpeg boundary](docs/architecture.md#ffmpeg) and keep user prerequisites accurate in the [README requirements](README.md#requirements).
 - Do not commit virtual environments, model caches, generated videos, or generated subtitle artifacts. The repository ignores data/ and common build outputs for this reason.

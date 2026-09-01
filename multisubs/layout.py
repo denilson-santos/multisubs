@@ -6,7 +6,6 @@ import math
 import unicodedata
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal
-from fractions import Fraction
 
 from .errors import ValidationError
 from .models import (
@@ -15,7 +14,6 @@ from .models import (
     SubtitleBackdrop,
     SubtitleConfig,
     SubtitleLayout,
-    SubtitleLayoutPreset,
     SubtitlePlacementMode,
     SubtitlePosition,
     VideoGeometry,
@@ -24,8 +22,6 @@ from .text_measurement import TextMeasurer, build_text_measurer
 
 _MAX_FONT_SIZE_PIXELS = 512
 _MAX_LETTER_SPACING_FACTOR = 4
-_LANDSCAPE_ASPECT_THRESHOLD = Fraction(11, 10)
-_PORTRAIT_ASPECT_THRESHOLD = Fraction(9, 10)
 
 
 def resolve_relative_length(
@@ -74,12 +70,7 @@ def resolve_subtitle_config(
     text_measurer: TextMeasurer | None = None,
 ) -> SubtitleConfig:
     """Resolve all geometry- and font-dependent subtitle lengths exactly once."""
-    from .config import (
-        DEFAULT_POSITION,
-        get_layout_preset,
-        parse_line_height,
-        validate_subtitle_config,
-    )
+    from .config import parse_line_height, validate_subtitle_config
 
     _validate_geometry(geometry)
     validated = validate_subtitle_config(config)
@@ -130,60 +121,8 @@ def resolve_subtitle_config(
         requested_line_height,
         natural_line_height,
     )
-    resolved_preset = (
-        classify_layout_preset(geometry)
-        if validated.layout_preset is SubtitleLayoutPreset.AUTO
-        else validated.layout_preset
-    )
-    preset_layout = get_layout_preset(resolved_preset).layout
-    layout_overrides = _effective_layout_overrides(
-        validated,
-        default_position=DEFAULT_POSITION,
-        default_margins=(0, 0, 0, 0),
-    )
-    layout = validated.layout
-    explicit = layout.placement_mode is SubtitlePlacementMode.EXPLICIT
-    merged_layout = SubtitleLayout(
-        position=(
-            layout.position
-            if "position" in layout_overrides
-            else preset_layout.position
-        ),
-        margin_left=(
-            layout.margin_left
-            if "margin_left" in layout_overrides
-            else preset_layout.margin_left
-        ),
-        margin_right=(
-            layout.margin_right
-            if "margin_right" in layout_overrides
-            else preset_layout.margin_right
-        ),
-        margin_top=(
-            layout.margin_top
-            if "margin_top" in layout_overrides
-            else preset_layout.margin_top
-        ),
-        margin_bottom=(
-            layout.margin_bottom
-            if "margin_bottom" in layout_overrides
-            else preset_layout.margin_bottom
-        ),
-        placement_mode=layout.placement_mode,
-        position_x=layout.position_x,
-        position_y=layout.position_y,
-        anchor=layout.anchor,
-        max_width=(
-            layout.max_width
-            if explicit or "max_width" in layout_overrides
-            else preset_layout.max_width
-        ),
-        max_height=(
-            layout.max_height
-            if explicit or "max_height" in layout_overrides
-            else preset_layout.max_height
-        ),
-    )
+    merged_layout = validated.layout
+    explicit = merged_layout.placement_mode is SubtitlePlacementMode.EXPLICIT
     resolved_margin_layout = replace(
         merged_layout,
         margin_left=resolve_relative_length(
@@ -274,8 +213,6 @@ def resolve_subtitle_config(
             line_height_requested=requested_line_height,
         ),
         layout=resolved_layout,
-        layout_preset=resolved_preset,
-        layout_overrides=layout_overrides,
         effects=validated.effects,
     )
     if explicit:
@@ -345,17 +282,6 @@ def resolve_line_height(value: object, natural_line_height: float) -> float:
         # values that are genuinely below the metric were rejected above.
         resolved = math.ceil(natural_line_height)
     return resolved
-
-
-def classify_layout_preset(geometry: VideoGeometry) -> SubtitleLayoutPreset:
-    """Select a concrete preset from the autorotated render aspect ratio."""
-    _validate_geometry(geometry)
-    aspect_ratio = Fraction(geometry.render_width, geometry.render_height)
-    if aspect_ratio > _LANDSCAPE_ASPECT_THRESHOLD:
-        return SubtitleLayoutPreset.LANDSCAPE
-    if aspect_ratio < _PORTRAIT_ASPECT_THRESHOLD:
-        return SubtitleLayoutPreset.PORTRAIT
-    return SubtitleLayoutPreset.SQUARE
 
 
 @dataclass(frozen=True)
@@ -680,35 +606,6 @@ def _vertical_alignment(anchor: SubtitlePosition) -> str:
     if anchor.value.startswith("bottom-"):
         return "bottom"
     return "middle"
-
-
-def _effective_layout_overrides(
-    config: SubtitleConfig,
-    *,
-    default_position: object,
-    default_margins: tuple[object, object, object, object],
-) -> frozenset[str]:
-    """Return explicit fields, inferring typed replacements when needed."""
-    overrides = set(config.layout_overrides)
-    if overrides:
-        return frozenset(overrides)
-
-    layout = config.layout
-    if config.layout_preset is SubtitleLayoutPreset.AUTO:
-        if layout.position != default_position:
-            overrides.add("position")
-        for field_name, default_value in zip(
-            ("margin_left", "margin_right", "margin_top", "margin_bottom"),
-            default_margins,
-            strict=True,
-        ):
-            if getattr(layout, field_name) != default_value:
-                overrides.add(field_name)
-    if layout.max_width is not None:
-        overrides.add("max_width")
-    if layout.max_height is not None:
-        overrides.add("max_height")
-    return frozenset(overrides)
 
 
 def _validate_geometry(geometry: VideoGeometry) -> None:

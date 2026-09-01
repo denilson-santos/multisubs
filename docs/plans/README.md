@@ -8,7 +8,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 
 | Package | Status | Progress | Current plan | Package dashboard |
 | --- | --- | ---: | --- | --- |
-| Subtitle positioning | Done | 9/9 | Complete | [Open dashboard](subtitle-positioning/README.md) |
+| Subtitle positioning | In review | 9/10 | [Remove layout presets](subtitle-positioning/09-remove-layout-presets.md) | [Open dashboard](subtitle-positioning/README.md) |
 | Karaoke subtitles | Done | 1/1 | Complete | [Open dashboard](karaoke-subtitles/README.md) |
 | Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
 | Subtitle typography | Done | 5/5 | Complete | [Open dashboard](subtitle-typography/README.md) |

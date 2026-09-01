@@ -64,7 +64,7 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     ) in content
     assert (
         "Style: Default,Roboto,43,&H00FFFFFF,&H00FFFFFF,&H66000000,"
-        "&H66000000,0,0,0,0,100,100,0,0,4,0,2,2,86,86,154,1"
+        "&H66000000,0,0,0,0,100,100,0,0,4,0,2,2,65,65,115,1"
     ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert r"{\pos" not in content

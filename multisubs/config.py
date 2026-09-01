@@ -15,14 +15,12 @@ from .models import (
     FontWeight,
     FontWeightInputForm,
     KaraokeMode,
-    LayoutPreset,
     RelativeLength,
     SubtitleAppearance,
     SubtitleBackdrop,
     SubtitleConfig,
     SubtitleEffects,
     SubtitleLayout,
-    SubtitleLayoutPreset,
     SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
@@ -88,7 +86,6 @@ MODELS = (
 
 POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
-LAYOUT_PRESET_CHOICES = tuple(preset.value for preset in SubtitleLayoutPreset)
 BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
 KARAOKE_MODE_CHOICES = tuple(mode.value for mode in KaraokeMode)
 FONT_WEIGHT_NAMES = tuple(weight.canonical_name for weight in FontWeight)
@@ -133,18 +130,6 @@ _RELATIVE_FIELDS = {
     "position_x",
     "position_y",
 }
-_LAYOUT_OVERRIDE_FIELDS = frozenset(
-    {
-        "position",
-        "margin_left",
-        "margin_right",
-        "margin_top",
-        "margin_bottom",
-        "max_width",
-        "max_height",
-    }
-)
-
 DEFAULT_FONT = "Roboto"
 DEFAULT_FONT_SIZE = "4%"
 DEFAULT_LETTER_SPACING = "0px"
@@ -160,6 +145,12 @@ DEFAULT_BACKDROP_SIZE = "0px"
 DEFAULT_SHADOW_SIZE = "4%"
 DEFAULT_KARAOKE_HIGHLIGHT_COLOR = "#FFD54F"
 DEFAULT_KARAOKE_MODE = KaraokeMode.PROGRESSIVE
+DEFAULT_MARGIN_LEFT = "6%"
+DEFAULT_MARGIN_RIGHT = "6%"
+DEFAULT_MARGIN_TOP = "0%"
+DEFAULT_MARGIN_BOTTOM = "6%"
+DEFAULT_MAX_WIDTH = "100%"
+DEFAULT_MAX_HEIGHT = "10.5%"
 
 
 def parse_relative_length(raw_value: str) -> RelativeLength:
@@ -279,100 +270,11 @@ def _font_weight_error() -> ValidationError:
     )
 
 
-def _preset_length(raw_value: str) -> RelativeLength:
-    return parse_relative_length(raw_value)
-
-
-LAYOUT_PRESETS: Mapping[SubtitleLayoutPreset, LayoutPreset] = MappingProxyType(
-    {
-        SubtitleLayoutPreset.LANDSCAPE: LayoutPreset(
-            name=SubtitleLayoutPreset.LANDSCAPE,
-            description="wide video with balanced lower native margins",
-            layout=SubtitleLayout(
-                position=SubtitlePosition.BOTTOM_CENTER,
-                margin_left=_preset_length("6%"),
-                margin_right=_preset_length("6%"),
-                margin_top=_preset_length("0%"),
-                margin_bottom=_preset_length("6%"),
-                max_width=_preset_length("100%"),
-                max_height=_preset_length("10.5%"),
-            ),
-        ),
-        SubtitleLayoutPreset.PORTRAIT: LayoutPreset(
-            name=SubtitleLayoutPreset.PORTRAIT,
-            description="tall video with expanded lower native margins",
-            layout=SubtitleLayout(
-                position=SubtitlePosition.BOTTOM_CENTER,
-                margin_left=_preset_length("8%"),
-                margin_right=_preset_length("8%"),
-                margin_top=_preset_length("0%"),
-                margin_bottom=_preset_length("8%"),
-                max_width=_preset_length("100%"),
-                max_height=_preset_length("6%"),
-            ),
-        ),
-        SubtitleLayoutPreset.SQUARE: LayoutPreset(
-            name=SubtitleLayoutPreset.SQUARE,
-            description="square video with compact lower native margins",
-            layout=SubtitleLayout(
-                position=SubtitlePosition.BOTTOM_CENTER,
-                margin_left=_preset_length("7%"),
-                margin_right=_preset_length("7%"),
-                margin_top=_preset_length("0%"),
-                margin_bottom=_preset_length("7%"),
-                max_width=_preset_length("100%"),
-                max_height=_preset_length("10.6%"),
-            ),
-        ),
-        SubtitleLayoutPreset.VERTICAL_SOCIAL: LayoutPreset(
-            name=SubtitleLayoutPreset.VERTICAL_SOCIAL,
-            description="generic vertical overlay-safe composition",
-            layout=SubtitleLayout(
-                position=SubtitlePosition.BOTTOM_CENTER,
-                margin_left=_preset_length("8%"),
-                margin_right=_preset_length("12%"),
-                margin_top=_preset_length("8%"),
-                margin_bottom=_preset_length("16%"),
-                max_width=_preset_length("100%"),
-                max_height=_preset_length("6.6%"),
-            ),
-        ),
-        SubtitleLayoutPreset.UPPER_THIRD: LayoutPreset(
-            name=SubtitleLayoutPreset.UPPER_THIRD,
-            description="top-centered subtitle in the upper third",
-            layout=SubtitleLayout(
-                position=SubtitlePosition.TOP_CENTER,
-                margin_left=_preset_length("6%"),
-                margin_right=_preset_length("6%"),
-                margin_top=_preset_length("8%"),
-                margin_bottom=_preset_length("0%"),
-                max_width=_preset_length("100%"),
-                max_height=_preset_length("10.7%"),
-            ),
-        ),
-        SubtitleLayoutPreset.CENTERED: LayoutPreset(
-            name=SubtitleLayoutPreset.CENTERED,
-            description="centered subtitle with balanced horizontal margins",
-            layout=SubtitleLayout(
-                position=SubtitlePosition.CENTER,
-                margin_left=_preset_length("8%"),
-                margin_right=_preset_length("8%"),
-                margin_top=_preset_length("8%"),
-                margin_bottom=_preset_length("8%"),
-                max_width=_preset_length("100%"),
-                max_height=_preset_length("10%"),
-            ),
-        ),
-    }
-)
-
-
 def validate_subtitle_config(
     value: SubtitleConfig | None,
     *,
     appearance_values: Mapping[str, object] | None = None,
     position: SubtitlePosition | str | None = None,
-    layout_preset: SubtitleLayoutPreset | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
     effects_values: Mapping[str, object] | None = None,
     position_x: RelativeLength | str | None = None,
@@ -381,9 +283,6 @@ def validate_subtitle_config(
 ) -> SubtitleConfig:
     """Return a complete, validated semantic subtitle configuration."""
     resolved_position = parse_position(position) if position is not None else None
-    resolved_preset = (
-        parse_layout_preset(layout_preset) if layout_preset is not None else None
-    )
     resolved_anchor = parse_position(anchor) if anchor is not None else None
     if isinstance(value, SubtitleConfig):
         if (
@@ -399,11 +298,6 @@ def validate_subtitle_config(
         if resolved_position is not None and resolved_position != value.layout.position:
             raise ValidationError(
                 "position cannot override the position already stored in the "
-                "subtitle configuration"
-            )
-        if resolved_preset is not None and resolved_preset != value.layout_preset:
-            raise ValidationError(
-                "layout preset cannot override the preset already stored in the "
                 "subtitle configuration"
             )
         if resolved_anchor is not None and resolved_anchor != value.layout.anchor:
@@ -551,12 +445,6 @@ def validate_subtitle_config(
         raise ValidationError("custom coordinates require an explicit max-width")
     if has_custom_coordinates and "max_height" not in parsed_relative_values:
         raise ValidationError("custom coordinates require an explicit max-height")
-    layout_overrides = set()
-    if resolved_position is not None:
-        layout_overrides.add("position")
-    layout_overrides.update(
-        field for field in parsed_relative_values if field in _LAYOUT_OVERRIDE_FIELDS
-    )
     config = SubtitleConfig(
         appearance=SubtitleAppearance(
             font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
@@ -598,10 +486,18 @@ def validate_subtitle_config(
         ),
         layout=SubtitleLayout(
             position=resolved_position or DEFAULT_POSITION,
-            margin_left=parsed_length_values.get("margin_left", 0),
-            margin_right=parsed_length_values.get("margin_right", 0),
-            margin_top=parsed_length_values.get("margin_top", 0),
-            margin_bottom=parsed_length_values.get("margin_bottom", 0),
+            margin_left=parsed_length_values.get(
+                "margin_left", parse_relative_length(DEFAULT_MARGIN_LEFT)
+            ),
+            margin_right=parsed_length_values.get(
+                "margin_right", parse_relative_length(DEFAULT_MARGIN_RIGHT)
+            ),
+            margin_top=parsed_length_values.get(
+                "margin_top", parse_relative_length(DEFAULT_MARGIN_TOP)
+            ),
+            margin_bottom=parsed_length_values.get(
+                "margin_bottom", parse_relative_length(DEFAULT_MARGIN_BOTTOM)
+            ),
             placement_mode=(
                 SubtitlePlacementMode.EXPLICIT
                 if has_custom_coordinates
@@ -610,11 +506,13 @@ def validate_subtitle_config(
             position_x=parsed_length_values.get("position_x"),
             position_y=parsed_length_values.get("position_y"),
             anchor=resolved_anchor if has_custom_coordinates else None,
-            max_width=parsed_length_values.get("max_width"),
-            max_height=parsed_length_values.get("max_height"),
+            max_width=parsed_length_values.get(
+                "max_width", parse_relative_length(DEFAULT_MAX_WIDTH)
+            ),
+            max_height=parsed_length_values.get(
+                "max_height", parse_relative_length(DEFAULT_MAX_HEIGHT)
+            ),
         ),
-        layout_preset=resolved_preset or SubtitleLayoutPreset.AUTO,
-        layout_overrides=frozenset(layout_overrides),
         effects=SubtitleEffects(
             karaoke_mode=karaoke_mode,
             highlight_color=highlight_color,
@@ -635,37 +533,6 @@ def parse_position(value: SubtitlePosition | str) -> SubtitlePosition:
     except ValueError as exc:
         raise ValidationError(
             "position must be one of: " + ", ".join(POSITION_CHOICES)
-        ) from exc
-
-
-def parse_layout_preset(
-    value: SubtitleLayoutPreset | str,
-) -> SubtitleLayoutPreset:
-    """Parse one public layout preset name."""
-    if isinstance(value, SubtitleLayoutPreset):
-        return value
-    if not isinstance(value, str):
-        raise ValidationError(
-            "layout must be one of: " + ", ".join(LAYOUT_PRESET_CHOICES)
-        )
-    try:
-        return SubtitleLayoutPreset(value)
-    except ValueError as exc:
-        raise ValidationError(
-            "layout must be one of: " + ", ".join(LAYOUT_PRESET_CHOICES)
-        ) from exc
-
-
-def get_layout_preset(value: SubtitleLayoutPreset | str) -> LayoutPreset:
-    """Return an immutable concrete preset definition."""
-    preset = parse_layout_preset(value)
-    if preset is SubtitleLayoutPreset.AUTO:
-        raise ValidationError("auto must be resolved against video geometry first")
-    try:
-        return LAYOUT_PRESETS[preset]
-    except KeyError as exc:
-        raise ValidationError(
-            f"No layout preset is defined for '{preset.value}'"
         ) from exc
 
 
@@ -744,20 +611,6 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError("explicit placement requires max-width")
     if is_explicit and config.layout.max_height is None:
         raise ValidationError("explicit placement requires max-height")
-    try:
-        preset = parse_layout_preset(config.layout_preset)
-    except ValidationError:
-        raise
-    if not isinstance(config.layout_overrides, frozenset):
-        raise ValidationError("layout overrides must be an immutable set")
-    if not all(isinstance(field, str) for field in config.layout_overrides):
-        raise ValidationError("layout overrides must contain field names")
-    unknown_overrides = set(config.layout_overrides).difference(_LAYOUT_OVERRIDE_FIELDS)
-    if unknown_overrides:
-        names = ", ".join(sorted(unknown_overrides))
-        raise ValidationError(f"Unknown layout override(s): {names}")
-    if preset is not config.layout_preset:
-        raise ValidationError("layout preset must use a supported preset value")
     _validate_font(config.appearance.font)
     _validate_color(config.appearance.text_color, "text-color")
     if not isinstance(config.appearance.font_weight, FontWeight):

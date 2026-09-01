@@ -140,7 +140,7 @@ def test_adaptive_wrapping_changes_with_portrait_geometry_and_font_size():
     )
 
     assert landscape_metrics.width_budget == 1688
-    assert portrait_metrics.width_budget == 905
+    assert portrait_metrics.width_budget == 947
     assert landscape_display[0]["text"] != portrait_display[0]["text"]
 
 
@@ -546,7 +546,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
     assert load_calls["count"] == 2
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["metadata"]["language"] == "en"
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["metadata"]["created_at"].endswith("+00:00")
     assert payload["metadata"]["rendering"] == {
         "video_stream_index": 0,
@@ -558,8 +558,6 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "sample_aspect_ratio": "1:1",
         "display_aspect_ratio": "16:9",
         "container_duration": 12.5,
-        "requested_preset": "auto",
-        "resolved_preset": "landscape",
         "placement_mode": "native-style",
         "requested_position": "bottom-center",
         "resolved_position": "bottom-center",
@@ -578,13 +576,13 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "backdrop_size": "0px",
             "shadow_size": "4%",
             "margins": {
-                "left": "0px",
-                "right": "0px",
-                "top": "0px",
-                "bottom": "0px",
+                "left": "6%",
+                "right": "6%",
+                "top": "0%",
+                "bottom": "6%",
             },
-            "max_width": None,
-            "max_height": None,
+            "max_width": "100%",
+            "max_height": "10.5%",
         },
         "resolved": {
             "font_size": 43,
@@ -996,8 +994,8 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     assert rendering["requested"]["margins"] == {
         "left": "8%",
         "right": "8%",
-        "top": "0px",
-        "bottom": "0px",
+        "top": "0%",
+        "bottom": "6%",
     }
     assert rendering["resolved"]["font_size"] == 49
     assert rendering["resolved"]["margins"] == {
@@ -1006,8 +1004,8 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
         "top": 0,
         "bottom": 65,
     }
-    assert rendering["requested_preset"] == "auto"
-    assert rendering["resolved_preset"] == "landscape"
+    assert "requested_preset" not in rendering
+    assert "resolved_preset" not in rendering
 
 
 def test_json_records_requested_font_weight_without_machine_path(tmp_path: Path):

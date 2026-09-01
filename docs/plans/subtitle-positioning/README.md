@@ -1,6 +1,6 @@
 # Subtitle positioning roadmap
 
-Status: Done
+Status: In review
 
 This directory contains the implementation plans for redesigning subtitle
 appearance and deterministic positioning in multisubs. The work is intentionally
@@ -17,12 +17,16 @@ The dynamically generated --style-* interface is removed by the breaking CLI
 cutover. This is a deliberate compatibility break; internal ASS fields remain
 an implementation detail.
 
+The next major-version increment removes the public `--layout` preset layer.
+Position, margins, maximum dimensions, and exact coordinates remain explicit;
+completed preset plans are retained below as v2 implementation history.
+
 ## Plan status
 
 This table is the source of truth for the package. Status values follow the
 [plan catalog vocabulary](../README.md#status-vocabulary).
 
-| Order | Plan | Status | Depends on | Pull request |
+| Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
 | 0 | [Shared foundation](00-foundation.md) | Done | — | [#7](https://github.com/denilson-santos/multisubs/pull/7) |
 | 1 | [Video geometry and ASS canvas](01-video-geometry-and-ass-canvas.md) | Done | 0 | [#8](https://github.com/denilson-santos/multisubs/pull/8) |
@@ -33,10 +37,11 @@ This table is the source of truth for the package. Status values follow the
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Done | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
 | 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | Done | 0–6 | [#35](https://github.com/denilson-santos/multisubs/pull/35) |
 | 8 | [Layout preview](08-layout-preview.md) | Done | 0–7 | [#37](https://github.com/denilson-santos/multisubs/pull/37) |
+| 9 | [Remove layout presets and use explicit defaults](09-remove-layout-presets.md) | In review | 0–8 | `feat/remove-layout-presets` |
 
-Package progress: 9 of 9 plans done; the breaking CLI cutover and major-version
-release are complete, Feature 7 merged through pull request #35, and Feature 8
-merged through pull request #37.
+Package progress: 9 of 10 plans done. Feature 9 is in review on
+`feat/remove-layout-presets` as a breaking simplification for v3.0.0; Features
+0–8 remain complete implementation history.
 
 ## Delivery-gate status
 
@@ -46,6 +51,7 @@ Delivery gates are tracked separately from feature progress.
 | --- | --- | --- | --- |
 | Breaking CLI cutover | Done | Plans 0–3 | [#29](https://github.com/denilson-santos/multisubs/pull/29) |
 | Major-version release | Done | CLI cutover | [#30](https://github.com/denilson-santos/multisubs/pull/30), [v2.0.0](https://github.com/denilson-santos/multisubs/releases/tag/v2.0.0) |
+| Preset removal and v3 release | Planned | Plan 9 | — |
 
 Version 2.0.0 was promoted from staged `main` commit
 `23667649c5baf9d1a64d6d7d266ec6272ccb49ae` without rebuilding through the
@@ -71,14 +77,18 @@ Appearance:
 Layout:
 
 ~~~
---layout portrait
 --position bottom-center
---margin-left 8%
---margin-right 8%
---margin-bottom 8%
+--margin-left 6%
+--margin-right 6%
+--margin-top 0%
+--margin-bottom 6%
 --max-width 100%
---max-height 10%
+--max-height 10.5%
 ~~~
+
+Feature 9 makes those values the universal native defaults and removes
+aspect-ratio preset selection. `--position` changes only semantic alignment;
+it does not select hidden margins or maximum dimensions.
 
 Exact placement:
 
@@ -111,20 +121,20 @@ Preview:
 --preview-guides
 ~~~
 
-## Configuration precedence
+## Configuration precedence after Feature 9
 
 Configuration must be resolved in this order:
 
 1. Built-in appearance defaults.
-2. The selected layout preset.
-3. Aspect-ratio resolution when the preset is auto.
-4. Explicit command-line overrides.
+2. Built-in native layout field defaults.
+3. Explicit command-line overrides.
+4. Placement-mode selection and explicit-field presence validation.
 5. Conversion of relative units after video geometry is known.
-6. Final cross-field validation.
+6. Final mode-specific cross-field validation.
 
-An explicit option always wins over a preset value. Conflicting modes produce an
-argument error before model loading; there is no silent precedence between
-incompatible options.
+An explicit option always wins over its matching default. Conflicting modes
+produce an argument error before model loading; there is no hidden preset or
+silent precedence between incompatible options.
 
 ## Delivery milestones
 
@@ -145,6 +155,11 @@ incompatible options.
 ### Milestone 3: editing feedback
 
 - Layout preview (Done).
+
+### Milestone 4: explicit configuration
+
+- Remove public layout presets and automatic aspect classification (In review).
+- Publish the breaking contract in v3.0.0 after staging succeeds.
 
 ## Commit strategy
 

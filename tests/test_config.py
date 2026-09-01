@@ -6,18 +6,20 @@ import pytest
 
 from multisubs.config import (
     BACKDROP_CHOICES,
+    DEFAULT_MARGIN_BOTTOM,
+    DEFAULT_MARGIN_LEFT,
+    DEFAULT_MARGIN_RIGHT,
+    DEFAULT_MARGIN_TOP,
+    DEFAULT_MAX_HEIGHT,
+    DEFAULT_MAX_WIDTH,
     FONT_WEIGHT_ALIASES,
     FONT_WEIGHT_NAMES,
     FONT_WEIGHT_RANKS,
-    LAYOUT_PRESET_CHOICES,
-    LAYOUT_PRESETS,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     TEXT_CASE_CHOICES,
-    get_layout_preset,
     parse_font_weight,
-    parse_layout_preset,
     parse_opacity,
     parse_position,
     parse_relative_length,
@@ -31,7 +33,6 @@ from multisubs.models import (
     RelativeLength,
     SubtitleBackdrop,
     SubtitleConfig,
-    SubtitleLayoutPreset,
     SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
@@ -124,10 +125,19 @@ def test_default_position_is_bottom_center_and_choices_are_named():
 
     assert config.layout.position is SubtitlePosition.BOTTOM_CENTER
     assert config.layout.placement_mode is SubtitlePlacementMode.NATIVE_STYLE
-    assert config.layout_preset is SubtitleLayoutPreset.AUTO
-    assert config.layout_overrides == frozenset()
     assert POSITION_CHOICES == tuple(position.value for position in SubtitlePosition)
     assert parse_position("top-right") is SubtitlePosition.TOP_RIGHT
+
+
+def test_default_layout_values_are_complete_and_resolution_independent():
+    layout = validate_subtitle_config(None).layout
+
+    assert layout.margin_left == parse_relative_length(DEFAULT_MARGIN_LEFT)
+    assert layout.margin_right == parse_relative_length(DEFAULT_MARGIN_RIGHT)
+    assert layout.margin_top == parse_relative_length(DEFAULT_MARGIN_TOP)
+    assert layout.margin_bottom == parse_relative_length(DEFAULT_MARGIN_BOTTOM)
+    assert layout.max_width == parse_relative_length(DEFAULT_MAX_WIDTH)
+    assert layout.max_height == parse_relative_length(DEFAULT_MAX_HEIGHT)
 
 
 def test_maximum_dimensions_are_typed_layout_values():
@@ -138,7 +148,6 @@ def test_maximum_dimensions_are_typed_layout_values():
 
     assert config.layout.max_width == parse_relative_length("72%")
     assert config.layout.max_height == parse_relative_length("12%")
-    assert config.layout_overrides == frozenset({"max_width", "max_height"})
 
 
 def test_letter_spacing_is_a_typed_appearance_length():
@@ -219,44 +228,46 @@ def test_text_case_rejects_empty_unknown_or_non_text_values(raw_value):
         parse_text_case(raw_value)
 
 
-def test_layout_preset_choices_and_definitions_are_complete_and_immutable():
-    assert LAYOUT_PRESET_CHOICES == tuple(
-        preset.value for preset in SubtitleLayoutPreset
-    )
-    assert parse_layout_preset("portrait") is SubtitleLayoutPreset.PORTRAIT
-    assert set(LAYOUT_PRESETS) == {
-        SubtitleLayoutPreset.LANDSCAPE,
-        SubtitleLayoutPreset.PORTRAIT,
-        SubtitleLayoutPreset.SQUARE,
-        SubtitleLayoutPreset.VERTICAL_SOCIAL,
-        SubtitleLayoutPreset.UPPER_THIRD,
-        SubtitleLayoutPreset.CENTERED,
-    }
-    for preset in LAYOUT_PRESETS.values():
-        assert preset.layout.position in SubtitlePosition
-        assert preset.description
-        assert preset.layout.max_width == parse_relative_length("100%")
-        assert isinstance(preset.layout.max_height, RelativeLength)
-    with pytest.raises(TypeError):
-        cast(Any, LAYOUT_PRESETS)[SubtitleLayoutPreset.LANDSCAPE] = get_layout_preset(
-            "square"
-        )
-    with pytest.raises(AttributeError):
-        cast(Any, get_layout_preset("portrait").layout).margin_left = 10
-
-
-def test_explicit_layout_options_record_field_overrides():
+def test_explicit_layout_options_override_only_matching_defaults():
     config = validate_subtitle_config(
         None,
-        layout_preset="portrait",
         position="top-right",
         relative_values={"margin_left": "24px", "margin_bottom": "12%"},
     )
 
-    assert config.layout_preset is SubtitleLayoutPreset.PORTRAIT
-    assert config.layout_overrides == frozenset(
-        {"position", "margin_left", "margin_bottom"}
+    assert config.layout.position is SubtitlePosition.TOP_RIGHT
+    assert config.layout.margin_left == parse_relative_length("24px")
+    assert config.layout.margin_right == parse_relative_length(DEFAULT_MARGIN_RIGHT)
+    assert config.layout.margin_top == parse_relative_length(DEFAULT_MARGIN_TOP)
+    assert config.layout.margin_bottom == parse_relative_length("12%")
+    assert config.layout.max_width == parse_relative_length(DEFAULT_MAX_WIDTH)
+    assert config.layout.max_height == parse_relative_length(DEFAULT_MAX_HEIGHT)
+
+
+def test_default_layout_instances_do_not_leak_changes():
+    first = validate_subtitle_config(None)
+    second = validate_subtitle_config(None)
+
+    changed = replace(
+        first,
+        layout=replace(first.layout, margin_left=parse_relative_length("20%")),
     )
+
+    assert changed.layout.margin_left == parse_relative_length("20%")
+    assert first.layout.margin_left == parse_relative_length(DEFAULT_MARGIN_LEFT)
+    assert second.layout.margin_left == parse_relative_length(DEFAULT_MARGIN_LEFT)
+
+
+def test_removed_preset_python_interfaces_are_absent():
+    from inspect import signature
+
+    import multisubs.models as models
+    from multisubs.transcriber import generate_transcriptions
+
+    assert "layout_preset" not in signature(validate_subtitle_config).parameters
+    assert "layout_preset" not in signature(generate_transcriptions).parameters
+    assert not hasattr(models, "SubtitleLayoutPreset")
+    assert not hasattr(models, "LayoutPreset")
 
 
 def test_semantic_appearance_options_build_typed_config(tmp_path):

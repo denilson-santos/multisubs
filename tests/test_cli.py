@@ -13,7 +13,6 @@ from multisubs.models import (
     RunArtifacts,
     RunRequest,
     SubtitleBackdrop,
-    SubtitleLayoutPreset,
     TextCase,
     TranscriptDocument,
     TranscriptionPaths,
@@ -148,29 +147,24 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
     assert request.subtitle_config.appearance.italic is True
     assert request.subtitle_config.appearance.backdrop is SubtitleBackdrop.BOX
     assert request.subtitle_config.layout.position.value == "top-right"
-    assert request.subtitle_config.layout_preset is SubtitleLayoutPreset.AUTO
 
 
-def test_build_request_accepts_layout_preset_and_position_override(tmp_path: Path):
+def test_build_request_uses_fixed_layout_defaults(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
-    args = parser.parse_args(
-        [
-            "-i",
-            str(input_path),
-            "--layout",
-            "portrait",
-            "--position",
-            "top-right",
-        ]
-    )
+    args = parser.parse_args(["-i", str(input_path)])
 
     request = cli._build_request(args, parser)
 
-    assert request.subtitle_config.layout_preset is SubtitleLayoutPreset.PORTRAIT
-    assert request.subtitle_config.layout.position.value == "top-right"
-    assert "position" in request.subtitle_config.layout_overrides
+    layout = request.subtitle_config.layout
+    assert layout.position.value == "bottom-center"
+    assert layout.margin_left == parse_relative_length("6%")
+    assert layout.margin_right == parse_relative_length("6%")
+    assert layout.margin_top == parse_relative_length("0%")
+    assert layout.margin_bottom == parse_relative_length("6%")
+    assert layout.max_width == parse_relative_length("100%")
+    assert layout.max_height == parse_relative_length("10.5%")
 
 
 @pytest.mark.parametrize(
@@ -447,15 +441,25 @@ def test_numeric_alignment_and_position_values_are_rejected(
     assert error.value.code == 2
 
 
-def test_unknown_layout_preset_is_argparse_error(tmp_path: Path):
+@pytest.mark.parametrize("value", ["auto", "portrait", "vertical-social"])
+def test_removed_layout_option_is_argparse_error(tmp_path: Path, value: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
 
     with pytest.raises(SystemExit) as error:
-        parser.parse_args(["-i", str(input_path), "--layout", "5"])
+        parser.parse_args(["-i", str(input_path), "--layout", value])
 
     assert error.value.code == 2
+
+
+def test_help_exposes_fixed_defaults_without_layout_or_safe_area():
+    help_text = cli.build_parser().format_help()
+
+    assert "--layout" not in help_text
+    assert "--safe-area" not in help_text
+    for value in ("bottom-center", "6%", "0%", "100%", "10.5%"):
+        assert value in help_text
 
 
 def test_default_publication_keeps_video_only(tmp_path: Path):
@@ -578,9 +582,12 @@ def test_run_request_cleans_private_work_dir_after_default_success(
     )
     monkeypatch.setattr("multisubs.subtitler.embed_subtitles", fake_render)
 
-    result = cli._run_request(request, lambda message: None)
+    progress_messages: list[str] = []
+    result = cli._run_request(request, progress_messages.append)
 
     assert result == output_dir / "video-pt.mp4"
+    assert progress_messages
+    assert all("preset" not in message.lower() for message in progress_messages)
     assert not list(output_dir.glob(".multisubs-*"))
     assert sorted(path.name for path in output_dir.iterdir()) == ["video-pt.mp4"]
 

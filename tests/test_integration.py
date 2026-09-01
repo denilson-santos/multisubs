@@ -1000,35 +1000,112 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    ("width", "height", "preset", "expected_preset", "vertical_region", "margins"),
+    (
+        "width",
+        "height",
+        "layout_id",
+        "position",
+        "values",
+        "vertical_region",
+        "margins",
+    ),
     [
-        (320, 180, "auto", "landscape", "bottom", (19, 19, 0, 11)),
-        (180, 320, "auto", "portrait", "bottom", (14, 14, 0, 26)),
-        (240, 240, "auto", "square", "bottom", (17, 17, 0, 17)),
+        (320, 180, "default", None, {}, "bottom", (19, 19, 0, 11)),
+        (
+            180,
+            320,
+            "historical-portrait",
+            "bottom-center",
+            {
+                "margin_left": "8%",
+                "margin_right": "8%",
+                "margin_top": "0%",
+                "margin_bottom": "8%",
+                "max_width": "100%",
+                "max_height": "6%",
+            },
+            "bottom",
+            (14, 14, 0, 26),
+        ),
+        (
+            240,
+            240,
+            "historical-square",
+            "bottom-center",
+            {
+                "margin_left": "7%",
+                "margin_right": "7%",
+                "margin_top": "0%",
+                "margin_bottom": "7%",
+                "max_width": "100%",
+                "max_height": "10.6%",
+            },
+            "bottom",
+            (17, 17, 0, 17),
+        ),
         (
             320,
             180,
-            "vertical-social",
-            "vertical-social",
+            "historical-vertical-social",
+            "bottom-center",
+            {
+                "margin_left": "8%",
+                "margin_right": "12%",
+                "margin_top": "8%",
+                "margin_bottom": "16%",
+                "max_width": "100%",
+                "max_height": "6.6%",
+            },
             "bottom",
             (26, 38, 14, 29),
         ),
-        (320, 180, "upper-third", "upper-third", "top", (19, 19, 14, 0)),
-        (320, 180, "centered", "centered", "middle", (26, 26, 14, 14)),
+        (
+            320,
+            180,
+            "historical-upper-third",
+            "top-center",
+            {
+                "margin_left": "6%",
+                "margin_right": "6%",
+                "margin_top": "8%",
+                "margin_bottom": "0%",
+                "max_width": "100%",
+                "max_height": "10.7%",
+            },
+            "top",
+            (19, 19, 14, 0),
+        ),
+        (
+            320,
+            180,
+            "historical-centered",
+            "center",
+            {
+                "margin_left": "8%",
+                "margin_right": "8%",
+                "margin_top": "8%",
+                "margin_bottom": "8%",
+                "max_width": "100%",
+                "max_height": "10%",
+            },
+            "middle",
+            (26, 26, 14, 14),
+        ),
     ],
 )
-def test_layout_presets_render_inside_expected_regions(
+def test_default_and_historical_layout_values_render_inside_expected_regions(
     tmp_path: Path,
     width: int,
     height: int,
-    preset: str,
-    expected_preset: str,
+    layout_id: str,
+    position: str | None,
+    values: dict[str, str],
     vertical_region: str,
     margins: tuple[int, int, int, int],
 ):
-    input_path = tmp_path / f"preset-input-{preset}-{width}x{height}.mp4"
-    subtitle_path = tmp_path / f"preset-{preset}-{width}x{height}.ass"
-    output_path = tmp_path / f"preset-{preset}-{width}x{height}.mp4"
+    input_path = tmp_path / f"layout-input-{layout_id}-{width}x{height}.mp4"
+    subtitle_path = tmp_path / f"layout-{layout_id}-{width}x{height}.ass"
+    output_path = tmp_path / f"layout-{layout_id}-{width}x{height}.mp4"
     subprocess.run(
         [
             "ffmpeg",
@@ -1050,9 +1127,8 @@ def test_layout_presets_render_inside_expected_regions(
     )
 
     geometry = probe_video_geometry(input_path)
-    config = validate_subtitle_config(None, layout_preset=preset)
+    config = validate_subtitle_config(None, position=position, relative_values=values)
     resolved = resolve_subtitle_config(config, geometry)
-    assert resolved.layout_preset.value == expected_preset
     assert (
         resolved.layout.margin_left,
         resolved.layout.margin_right,

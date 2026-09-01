@@ -24,7 +24,7 @@ WhisperX must download model assets that are not already cached.
 | --- | --- |
 | 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
-| 📐 Responsive layouts | Presets for landscape, portrait, square, social, upper-third, and centered compositions. |
+| 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
 | 🎯 Precise placement | Nine semantic positions, relative units, margins, safe envelopes, and exact PlayRes coordinates. |
 | 👀 Fast previews | Render one subtitle preview frame without loading WhisperX or transcribing the video. |
 | 🎤 Karaoke | Progressive or active-word highlighting based on aligned word timestamps. |
@@ -120,7 +120,6 @@ multisubs -i ./video.mp4 -o ./previews \
   --preview-at 00:00:10.500 \
   --preview-text "This is how my subtitle will look" \
   --preview-guides \
-  --layout landscape \
   --position bottom-center
 ```
 
@@ -171,7 +170,7 @@ multisubs -i ./video.mp4 -l pt \
 Colors use `#RRGGBB` or `#RRGGBBAA`, where `00` is transparent and `FF` is
 opaque. Quote colors in the shell because `#` may start a comment.
 
-The typography controls added in 2.2.0 include:
+The typography controls include:
 
 - `--font-weight`: named weights or numeric ranks from 100 through 900.
 - `--letter-spacing`: non-negative tracking in `%` or PlayRes `px`.
@@ -250,29 +249,21 @@ wrapping consistency across machines.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--layout PRESET` | `auto` | Complete layout preset. |
-| `--position POSITION` | preset value | Override the preset's semantic position. |
-| `--margin-left LENGTH` | preset value | Native ASS left margin. |
-| `--margin-right LENGTH` | preset value | Native ASS right margin. |
-| `--margin-top LENGTH` | preset value | Native ASS top margin. |
-| `--margin-bottom LENGTH` | preset value | Native ASS bottom margin. |
-| `--max-width LENGTH` | preset value | Maximum subtitle width. |
-| `--max-height LENGTH` | preset value | Maximum height used to derive line capacity. |
+| `--position POSITION` | `bottom-center` | Native ASS semantic position. |
+| `--margin-left LENGTH` | `6%` | Native ASS left margin. |
+| `--margin-right LENGTH` | `6%` | Native ASS right margin. |
+| `--margin-top LENGTH` | `0%` | Native ASS top margin. |
+| `--margin-bottom LENGTH` | `6%` | Native ASS bottom margin. |
+| `--max-width LENGTH` | `100%` | Maximum subtitle width. |
+| `--max-height LENGTH` | `10.5%` | Maximum height used to derive line capacity. |
 | `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
 | `--position-y LENGTH` | — | Explicit global PlayRes Y coordinate. |
 | `--anchor POSITION` | — | Subtitle-box anchor for explicit coordinates. |
 
-Available presets:
-
-| Preset | Default placement |
-| --- | --- |
-| `auto` | Chooses landscape, portrait, or square from the rendered video shape. |
-| `landscape` | Bottom center with 6% side and bottom insets. |
-| `portrait` | Bottom center with 8% side and bottom insets. |
-| `square` | Bottom center with 7% side and bottom insets. |
-| `vertical-social` | Bottom center with asymmetric social-video-safe insets. |
-| `upper-third` | Top center with 6% side and 8% top insets. |
-| `centered` | Center with 8% insets. |
+These defaults are identical for landscape, portrait, square, and rotated
+inputs. Percentages resolve from each video's autorotated render geometry.
+`--position` changes only alignment; margins and maximum dimensions retain their
+defaults unless they are overridden independently.
 
 Available semantic positions:
 
