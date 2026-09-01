@@ -72,7 +72,8 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep command-line orchestration in multisubs/cli.py.
 - Must keep model loading, transcription, alignment, cue construction, and subtitle-file writing in multisubs/transcriber.py.
 - Must keep FFmpeg rendering concerns in multisubs/subtitler.py.
-- Must keep semantic subtitle appearance defaults in multisubs/config.py.
+- Must keep semantic subtitle appearance and native layout field defaults in
+  multisubs/config.py.
 - Must keep generic collision-safe path helpers in multisubs/utils.py.
 - Should add a focused module when a responsibility no longer fits these boundaries instead of growing cli.py into a second pipeline implementation.
 - Must avoid circular imports and import-time model loading, filesystem writes, network access, or FFmpeg execution.
@@ -149,9 +150,11 @@ Update a higher-level document when a proposed change intentionally modifies the
   perform combined mode-specific validation after all fields are resolved.
 - Must keep unresolved unit values out of ASS serialization; the ASS writer
   receives a geometry-resolved typed configuration.
-- Must define layout preset sources centrally as immutable typed values in
-  `config.py`; preset selection, field-by-field override merging, and
-  geometry-dependent resolution belong in `layout.py`.
+- Must define native layout defaults centrally as immutable scalar values in
+  `config.py`, apply explicit fields independently, and keep geometry-dependent
+  resolution in `layout.py`. Explicit coordinate mode must validate that its
+  anchor and maximum dimensions were user-supplied before native defaults are
+  filled.
 
 ### Exit status, output, and diagnostics
 
@@ -243,15 +246,15 @@ Update a higher-level document when a proposed change intentionally modifies the
   style parsers receive the same exact OpenType rank used by font measurement.
   Compatibility bold shorthands may map to 400 or 700 only at configuration
   boundaries.
-- Must not mutate a layout preset during a run. Preset definitions and their
-  nested layout values must remain immutable so separate invocations cannot
-  influence one another.
+- Must construct each typed layout from immutable scalar defaults so separate
+  invocations cannot mutate or influence one another.
 - Must compile named positions through native ASS style Alignment and actual
   margins without adding a synthetic event `\\pos`. Explicit coordinate mode
   must use event `\\an`/`\\pos`, neutral style margins, and a previously validated
   PlayRes envelope.
 - Must validate appearance and layout values that can produce invalid ASS or unsafe filter input. Treat colors, font names, positions, margins, and numeric values as user input.
-- Should use a documented style preset mechanism rather than duplicating long lists of CLI flags if several coherent styles are added.
+- Must not add bundled layout profiles or a safe-area abstraction without a
+  separate product decision and public-contract review.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.
 
 ### Typography measurement
@@ -404,7 +407,9 @@ Do not run a command from this list merely because it appears here if the corres
 ### Releases
 
 - Should follow semantic versioning: patch for backward-compatible fixes, minor for backward-compatible features, and major for breaking public CLI, output-contract, or supported-environment changes.
-- Must document breaking changes, migration steps, and changed defaults in the README and release notes.
+- Must keep the README focused on the current interface and current defaults.
+  Document breaking changes and legacy migration details in release notes or a
+  changelog instead of retaining recipes for removed interfaces in the README.
 - Should maintain a changelog when releases become externally consumed.
 - Must build from a clean checkout, install the built artifact in a clean environment, invoke multisubs --help, and perform the appropriate smoke checks before publishing.
 - Should publish reproducible source distributions and wheels with provenance or signed artifacts when the distribution channel supports them.

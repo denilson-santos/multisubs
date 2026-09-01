@@ -6,6 +6,11 @@ Pull request: [#13](https://github.com/denilson-santos/multisubs/pull/13)
 
 The implementation and documentation were merged through pull request #13.
 
+This plan remains a record of the preset feature delivered in v2. Its public
+interface is superseded for the next major version by
+[Feature 9](09-remove-layout-presets.md), which removes `--layout` and replaces
+aspect-ratio selection with explicit field defaults.
+
 Depends on:
 
 - [Shared foundation](00-foundation.md)
