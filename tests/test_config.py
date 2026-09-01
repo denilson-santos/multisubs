@@ -232,16 +232,58 @@ def test_explicit_layout_options_override_only_matching_defaults():
     config = validate_subtitle_config(
         None,
         position="top-right",
-        relative_values={"margin_left": "24px", "margin_bottom": "12%"},
+        relative_values={"margin_left": "24px", "margin_top": "12%"},
     )
 
     assert config.layout.position is SubtitlePosition.TOP_RIGHT
     assert config.layout.margin_left == parse_relative_length("24px")
     assert config.layout.margin_right == parse_relative_length(DEFAULT_MARGIN_RIGHT)
-    assert config.layout.margin_top == parse_relative_length(DEFAULT_MARGIN_TOP)
-    assert config.layout.margin_bottom == parse_relative_length("12%")
+    assert config.layout.margin_top == parse_relative_length("12%")
+    assert config.layout.margin_bottom == parse_relative_length(DEFAULT_MARGIN_BOTTOM)
     assert config.layout.max_width == parse_relative_length(DEFAULT_MAX_WIDTH)
     assert config.layout.max_height == parse_relative_length(DEFAULT_MAX_HEIGHT)
+
+
+@pytest.mark.parametrize(
+    ("position", "relative_values", "message"),
+    [
+        (
+            "top-center",
+            {"margin_bottom": "12%"},
+            "--margin-bottom has no effect with --position top-center; "
+            "use --margin-top for top positions",
+        ),
+        (
+            "bottom-center",
+            {"margin_top": "12%"},
+            "--margin-top has no effect with --position bottom-center; "
+            "use --margin-bottom for bottom positions",
+        ),
+        (
+            None,
+            {"margin_top": "12%"},
+            "--margin-top has no effect with --position bottom-center; "
+            "use --margin-bottom for bottom positions",
+        ),
+        (
+            "center",
+            {"margin_top": "12%", "margin_bottom": "8%"},
+            "--margin-top and --margin-bottom have no effect with --position "
+            "center; use custom coordinates to offset middle positions",
+        ),
+    ],
+)
+def test_inactive_explicit_vertical_margins_are_rejected(
+    position, relative_values, message
+):
+    with pytest.raises(ValidationError) as error:
+        validate_subtitle_config(
+            None,
+            position=position,
+            relative_values=relative_values,
+        )
+
+    assert str(error.value) == message
 
 
 def test_default_layout_instances_do_not_leak_changes():
@@ -457,7 +499,6 @@ def test_relative_values_are_stored_until_geometry_is_available():
             "shadow_weight": "4%",
             "margin_left": "8%",
             "margin_right": "8%",
-            "margin_top": "5px",
             "margin_bottom": "72px",
         },
     )

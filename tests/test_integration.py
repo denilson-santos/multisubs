@@ -912,7 +912,6 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
                 "font_size": "10%",
                 "outline_weight": "0px",
                 "shadow_weight": "0px",
-                "margin_top": "10%",
                 "margin_bottom": "10%",
             },
         )
@@ -975,7 +974,6 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
                 "font_size": "18px",
                 "outline_weight": "0px",
                 "shadow_weight": "0px",
-                "margin_top": "12px",
                 "margin_bottom": "12px",
             },
         )
@@ -1012,7 +1010,7 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         "margins",
     ),
     [
-        (320, 180, "default", None, {}, "bottom", (58, 58, 9, 9)),
+        (320, 180, "default", None, {}, "bottom", (58, 58, 0, 9)),
         (
             320,
             180,
@@ -1021,7 +1019,6 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             {
                 "margin_left": "6%",
                 "margin_right": "6%",
-                "margin_top": "0%",
                 "margin_bottom": "6%",
                 "max_width": "100%",
                 "max_height": "10.5%",
@@ -1037,7 +1034,6 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             {
                 "margin_left": "8%",
                 "margin_right": "8%",
-                "margin_top": "0%",
                 "margin_bottom": "8%",
                 "max_width": "100%",
                 "max_height": "6%",
@@ -1053,7 +1049,6 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             {
                 "margin_left": "7%",
                 "margin_right": "7%",
-                "margin_top": "0%",
                 "margin_bottom": "7%",
                 "max_width": "100%",
                 "max_height": "10.6%",
@@ -1069,13 +1064,12 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             {
                 "margin_left": "8%",
                 "margin_right": "12%",
-                "margin_top": "8%",
                 "margin_bottom": "16%",
                 "max_width": "100%",
                 "max_height": "6.6%",
             },
             "bottom",
-            (26, 38, 14, 29),
+            (26, 38, 0, 29),
         ),
         (
             320,
@@ -1086,12 +1080,11 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
                 "margin_left": "6%",
                 "margin_right": "6%",
                 "margin_top": "8%",
-                "margin_bottom": "0%",
                 "max_width": "100%",
                 "max_height": "10.7%",
             },
             "top",
-            (19, 19, 14, 0),
+            (19, 19, 14, 9),
         ),
         (
             320,
@@ -1101,13 +1094,11 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
             {
                 "margin_left": "8%",
                 "margin_right": "8%",
-                "margin_top": "8%",
-                "margin_bottom": "8%",
                 "max_width": "100%",
                 "max_height": "10%",
             },
             "middle",
-            (26, 26, 14, 14),
+            (26, 26, 0, 9),
         ),
     ],
 )
@@ -1229,16 +1220,19 @@ def test_named_positions_render_inside_expected_frame_thirds(tmp_path: Path):
         subtitle_path = tmp_path / f"{position.value}.ass"
         output_path = tmp_path / f"{position.value}.mp4"
         geometry = probe_video_geometry(input_path)
+        relative_values = {
+            "font_size": "18px",
+            "margin_left": "10px",
+            "margin_right": "10px",
+        }
+        if position.value.startswith("top-"):
+            relative_values["margin_top"] = "10px"
+        elif position.value.startswith("bottom-"):
+            relative_values["margin_bottom"] = "10px"
         config = validate_subtitle_config(
             None,
             position=position,
-            relative_values={
-                "font_size": "18px",
-                "margin_left": "10px",
-                "margin_right": "10px",
-                "margin_top": "10px",
-                "margin_bottom": "10px",
-            },
+            relative_values=relative_values,
         )
         write_ass(
             subtitle_path,

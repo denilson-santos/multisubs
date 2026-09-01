@@ -3,7 +3,9 @@
 Status: In review
 
 Delivery: [#54](https://github.com/denilson-santos/multisubs/pull/54),
-follow-up `fix/normalize-subtitle-sizing`
+[#55](https://github.com/denilson-santos/multisubs/pull/55),
+[#56](https://github.com/denilson-santos/multisubs/pull/56), follow-up
+`fix/reject-ineffective-margins`
 
 Depends on:
 
@@ -36,7 +38,8 @@ Included:
 - Replace preset-provided native values with centralized field defaults.
 - Resolve percentage font size against autorotated render height so videos with
   the same output height retain the same resolved size across aspect ratios.
-- Keep every explicit layout field independently overridable.
+- Keep every effective explicit layout field independently overridable and
+  reject explicit fields that the selected placement mode cannot apply.
 - Remove preset types, parsing, merging, progress output, preview labels, and
   JSON metadata.
 - Preserve named native ASS placement, explicit PlayRes placement, adaptive
@@ -71,7 +74,7 @@ Use one product-selected universal native baseline:
 | `position` | `bottom-center` |
 | `margin-left` | `18%` |
 | `margin-right` | `18%` |
-| `margin-top` | `5%` |
+| `margin-top` | `0%` |
 | `margin-bottom` | `5%` |
 | `max-width` | `100%` |
 | `max-height` | `10%` |
@@ -97,15 +100,20 @@ bottom, width, and height values unless the user overrides those fields.
 Native ASS continues to apply only the vertical margin active for the selected
 position. A top position therefore uses the configured top margin; a bottom
 position uses the bottom margin; middle alignment ignores both vertical margins
-for placement. This existing ASS behavior must stay explicit in help and docs.
+for placement. Explicitly supplying an inactive vertical margin must fail before
+probing with an actionable message naming the active alternative. The default
+bottom position therefore stores a zero top margin and a 5% bottom inset; a top
+position uses the zero default unless the user supplies its active top margin.
+This ASS behavior must stay explicit in help and docs.
 
 ### Explicit coordinates keep explicit envelopes
 
 The fixed native `max-width` and `max-height` defaults must not accidentally
 satisfy explicit-mode requirements. When X/Y coordinates are present, the user
-must still supply `--anchor`, `--max-width`, and `--max-height`; margins remain
-ignored. Mode detection and presence validation therefore occur before native
-defaults are filled.
+must still supply `--anchor`, `--max-width`, and `--max-height`; any explicitly
+supplied margin must fail before probing. Mode detection and presence validation
+therefore occur before native defaults are filled; retained native defaults
+compile to zero in explicit placement.
 
 ### Compatibility and release
 
@@ -149,7 +157,9 @@ Keep:
 
 The parser help and README command table must show the exact fixed defaults for
 native fields rather than “preset value.” The nine position choices, strict
-`%`/`px` syntax, percentage bases, and early conflict errors are unchanged.
+`%`/`px` syntax, and percentage bases remain unchanged. Early validation rejects
+inactive vertical margins and all explicitly supplied margins in coordinate
+mode with actionable alternatives.
 
 ### Python API and typed models
 
@@ -158,10 +168,11 @@ Remove the `layout_preset` keyword from `generate_transcriptions()` and
 `SubtitleConfig.layout_preset`, and preset-only `layout_overrides` bookkeeping.
 
 `SubtitleConfig.layout` becomes the complete requested layout. Native configs
-contain all fixed defaults plus user overrides; explicit configs contain the
-validated coordinate envelope and may carry ignored margin defaults only after
-explicit presence checks have succeeded. Programmatic callers that use removed
-preset symbols or keywords must migrate to explicit field values.
+contain all fixed defaults plus effective user overrides; explicit configs
+contain the validated coordinate envelope and may carry neutralized margin
+defaults only after explicit margin conflicts have been rejected. Programmatic
+callers that use removed preset symbols or keywords must migrate to explicit
+field values.
 
 No compatibility wrapper should retain the removed keyword because doing so
 would preserve two competing configuration paths in the new major version.
@@ -181,6 +192,8 @@ Validation timing remains unchanged:
 
 - syntax, unknown flags, missing explicit-mode fields, and incompatible options
   fail before probing;
+- explicitly supplied inactive vertical margins and coordinate-mode margins
+  fail before probing with actionable diagnostics;
 - geometry-dependent margins, maximum dimensions, and explicit envelope bounds
   fail after FFprobe and before WhisperX;
 - invalid input never causes a silent fallback to old preset behavior.
@@ -223,12 +236,12 @@ preset.
 | Removed value | Replacement layout options |
 | --- | --- |
 | `auto` | No exact equivalent; use the new defaults or choose explicit values for the intended geometry. |
-| `landscape` | `--position bottom-center --margin-left 6% --margin-right 6% --margin-top 0% --margin-bottom 6% --max-width 100% --max-height 10.5%` |
-| `portrait` | `--position bottom-center --margin-left 8% --margin-right 8% --margin-top 0% --margin-bottom 8% --max-width 100% --max-height 6%` |
-| `square` | `--position bottom-center --margin-left 7% --margin-right 7% --margin-top 0% --margin-bottom 7% --max-width 100% --max-height 10.6%` |
-| `vertical-social` | `--position bottom-center --margin-left 8% --margin-right 12% --margin-top 8% --margin-bottom 16% --max-width 100% --max-height 6.6%` |
-| `upper-third` | `--position top-center --margin-left 6% --margin-right 6% --margin-top 8% --margin-bottom 0% --max-width 100% --max-height 10.7%` |
-| `centered` | `--position center --margin-left 8% --margin-right 8% --margin-top 8% --margin-bottom 8% --max-width 100% --max-height 10%` |
+| `landscape` | `--position bottom-center --margin-left 6% --margin-right 6% --margin-bottom 6% --max-width 100% --max-height 10.5%` |
+| `portrait` | `--position bottom-center --margin-left 8% --margin-right 8% --margin-bottom 8% --max-width 100% --max-height 6%` |
+| `square` | `--position bottom-center --margin-left 7% --margin-right 7% --margin-bottom 7% --max-width 100% --max-height 10.6%` |
+| `vertical-social` | `--position bottom-center --margin-left 8% --margin-right 12% --margin-bottom 16% --max-width 100% --max-height 6.6%` |
+| `upper-third` | `--position top-center --margin-left 6% --margin-right 6% --margin-top 8% --max-width 100% --max-height 10.7%` |
+| `centered` | `--position center --margin-left 8% --margin-right 8% --max-width 100% --max-height 10%` |
 
 The project no longer makes an aspect-ratio policy decision. This consequence
 must be clear in the breaking-change release notes without adding legacy preset
@@ -243,6 +256,8 @@ recipes to the README.
   explicit arguments.
 - Detect explicit coordinate mode and validate user presence before applying
   native defaults.
+- Reject explicit margin options that the selected native or coordinate mode
+  cannot apply, and report the effective alternative.
 - Remove preset definitions, parsers, choices, and merge-only state.
 
 ### `multisubs/models.py`
@@ -279,12 +294,16 @@ recipes to the README.
 ## Implementation tasks
 
 - [x] Centralize the seven native layout defaults and add completeness tests.
+- [x] Set the inactive top-margin default to zero for the default bottom-center
+      position and synchronize resolved metadata fixtures.
 - [x] Remove preset types, constants, parsing, classification, merge logic, and
       override bookkeeping from the typed configuration path.
 - [x] Remove `--layout` and the programmatic `layout_preset` keyword and prove
       both fail before external work.
 - [x] Preserve explicit-coordinate presence validation before native defaults
       are applied.
+- [x] Reject explicitly supplied inactive vertical margins and coordinate-mode
+      margins before probing with actionable diagnostics.
 - [x] Resolve percentage font size against render height and verify equal-height
       landscape and portrait canvases produce the same resolved size.
 - [x] Remove preset output from progress messages and preview guides.
@@ -308,11 +327,12 @@ recipes to the README.
   size; pixel font sizes remain unchanged.
 - Each explicit layout option overrides only its matching default.
 - Changing `--position` does not mutate margins or maximum dimensions.
-- Top, middle, and bottom positions retain their existing active-margin rules.
+- Top and bottom positions accept only their active explicit vertical margin;
+  middle positions reject both while retained defaults remain valid.
 - Explicit X/Y still require an explicit anchor, maximum width, and maximum
   height even though native mode has defaults.
-- Explicit placement remains independent of margins and rejects off-canvas
-  envelopes without clamping.
+- Explicit placement rejects user-supplied margins and off-canvas envelopes
+  without clamping.
 - Two config instances cannot mutate or leak defaults into one another.
 - Removed Python symbols and keywords are absent; retained typed configurations
   validate and resolve normally.
@@ -333,8 +353,8 @@ recipes to the README.
   measurements.
 - Render representative top, center, and bottom positions to confirm that
   position changes do not carry hidden margin changes.
-- Render one explicit-coordinate preview with non-zero margins and confirm its
-  envelope and output remain unchanged.
+- Reject one explicit-coordinate preview with user-supplied margins before
+  FFprobe or FFmpeg is called.
 - Verify preview mode still produces one valid collision-safe PNG without
   importing WhisperX/PyTorch.
 - Build and install a wheel in a clean supported environment; confirm
@@ -465,8 +485,11 @@ After merge:
   public presets.
 - `--position` changes alignment without applying hidden margins, width, or
   height values.
+- Explicit inactive vertical margins fail before probing and identify the active
+  alternative; middle positions reject both vertical margin flags.
 - Explicit X/Y mode retains its required fields, global PlayRes axes,
-  margin-independent envelope, and failure behavior.
+  margin-independent envelope, rejects explicitly supplied margins, and retains
+  its off-canvas failure behavior.
 - Preview and final rendering resolve the same layout without preset labels or
   WhisperX/PyTorch imports on the preview path.
 - JSON schema 2 contains no requested/resolved preset fields and retains all

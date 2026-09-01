@@ -48,16 +48,19 @@ GEOMETRY = VideoGeometry(
         ("bottom-right", (40, 0, 1880, 1055)),
     ],
 )
-def test_native_positions_use_only_the_active_vertical_margin(position, expected):
+def test_native_positions_use_the_active_vertical_margin(position, expected):
+    relative_values = {
+        "margin_left": "40px",
+        "margin_right": "40px",
+    }
+    if position.startswith("top-"):
+        relative_values["margin_top"] = "15px"
+    elif position.startswith("bottom-"):
+        relative_values["margin_bottom"] = "25px"
     config = validate_subtitle_config(
         None,
         position=position,
-        relative_values={
-            "margin_left": "40px",
-            "margin_right": "40px",
-            "margin_top": "15px",
-            "margin_bottom": "25px",
-        },
+        relative_values=relative_values,
     )
 
     resolved = resolve_subtitle_config(config, GEOMETRY)
@@ -126,7 +129,6 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
             "shadow_weight": "4%",
             "margin_left": "8%",
             "margin_right": "72px",
-            "margin_top": "5%",
             "margin_bottom": "72px",
         },
     )
@@ -139,7 +141,7 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
     assert resolved.appearance.shadow_size == 2
     assert resolved.layout.margin_left == 154
     assert resolved.layout.margin_right == 72
-    assert resolved.layout.margin_top == 54
+    assert resolved.layout.margin_top == 0
     assert resolved.layout.margin_bottom == 72
 
 
@@ -171,7 +173,7 @@ def test_fixed_defaults_resolve_against_portrait_geometry():
     assert config.layout.max_height == parse_relative_length("10%")
     assert resolved.layout.margin_left == 194
     assert resolved.layout.margin_right == 194
-    assert resolved.layout.margin_top == 96
+    assert resolved.layout.margin_top == 0
     assert resolved.layout.margin_bottom == 96
     assert resolved.layout.max_width == 692
     assert isinstance(resolved.layout.max_height, int)
@@ -274,9 +276,8 @@ def test_custom_coordinates_resolve_against_global_playres_axes():
     assert placement.anchor is SubtitlePosition.BOTTOM_CENTER
 
 
-def test_explicit_coordinates_and_envelope_ignore_margins():
-    zero = resolve_subtitle_config(_explicit_config(), GEOMETRY)
-    inset = resolve_subtitle_config(
+def test_explicit_coordinates_reject_user_supplied_margins():
+    with pytest.raises(ValidationError, match="cannot be combined"):
         _explicit_config(
             margins={
                 "margin_left": "100px",
@@ -284,14 +285,7 @@ def test_explicit_coordinates_and_envelope_ignore_margins():
                 "margin_top": "80px",
                 "margin_bottom": "160px",
             }
-        ),
-        GEOMETRY,
-    )
-
-    assert inset.layout.position_x == zero.layout.position_x == 960
-    assert inset.layout.position_y == zero.layout.position_y == 929
-    assert inset.layout.max_width == zero.layout.max_width == 1152
-    assert inset.layout.max_height == zero.layout.max_height == 216
+        )
 
 
 @pytest.mark.parametrize(
@@ -403,14 +397,13 @@ def test_native_max_width_percentage_recalculates_after_margin_changes():
 def test_native_max_height_uses_alignment_specific_available_height(
     position, expected_basis, expected_height
 ):
+    relative_values = {"max_height": "50%"}
+    if position.startswith("top-"):
+        relative_values["margin_top"] = "100px"
+    elif position.startswith("bottom-"):
+        relative_values["margin_bottom"] = "200px"
     config = validate_subtitle_config(
-        None,
-        position=position,
-        relative_values={
-            "margin_top": "100px",
-            "margin_bottom": "200px",
-            "max_height": "50%",
-        },
+        None, position=position, relative_values=relative_values
     )
 
     resolved = resolve_subtitle_config(config, GEOMETRY)
@@ -520,9 +513,9 @@ def test_max_height_too_small_for_one_measured_line_is_rejected():
 @pytest.mark.parametrize(
     ("width", "height", "expected_margins", "expected_maximums"),
     [
-        (1920, 1080, (346, 346, 54, 54), (1228, 103)),
-        (1080, 1920, (194, 194, 96, 96), (692, 182)),
-        (1080, 1080, (194, 194, 54, 54), (692, 103)),
+        (1920, 1080, (346, 346, 0, 54), (1228, 103)),
+        (1080, 1920, (194, 194, 0, 96), (692, 182)),
+        (1080, 1080, (194, 194, 0, 54), (692, 103)),
     ],
 )
 def test_fixed_defaults_do_not_classify_aspect_ratio(
@@ -565,7 +558,7 @@ def test_explicit_layout_values_override_only_matching_defaults():
     assert resolved.layout.position is SubtitlePosition.TOP_RIGHT
     assert resolved.layout.margin_left == 346
     assert resolved.layout.margin_right == 72
-    assert resolved.layout.margin_top == 54
+    assert resolved.layout.margin_top == 0
     assert resolved.layout.margin_bottom == 54
 
 

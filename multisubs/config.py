@@ -147,7 +147,7 @@ DEFAULT_KARAOKE_HIGHLIGHT_COLOR = "#FFD54F"
 DEFAULT_KARAOKE_MODE = KaraokeMode.PROGRESSIVE
 DEFAULT_MARGIN_LEFT = "18%"
 DEFAULT_MARGIN_RIGHT = "18%"
-DEFAULT_MARGIN_TOP = "5%"
+DEFAULT_MARGIN_TOP = "0%"
 DEFAULT_MARGIN_BOTTOM = "5%"
 DEFAULT_MAX_WIDTH = "100%"
 DEFAULT_MAX_HEIGHT = "10%"
@@ -445,6 +445,11 @@ def validate_subtitle_config(
         raise ValidationError("custom coordinates require an explicit max-width")
     if has_custom_coordinates and "max_height" not in parsed_relative_values:
         raise ValidationError("custom coordinates require an explicit max-height")
+    _validate_layout_option_effects(
+        parsed_relative_values,
+        position=resolved_position or DEFAULT_POSITION,
+        has_custom_coordinates=has_custom_coordinates,
+    )
     config = SubtitleConfig(
         appearance=SubtitleAppearance(
             font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
@@ -556,6 +561,74 @@ def _validate_relative_values(
         _validate_relative_length(value, key)
         parsed[key] = value
     return parsed
+
+
+def _validate_layout_option_effects(
+    values: Mapping[str, object],
+    *,
+    position: SubtitlePosition,
+    has_custom_coordinates: bool,
+) -> None:
+    """Reject explicit layout values that the selected placement cannot use."""
+    margin_fields = tuple(
+        field
+        for field in (
+            "margin_left",
+            "margin_right",
+            "margin_top",
+            "margin_bottom",
+        )
+        if field in values
+    )
+    if has_custom_coordinates:
+        if margin_fields:
+            options = _format_cli_options(margin_fields)
+            raise ValidationError(
+                f"{options} cannot be combined with custom coordinates because "
+                "explicit placement ignores margins"
+            )
+        return
+
+    position_name = position.value
+    if position_name.startswith("top-"):
+        inactive_fields = ("margin_bottom",)
+        active_option = "--margin-top"
+        position_group = "top"
+    elif position_name.startswith("bottom-"):
+        inactive_fields = ("margin_top",)
+        active_option = "--margin-bottom"
+        position_group = "bottom"
+    else:
+        inactive_fields = ("margin_top", "margin_bottom")
+        active_option = None
+        position_group = "middle"
+
+    provided_inactive_fields = tuple(
+        field for field in inactive_fields if field in values
+    )
+    if not provided_inactive_fields:
+        return
+
+    options = _format_cli_options(provided_inactive_fields)
+    verb = "has" if len(provided_inactive_fields) == 1 else "have"
+    if active_option is None:
+        raise ValidationError(
+            f"{options} {verb} no effect with --position {position_name}; use custom "
+            f"coordinates to offset {position_group} positions"
+        )
+    raise ValidationError(
+        f"{options} {verb} no effect with --position {position_name}; use "
+        f"{active_option} for {position_group} positions"
+    )
+
+
+def _format_cli_options(fields: tuple[str, ...]) -> str:
+    options = tuple(f"--{field.replace('_', '-')}" for field in fields)
+    if len(options) == 1:
+        return options[0]
+    if len(options) == 2:
+        return " and ".join(options)
+    return ", ".join(options[:-1]) + f", and {options[-1]}"
 
 
 def _validate_relative_length(value: object, field: str) -> None:

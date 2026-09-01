@@ -570,7 +570,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "applied": True,
             "left": 346,
             "right": 346,
-            "top": 54,
+            "top": 0,
             "bottom": 54,
         },
         "requested": {
@@ -582,7 +582,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "margins": {
                 "left": "18%",
                 "right": "18%",
-                "top": "5%",
+                "top": "0%",
                 "bottom": "5%",
             },
             "max_width": "100%",
@@ -597,7 +597,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "margins": {
                 "left": 346,
                 "right": 346,
-                "top": 54,
+                "top": 0,
                 "bottom": 54,
             },
             "max_width": 1228,
@@ -999,14 +999,14 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
     assert rendering["requested"]["margins"] == {
         "left": "8%",
         "right": "8%",
-        "top": "5%",
+        "top": "0%",
         "bottom": "5%",
     }
     assert rendering["resolved"]["font_size"] == 49
     assert rendering["resolved"]["margins"] == {
         "left": 154,
         "right": 154,
-        "top": 54,
+        "top": 0,
         "bottom": 54,
     }
     assert "requested_preset" not in rendering

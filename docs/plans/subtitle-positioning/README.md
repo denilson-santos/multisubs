@@ -37,11 +37,11 @@ This table is the source of truth for the package. Status values follow the
 | 6 | [Adaptive line wrapping](06-adaptive-line-wrapping.md) | Done | 0, 1, 3, 4 | [#33](https://github.com/denilson-santos/multisubs/pull/33) |
 | 7 | [Placement modes and maximum height](07-placement-modes-and-maximum-height.md) | Done | 0–6 | [#35](https://github.com/denilson-santos/multisubs/pull/35) |
 | 8 | [Layout preview](08-layout-preview.md) | Done | 0–7 | [#37](https://github.com/denilson-santos/multisubs/pull/37) |
-| 9 | [Remove layout presets and use explicit defaults](09-remove-layout-presets.md) | In review | 0–8 | [#54](https://github.com/denilson-santos/multisubs/pull/54), `fix/normalize-subtitle-sizing` |
+| 9 | [Remove layout presets and use explicit defaults](09-remove-layout-presets.md) | In review | 0–8 | [#54](https://github.com/denilson-santos/multisubs/pull/54), [#55](https://github.com/denilson-santos/multisubs/pull/55), [#56](https://github.com/denilson-santos/multisubs/pull/56), `fix/reject-ineffective-margins` |
 
 Package progress: 9 of 10 plans done. Feature 9's core implementation merged
-through pull request #54; its font-size basis and final-default correction is in
-review on `fix/normalize-subtitle-sizing` for v3.0.0. Features 0–8 remain
+through pull requests #54–#56; its final ineffective-margin validation is in
+review on `fix/reject-ineffective-margins` for v3.0.0. Features 0–8 remain
 complete implementation history.
 
 ## Delivery-gate status
@@ -81,7 +81,7 @@ Layout:
 --position bottom-center
 --margin-left 18%
 --margin-right 18%
---margin-top 5%
+--margin-top 0%
 --margin-bottom 5%
 --max-width 100%
 --max-height 10%
@@ -107,11 +107,11 @@ optional; `100%` means all of that remaining width. `max-height` replaces a
 fixed line count and supplies the vertical budget from which line capacity is
 derived.
 
-Custom X/Y coordinates use the full PlayRes canvas, ignore margins, and require
-an explicit anchor, max-width, and max-height. The complete requested envelope
-must fit the canvas for the selected anchor; it is rejected rather than silently
-shrunk or moved. Only this explicit mode emits private ASS `\an`/`\pos` event
-placement.
+Custom X/Y coordinates use the full PlayRes canvas, reject explicitly supplied
+margins, and require an explicit anchor, max-width, and max-height. Retained
+native margin defaults compile to zero. The complete requested envelope must fit
+the canvas for the selected anchor; it is rejected rather than silently shrunk
+or moved. Only this explicit mode emits private ASS `\an`/`\pos` event placement.
 
 Preview:
 

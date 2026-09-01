@@ -161,7 +161,7 @@ def test_build_request_uses_fixed_layout_defaults(tmp_path: Path):
     assert layout.position.value == "bottom-center"
     assert layout.margin_left == parse_relative_length("18%")
     assert layout.margin_right == parse_relative_length("18%")
-    assert layout.margin_top == parse_relative_length("5%")
+    assert layout.margin_top == parse_relative_length("0%")
     assert layout.margin_bottom == parse_relative_length("5%")
     assert layout.max_width == parse_relative_length("100%")
     assert layout.max_height == parse_relative_length("10%")
@@ -357,6 +357,60 @@ def test_custom_coordinate_conflicts_fail_before_runtime(tmp_path: Path, argumen
         )
 
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (
+            ["--position", "top-center", "--margin-bottom", "12%"],
+            "--margin-bottom has no effect with --position top-center; "
+            "use --margin-top for top positions",
+        ),
+        (
+            ["--position", "center", "--margin-top", "12%"],
+            "--margin-top has no effect with --position center; use custom "
+            "coordinates to offset middle positions",
+        ),
+        (
+            ["--margin-top", "12%"],
+            "--margin-top has no effect with --position bottom-center; "
+            "use --margin-bottom for bottom positions",
+        ),
+        (
+            [
+                "--position-x",
+                "50%",
+                "--position-y",
+                "86%",
+                "--anchor",
+                "bottom-center",
+                "--max-width",
+                "60%",
+                "--max-height",
+                "20%",
+                "--margin-left",
+                "10%",
+            ],
+            "--margin-left cannot be combined with custom coordinates because "
+            "explicit placement ignores margins",
+        ),
+    ],
+)
+def test_ineffective_margin_options_fail_with_actionable_errors(
+    tmp_path: Path, capsys, arguments, message
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as error:
+        cli._build_request(
+            parser.parse_args(["-i", str(input_path), *arguments]), parser
+        )
+
+    assert error.value.code == 2
+    assert message in capsys.readouterr().err
 
 
 def test_removed_style_options_are_rejected(tmp_path: Path):

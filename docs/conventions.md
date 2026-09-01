@@ -143,8 +143,12 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must resolve margins against the render axes first. In native ASS placement,
   resolve percentage maximum width against the width after left/right margins
   and maximum height against the alignment-specific available height. In
-  explicit placement, resolve X/Y and both maximum dimensions against the full
-  PlayRes axes and ignore margins.
+  explicit placement, reject explicitly supplied margins, resolve X/Y and both
+  maximum dimensions against the full PlayRes axes, and compile retained native
+  margin defaults to zero.
+- Must reject explicitly supplied inactive vertical margins before probing:
+  top positions use only the top margin, bottom positions use only the bottom
+  margin, and middle positions use neither.
 - Must treat explicit pixel coordinates as absolute PlayRes coordinates and
   reject any complete anchored maximum-width/maximum-height envelope that leaves
   the canvas. Do not silently clamp, move, or shrink an invalid placement.
