@@ -159,12 +159,12 @@ def test_build_request_uses_fixed_layout_defaults(tmp_path: Path):
 
     layout = request.subtitle_config.layout
     assert layout.position.value == "bottom-center"
-    assert layout.margin_left == parse_relative_length("6%")
-    assert layout.margin_right == parse_relative_length("6%")
-    assert layout.margin_top == parse_relative_length("0%")
-    assert layout.margin_bottom == parse_relative_length("6%")
+    assert layout.margin_left == parse_relative_length("18%")
+    assert layout.margin_right == parse_relative_length("18%")
+    assert layout.margin_top == parse_relative_length("5%")
+    assert layout.margin_bottom == parse_relative_length("5%")
     assert layout.max_width == parse_relative_length("100%")
-    assert layout.max_height == parse_relative_length("10.5%")
+    assert layout.max_height == parse_relative_length("10%")
 
 
 @pytest.mark.parametrize(
@@ -458,7 +458,7 @@ def test_help_exposes_fixed_defaults_without_layout_or_safe_area():
 
     assert "--layout" not in help_text
     assert "--safe-area" not in help_text
-    for value in ("bottom-center", "6%", "0%", "100%", "10.5%"):
+    for value in ("bottom-center", "18%", "5%", "100%", "10%"):
         assert value in help_text
 
 

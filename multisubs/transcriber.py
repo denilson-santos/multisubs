@@ -1093,6 +1093,7 @@ def _write_json(
                     "shadow_size": wrapping_metrics.shadow_size,
                 },
                 "percentage_bases": {
+                    "font_size": "render-height",
                     "letter_spacing": "resolved-font-size",
                     "line_height": "natural-line-height",
                     "max_width": (

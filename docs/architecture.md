@@ -95,7 +95,7 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   backdrop/shadow allowance. The first line uses the natural ascent-plus-descent
   metric and each additional line consumes the resolved baseline advance:
   `natural_line_height + (line_count - 1) * resolved_line_height`. The fixed
-  `10.5%` native maximum-height default can derive different capacities from
+  `10%` native maximum-height default can derive different capacities from
   different video geometries; there is no fixed max-lines input.
 - It applies `original`, Unicode `upper()`, or Unicode `lower()` to plain-text
   display words before width measurement. Transformed word fragments retain
@@ -168,10 +168,10 @@ The JSON artifact has this high-level shape:
       "render_strategy": "single-event",
       "margins": {
         "applied": true,
-        "left": 65,
-        "right": 65,
-        "top": 0,
-        "bottom": 115
+        "left": 194,
+        "right": 194,
+        "top": 96,
+        "bottom": 96
       },
       "requested": {
         "font_size": "4%",
@@ -180,49 +180,50 @@ The JSON artifact has this high-level shape:
         "backdrop_size": "0px",
         "shadow_size": "4%",
         "margins": {
-          "left": "6%",
-          "right": "6%",
-          "top": "0%",
-          "bottom": "6%"
+          "left": "18%",
+          "right": "18%",
+          "top": "5%",
+          "bottom": "5%"
         },
         "max_width": "100%",
-        "max_height": "10.5%"
+        "max_height": "10%"
       },
       "resolved": {
-        "font_size": 43,
+        "font_size": 77,
         "letter_spacing": 0,
-        "line_height": 43.0,
+        "line_height": 77.0,
         "backdrop_size": 0,
-        "shadow_size": 2,
+        "shadow_size": 3,
         "margins": {
-          "left": 65,
-          "right": 65,
-          "top": 0,
-          "bottom": 115
+          "left": 194,
+          "right": 194,
+          "top": 96,
+          "bottom": 96
         },
-        "max_width": 950,
-        "max_height": 190,
-        "line_capacity": 4
+        "max_width": 692,
+        "max_height": 182,
+        "line_capacity": 2
       },
       "wrapping": {
-        "available_width": 950,
-        "available_height": 1805,
-        "max_width": 950,
-        "max_height": 190,
-        "width_budget": 948,
-        "line_height": 43.0,
-        "natural_line_height": 43.0,
-        "resolved_line_height": 43.0,
-        "ascent": 35.0,
-        "descent": 8.0,
-        "vertical_decoration": 2,
-        "line_capacity": 4,
-        "font_size": 43,
+        "available_width": 692,
+        "available_height": 1824,
+        "max_width": 692,
+        "max_height": 182,
+        "width_budget": 689,
+        "line_height": 77.0,
+        "natural_line_height": 77.0,
+        "resolved_line_height": 77.0,
+        "ascent": 61.0,
+        "descent": 16.0,
+        "vertical_decoration": 3,
+        "line_capacity": 2,
+        "font_size": 77,
         "letter_spacing": 0,
         "backdrop_size": 0,
-        "shadow_size": 2
+        "shadow_size": 3
       },
       "percentage_bases": {
+        "font_size": "render-height",
         "letter_spacing": "resolved-font-size",
         "line_height": "natural-line-height",
         "max_width": "native-width-after-horizontal-margins",
@@ -237,7 +238,7 @@ The JSON artifact has this high-level shape:
         "resolved_style": "Regular",
         "font_source": "fontconfig",
         "shaping": "raqm",
-        "metric_size": 36,
+        "metric_size": 65,
         "requested_weight_name": "regular",
         "requested_weight": 400,
         "requested_weight_input": "regular",
@@ -277,12 +278,12 @@ The JSON artifact has this high-level shape:
         }
       },
       "native_region": {
-        "left": 65,
+        "left": 194,
         "top": 0,
-        "right": 1015,
-        "bottom": 1805,
-        "width": 950,
-        "height": 1805
+        "right": 886,
+        "bottom": 1824,
+        "width": 692,
+        "height": 1824
       }
     }
   },
@@ -324,9 +325,9 @@ JSON keeps original full/cue text and aligned-word records, adds each cue's
 `display_text`, and records TextCase and `effects.karaoke` metadata without
 storing compiled tags.
 
-RelativeLength margins use render width or height, font size uses the shorter
-render edge, and letter spacing, line-height percentages, and decoration sizes
-use the resolved font size or natural line metric documented below.
+RelativeLength margins use render width or height, font size uses render height,
+and letter spacing, line-height percentages, and decoration sizes use the
+resolved font size or natural line metric documented below.
 Native percentage
 `max-width` uses the width after left/right margins. Native percentage
 `max-height` uses the height after the active top or bottom margin, while middle

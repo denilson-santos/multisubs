@@ -138,6 +138,8 @@ Update a higher-level document when a proposed change intentionally modifies the
   exponent notation, and preserve the original requested string for metadata.
 - Must resolve percentages only after normalized video geometry is available,
   using the field's documented axis or reference value.
+- Must resolve percentage font size against autorotated render height; explicit
+  pixel font sizes remain absolute PlayRes values.
 - Must resolve margins against the render axes first. In native ASS placement,
   resolve percentage maximum width against the width after left/right margins
   and maximum height against the alignment-specific available height. In

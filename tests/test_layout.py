@@ -156,6 +156,7 @@ def test_fixed_defaults_resolve_against_portrait_geometry():
     config = validate_subtitle_config(None)
     resolved = resolve_subtitle_config(config, portrait_geometry)
     assert isinstance(resolved.appearance.font_size, int)
+    assert resolved.appearance.font_size == 77
     measurer = build_unicode_text_measurer(
         resolved.appearance.font,
         resolved.appearance.font_size,
@@ -166,17 +167,48 @@ def test_fixed_defaults_resolve_against_portrait_geometry():
         text_measurer=measurer,
     )
 
-    assert config.layout.margin_left == parse_relative_length("6%")
-    assert config.layout.max_height == parse_relative_length("10.5%")
-    assert resolved.layout.margin_left == 65
-    assert resolved.layout.margin_right == 65
-    assert resolved.layout.margin_bottom == 115
-    assert resolved.layout.max_width == 950
+    assert config.layout.margin_left == parse_relative_length("18%")
+    assert config.layout.max_height == parse_relative_length("10%")
+    assert resolved.layout.margin_left == 194
+    assert resolved.layout.margin_right == 194
+    assert resolved.layout.margin_top == 96
+    assert resolved.layout.margin_bottom == 96
+    assert resolved.layout.max_width == 692
     assert isinstance(resolved.layout.max_height, int)
-    assert resolved.layout.max_height == 190
-    assert metrics.available_width == 950
-    assert metrics.max_width == 950
-    assert metrics.line_capacity >= 2
+    assert resolved.layout.max_height == 182
+    assert metrics.available_width == 692
+    assert metrics.max_width == 692
+    assert metrics.line_capacity == 1
+
+
+@pytest.mark.parametrize("width", [1920, 608])
+def test_percentage_font_size_uses_render_height_across_aspect_ratios(width):
+    geometry = replace(
+        GEOMETRY,
+        coded_width=width,
+        render_width=width,
+        display_aspect_ratio=Fraction(width, 1080),
+    )
+
+    resolved = resolve_subtitle_config(validate_subtitle_config(None), geometry)
+
+    assert resolved.appearance.font_size == 43
+
+
+def test_pixel_font_size_is_independent_of_render_height():
+    config = validate_subtitle_config(
+        None,
+        relative_values={"font_size": "40px"},
+    )
+    portrait_geometry = replace(
+        GEOMETRY,
+        coded_width=608,
+        render_width=608,
+        display_aspect_ratio=Fraction(9, 16),
+    )
+
+    assert resolve_subtitle_config(config, GEOMETRY).appearance.font_size == 40
+    assert resolve_subtitle_config(config, portrait_geometry).appearance.font_size == 40
 
 
 def test_letter_spacing_percentage_uses_resolved_font_size():
@@ -488,9 +520,9 @@ def test_max_height_too_small_for_one_measured_line_is_rejected():
 @pytest.mark.parametrize(
     ("width", "height", "expected_margins", "expected_maximums"),
     [
-        (1920, 1080, (115, 115, 0, 65), (1690, 107)),
-        (1080, 1920, (65, 65, 0, 115), (950, 190)),
-        (1080, 1080, (65, 65, 0, 65), (950, 107)),
+        (1920, 1080, (346, 346, 54, 54), (1228, 103)),
+        (1080, 1920, (194, 194, 96, 96), (692, 182)),
+        (1080, 1080, (194, 194, 54, 54), (692, 103)),
     ],
 )
 def test_fixed_defaults_do_not_classify_aspect_ratio(
@@ -531,10 +563,10 @@ def test_explicit_layout_values_override_only_matching_defaults():
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
     assert resolved.layout.position is SubtitlePosition.TOP_RIGHT
-    assert resolved.layout.margin_left == 115
+    assert resolved.layout.margin_left == 346
     assert resolved.layout.margin_right == 72
-    assert resolved.layout.margin_top == 0
-    assert resolved.layout.margin_bottom == 65
+    assert resolved.layout.margin_top == 54
+    assert resolved.layout.margin_bottom == 54
 
 
 @pytest.mark.parametrize(
