@@ -1,11 +1,11 @@
 # Feature 9: remove layout presets and use explicit defaults
 
-Status: In review
+Status: Done
 
 Delivery: [#54](https://github.com/denilson-santos/multisubs/pull/54),
 [#55](https://github.com/denilson-santos/multisubs/pull/55),
-[#56](https://github.com/denilson-santos/multisubs/pull/56), follow-up
-`fix/reject-ineffective-margins`
+[#56](https://github.com/denilson-santos/multisubs/pull/56),
+[#57](https://github.com/denilson-santos/multisubs/pull/57)
 
 Depends on:
 
