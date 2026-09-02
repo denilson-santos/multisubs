@@ -346,8 +346,8 @@ installation or fallback.
   regression test preserves that order so stale artifacts cannot enter later
   validation or promotion steps.
 - Compared with the pre-change 3.0.0 artifacts, the wheel grows from 72,388 to
-  6,777,513 bytes (+6,705,125) and the sdist grows from 115,903 to 6,818,894
-  bytes (+6,702,991).
+  6,777,452 bytes (+6,705,064) and the sdist grows from 115,903 to 6,818,668
+  bytes (+6,702,765).
 
 ## Commit and pull-request plan
 
