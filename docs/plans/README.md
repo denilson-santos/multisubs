@@ -12,6 +12,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Karaoke subtitles | Done | 1/1 | Complete | [Open dashboard](karaoke-subtitles/README.md) |
 | Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
 | Subtitle typography | Done | 5/5 | Complete | [Open dashboard](subtitle-typography/README.md) |
+| Subtitle templates | In review | 0/2 | Bundled OFL font catalog | [Open dashboard](subtitle-templates/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

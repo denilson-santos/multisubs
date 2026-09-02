@@ -42,8 +42,10 @@ local `bkp_dev_*` branches unless their owner explicitly requests deletion.
 - `production.yml` runs for `v*` tags and validates the stricter stable
   `vX.Y.Z` form. Manual dispatch is a non-publishing rehearsal.
 - `_verify.yml` is the shared trusted builder. It tests Python 3.10 and 3.13 on
-  `ubuntu-24.04`, uses CPU PyTorch wheels, and keeps FFmpeg/libass checks in
-  staging.
+  `ubuntu-24.04`, uses CPU PyTorch wheels, removes `dist/` immediately before
+  building, verifies the complete bundled-font manifest from the clean wheel,
+  and keeps FFmpeg/libass checks in staging. This ensures checksums,
+  attestations, and uploads contain only artifacts from the current build.
 
 All third-party workflow actions are pinned to full reviewed SHAs. Dependabot
 may propose GitHub Actions updates, but each update must retain a full SHA and

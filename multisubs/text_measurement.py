@@ -8,9 +8,11 @@ import unicodedata
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
+from .font_catalog import bundled_filesystem_directory
 from .models import FontWeight, FontWeightInputForm, SubtitleAppearance
 
 _FONT_SUFFIXES = frozenset({".otf", ".ttc", ".ttf"})
@@ -54,6 +56,9 @@ class TextMeasurementInfo:
     ascent: float | None = None
     descent: float | None = None
     natural_line_height: float | None = None
+    renderer_fonts_dir: Path | None = dataclass_field(
+        default=None, repr=False, compare=False
+    )
 
     def as_json(self) -> dict[str, str | int | None]:
         """Return metadata without exposing a machine-specific font path."""
@@ -186,12 +191,14 @@ class _ResolvedFace:
     ascent: float
     descent: float
     weight: FontWeight
+    renderer_fonts_dir: Path | None
 
 
 def build_text_measurer(
     appearance: SubtitleAppearance,
     *,
     language: str | None = None,
+    bundled_fonts_dir: Path | None = None,
 ) -> TextMeasurer:
     """Build a font-aware measurer or the explicit Unicode fallback."""
     font_size = appearance.font_size
@@ -209,6 +216,7 @@ def build_text_measurer(
             features,
             appearance,
             font_size,
+            bundled_fonts_dir=bundled_fonts_dir,
         )
         if resolved is not None:
             direction = _text_direction
@@ -245,6 +253,7 @@ def build_text_measurer(
                     ascent=resolved.ascent,
                     descent=resolved.descent,
                     natural_line_height=resolved.line_height,
+                    renderer_fonts_dir=resolved.renderer_fonts_dir,
                 ),
                 measure,
                 line_height=resolved.line_height,
@@ -322,6 +331,8 @@ def _resolve_face(
     features: Any,
     appearance: SubtitleAppearance,
     font_size: int,
+    *,
+    bundled_fonts_dir: Path | None,
 ) -> _ResolvedFace | None:
     if appearance.fonts_dir is not None:
         face = _resolve_face_from_directory(
@@ -332,6 +343,23 @@ def _resolve_face(
             font_size,
             font_weight=appearance.font_weight,
             italic=appearance.italic,
+            source="fonts-dir",
+        )
+        if face is not None:
+            return face
+    bundled_directory = bundled_fonts_dir or bundled_filesystem_directory(
+        appearance.font
+    )
+    if bundled_directory is not None:
+        face = _resolve_face_from_directory(
+            image_font,
+            features,
+            bundled_directory,
+            appearance.font,
+            font_size,
+            font_weight=appearance.font_weight,
+            italic=appearance.italic,
+            source="bundled",
         )
         if face is not None:
             return face
@@ -354,6 +382,7 @@ def _resolve_face_from_directory(
     *,
     font_weight: FontWeight,
     italic: bool,
+    source: str,
 ) -> _ResolvedFace | None:
     best: tuple[tuple[int, int], _ResolvedFace] | None = None
     for path in sorted(fonts_dir.iterdir(), key=lambda item: item.name.casefold()):
@@ -385,13 +414,14 @@ def _resolve_face_from_directory(
                 font=loaded_font,
                 family=loaded_family,
                 style=loaded_style,
-                source="fonts-dir",
+                source=source,
                 shaping=shaping,
                 metric_size=metric_size,
                 line_height=line_height,
                 ascent=ascent,
                 descent=descent,
                 weight=loaded_weight,
+                renderer_fonts_dir=fonts_dir,
             )
             if best is None or score < best[0]:
                 best = (score, face)
@@ -470,6 +500,7 @@ def _resolve_face_from_fontconfig(
         ascent=ascent,
         descent=descent,
         weight=_weight_from_style(loaded_style or resolved_style),
+        renderer_fonts_dir=None,
     )
 
 

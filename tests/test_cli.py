@@ -621,7 +621,8 @@ def test_run_request_cleans_private_work_dir_after_default_success(
         progress,
     ):
         assert geometry is GEOMETRY
-        assert fonts_dir is None
+        assert fonts_dir is not None
+        assert Path(fonts_dir).name == "roboto"
         Path(output_path).write_bytes(b"video")
         return str(output_path)
 

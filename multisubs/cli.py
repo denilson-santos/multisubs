@@ -609,9 +609,30 @@ def _validate_effect_request(
 def _run_request(
     request: RunRequest | PreviewRequest, progress: ProgressReporter
 ) -> Path:
+    """Keep a selected bundled family alive through measurement and rendering."""
+    from .font_catalog import bundled_font_directory
+
+    with bundled_font_directory(request.subtitle_config.appearance.font) as directory:
+        return _run_request_with_fonts(
+            request,
+            progress,
+            bundled_fonts_dir=directory,
+        )
+
+
+def _run_request_with_fonts(
+    request: RunRequest | PreviewRequest,
+    progress: ProgressReporter,
+    *,
+    bundled_fonts_dir: Path | None,
+) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
     if isinstance(request, PreviewRequest):
-        return _run_preview_request(request, progress)
+        return _run_preview_request(
+            request,
+            progress,
+            bundled_fonts_dir=bundled_fonts_dir,
+        )
 
     from .subtitler import (
         embed_subtitles,
@@ -623,12 +644,15 @@ def _run_request(
     validate_ffmpeg_support()
     geometry = probe_video_geometry(request.input_path)
     resolved_subtitle_config = resolve_subtitle_config(
-        request.subtitle_config, geometry
+        request.subtitle_config,
+        geometry,
+        bundled_fonts_dir=bundled_fonts_dir,
     )
     wrapping_metrics = resolve_wrapping_metrics(
         resolved_subtitle_config,
         geometry,
         language=request.language,
+        bundled_fonts_dir=bundled_fonts_dir,
     )
     placement = resolve_cue_placement(resolved_subtitle_config, geometry)
     if placement is not None:
@@ -684,7 +708,7 @@ def _run_request(
                 request.language,
                 output_path=video_path,
                 geometry=geometry,
-                fonts_dir=resolved_subtitle_config.appearance.fonts_dir,
+                fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
                 progress=progress,
             )
         )
@@ -704,7 +728,12 @@ def _run_request(
         return result_path
 
 
-def _run_preview_request(request: PreviewRequest, progress: ProgressReporter) -> Path:
+def _run_preview_request(
+    request: PreviewRequest,
+    progress: ProgressReporter,
+    *,
+    bundled_fonts_dir: Path | None = None,
+) -> Path:
     """Render a single preview frame before any transcription runtime import."""
     from .preview import build_preview_ass, resolve_preview_timestamp
     from .subtitler import (
@@ -716,8 +745,16 @@ def _run_preview_request(request: PreviewRequest, progress: ProgressReporter) ->
     validate_ffmpeg_support()
     geometry = probe_video_geometry(request.input_path)
     timestamp = resolve_preview_timestamp(request.preview_at, geometry)
-    resolved_config = resolve_subtitle_config(request.subtitle_config, geometry)
-    wrapping_metrics = resolve_wrapping_metrics(resolved_config, geometry)
+    resolved_config = resolve_subtitle_config(
+        request.subtitle_config,
+        geometry,
+        bundled_fonts_dir=bundled_fonts_dir,
+    )
+    wrapping_metrics = resolve_wrapping_metrics(
+        resolved_config,
+        geometry,
+        bundled_fonts_dir=bundled_fonts_dir,
+    )
     progress(
         "Detected video layout: "
         f"{geometry.render_width}x{geometry.render_height} "
@@ -728,7 +765,14 @@ def _run_preview_request(request: PreviewRequest, progress: ProgressReporter) ->
     work_dir = create_work_dir(request.output_dir)
     try:
         ass_path = work_dir / "subtitle-preview.ass"
-        build_preview_ass(ass_path, request, geometry, timestamp)
+        build_preview_ass(
+            ass_path,
+            request,
+            geometry,
+            timestamp,
+            resolved_config=resolved_config,
+            wrapping_metrics=wrapping_metrics,
+        )
         return Path(
             render_subtitle_preview(
                 request.input_path,
@@ -736,7 +780,7 @@ def _run_preview_request(request: PreviewRequest, progress: ProgressReporter) ->
                 request.output_dir,
                 timestamp=timestamp,
                 geometry=geometry,
-                fonts_dir=resolved_config.appearance.fonts_dir,
+                fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
                 progress=progress,
             )
         )

@@ -24,6 +24,7 @@ WhisperX must download model assets that are not already cached.
 | --- | --- |
 | 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
+| 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
 | 🎯 Precise placement | Nine semantic positions, relative units, margins, safe envelopes, and exact PlayRes coordinates. |
 | 👀 Fast previews | Render one subtitle preview frame without loading WhisperX or transcribing the video. |
@@ -154,7 +155,7 @@ normal subtitles instead of receiving invented timestamps.
 
 ```bash
 multisubs -i ./video.mp4 -l pt \
-  --font "Roboto" \
+  --font "Inter" \
   --font-weight semi-bold \
   --font-size 4.5% \
   --letter-spacing 1px \
@@ -183,6 +184,70 @@ The typography controls include:
 
 JSON keeps the original transcript and aligned words even when the displayed
 case changes.
+
+### Use a bundled font
+
+multisubs ships 82 static desktop faces from six families. They are available
+offline through `--font` without `--fonts-dir` or global installation:
+
+| Family | Bundled weights | Italic |
+| --- | --- | --- |
+| Roboto | 100–900 | all bundled weights |
+| Inter | 100–900 | all bundled weights |
+| Montserrat | 100–900 | all bundled weights |
+| Oswald | 200–700 | no |
+| Lora | 400–700 | all bundled weights |
+| Atkinson Hyperlegible Next | 200–800 | all bundled weights |
+
+```bash
+multisubs -i ./video.mp4 \
+  --font "Atkinson Hyperlegible Next" \
+  --font-weight bold \
+  --italic
+```
+
+Every face is an unmodified static TTF served by the official Google Fonts API
+and recorded with its exact versioned source URL in a packaged integrity
+manifest. Each family includes the `OFL.txt` from the same pinned Google Fonts
+catalog revision; no font download or font-cache write happens while multisubs
+runs. Width and optical-size axes are kept at their Google Fonts defaults
+because the CLI currently exposes weight and italic selection only. Shipping
+all faces adds about 13 MB to the unpacked package.
+
+### Use a custom font
+
+Put the desired `.ttf`, `.otf`, or `.ttc` files directly in one flat directory.
+The resolver does not search nested directories:
+
+```text
+fonts/
+├── MyFont-Regular.ttf
+├── MyFont-SemiBold.ttf
+├── MyFont-Bold.ttf
+└── MyFont-BoldItalic.ttf
+```
+
+Then point both font measurement and FFmpeg/libass to that directory:
+
+```bash
+multisubs -i ./video.mp4 \
+  --fonts-dir ./fonts \
+  --font "My Font" \
+  --font-weight bold \
+  --italic
+```
+
+`--font` matches the internal family metadata stored in the font, which may
+differ from its filename. Multiple families and all their weight/italic faces
+may share the same directory. The closest available weight is selected when an
+exact face is absent, with a visible substitution diagnostic.
+
+A custom matching family takes precedence over the same bundled family;
+bundled families take precedence over fontconfig. An unbundled family may still
+resolve through fontconfig, otherwise wrapping uses the documented Unicode
+estimate. The custom directory is used only for that invocation and does not
+install fonts globally. You are responsible for ensuring that supplied fonts
+may be used and distributed in your intended output.
 
 ## ⚙️ Command reference
 
@@ -220,7 +285,7 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--font NAME` | `Roboto` | Subtitle font family. |
+| `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
 | `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
 | `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
 | `--bold`, `--no-bold` | off | Compatibility shorthand for weight 700 or 400. |
@@ -241,9 +306,8 @@ Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
 100 through 900 in steps of 100. The closest available face is selected when a
 font family does not contain the exact requested weight.
 
-`--fonts-dir` does not install fonts on the host. It gives both font measurement
-and FFmpeg/libass access to the same controlled directory, which improves
-wrapping consistency across machines.
+The complete custom-font workflow and provider precedence are documented in
+[Use a custom font](#use-a-custom-font).
 
 ### Layout and positioning
 
@@ -314,8 +378,10 @@ the canvas; invalid coordinates are rejected instead of being moved or clipped.
 
 ### Adaptive wrapping
 
-multisubs measures the selected font with Pillow and RAQM when a concrete face
-is available. Otherwise, it uses a Unicode-aware width estimate. Wrapping takes
+multisubs measures the selected custom, bundled, or fontconfig face with Pillow
+and RAQM when a concrete face is available. The selected custom or bundled
+directory is also passed to FFmpeg/libass. Otherwise, it uses a Unicode-aware
+width estimate. Wrapping takes
 font size, weight, letter spacing, line height, maximum dimensions, backdrop,
 and shadow into account.
 
@@ -377,6 +443,7 @@ ruff format --check .
 ruff check .
 pyright
 python -m pytest
+rm -rf dist
 python -m build
 twine check dist/*
 ```
@@ -405,8 +472,10 @@ the complete process.
 
 ## 📄 License
 
-multisubs is available under the [MIT License](LICENSE). Third-party libraries,
-models, and system tools retain their own licenses.
+multisubs source code is available under the [MIT License](LICENSE). The six
+bundled font families retain the SIL Open Font License 1.1 found in each
+`multisubs/assets/fonts/<family>/OFL.txt`. Other third-party libraries, models,
+and system tools retain their own licenses.
 
 ## ⚠️ Current limitations
 
@@ -417,5 +486,6 @@ models, and system tools retain their own licenses.
 - Speaker diarization and speaker-specific styling are not supported.
 - The output uses hard subtitles; selectable soft subtitle tracks are not
   created.
-- FFmpeg, ffprobe, a compatible font, and the selected model must be available
-  on the host.
+- FFmpeg, ffprobe, and the selected model must be available on the host.
+- Font families outside the six bundled families require `--fonts-dir` or a
+  compatible system font provider.

@@ -22,7 +22,8 @@ Read the relevant project documentation before changing behavior:
 | multisubs/subtitler.py | ffprobe geometry detection and FFmpeg invocation that burns an ASS file into the output video. |
 | multisubs/config.py | Semantic appearance, effect, and fixed native layout defaults plus typed input validation. |
 | multisubs/layout.py | Geometry-aware relative-unit resolution, native regions, explicit envelopes, and wrapping budgets. |
-| multisubs/text_measurement.py | Font resolution, Pillow/RAQM width measurement, and Unicode fallback estimation. |
+| multisubs/font_catalog.py | Bundled OFL manifest validation, package-resource lookup, and selected-family materialization. |
+| multisubs/text_measurement.py | Custom/bundled/fontconfig resolution, Pillow/RAQM measurement, and Unicode fallback estimation. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
 | multisubs/errors.py | User-actionable error types at module boundaries. |
 | multisubs/models.py | Typed internal request and artifact contracts. |

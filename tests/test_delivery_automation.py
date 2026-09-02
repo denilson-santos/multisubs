@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 
 SCRIPT_PATH = Path(__file__).parents[1] / ".github" / "scripts" / "release.py"
+VERIFY_WORKFLOW_PATH = (
+    Path(__file__).parents[1] / ".github" / "workflows" / "_verify.yml"
+)
 SPEC = importlib.util.spec_from_file_location("release_validation", SCRIPT_PATH)
 assert SPEC is not None
 assert SPEC.loader is not None
@@ -12,6 +15,16 @@ release_validation = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_validation)
 
 ReleaseValidationError = release_validation.ReleaseValidationError
+
+
+def test_shared_builder_cleans_dist_immediately_before_build():
+    commands = [
+        line.strip()
+        for line in VERIFY_WORKFLOW_PATH.read_text(encoding="utf-8").splitlines()
+    ]
+    build_index = commands.index("python -m build")
+
+    assert commands[build_index - 1] == "rm -rf dist"
 
 
 @pytest.mark.parametrize(
