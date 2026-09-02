@@ -115,11 +115,16 @@ def build_preview_ass(
     request: PreviewRequest,
     geometry: VideoGeometry,
     timestamp: float,
+    *,
+    resolved_config: SubtitleConfig | None = None,
+    wrapping_metrics: WrappingMetrics | None = None,
 ) -> tuple[SubtitleConfig, str]:
     """Resolve preview layout, wrap its sample cue, and write a temporary ASS."""
     timestamp = resolve_preview_timestamp(timestamp, geometry)
-    resolved_config = resolve_subtitle_config(request.subtitle_config, geometry)
-    metrics = resolve_wrapping_metrics(resolved_config, geometry)
+    resolved_config = resolved_config or resolve_subtitle_config(
+        request.subtitle_config, geometry
+    )
+    metrics = wrapping_metrics or resolve_wrapping_metrics(resolved_config, geometry)
     transformed_text = transform_display_text(
         normalise_preview_text(request.preview_text),
         resolved_config.appearance.text_case,

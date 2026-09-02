@@ -21,21 +21,23 @@ from multisubs.transcriber import layout_subtitle_cues
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    ("font_weight", "rank"),
+    ("font", "font_weight", "requested_rank", "resolved_rank"),
     [
-        ("regular", 400),
-        ("light", 300),
-        ("semi-bold", 600),
-        ("bold", 700),
+        ("Roboto", "regular", 400, 400),
+        ("Roboto", "extra-light", 200, 200),
+        ("Roboto", "semi-bold", 600, 600),
+        ("Roboto", "extra-bold", 800, 800),
     ],
 )
 def test_resolved_font_measurement_tracks_libass_bounds(
     tmp_path: Path,
+    font: str,
     font_weight: str,
-    rank: int,
+    requested_rank: int,
+    resolved_rank: int,
 ):
-    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
-        pytest.skip("FFmpeg and fontconfig are required")
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("FFmpeg is required")
     try:
         validate_ffmpeg_support()
     except Exception as exc:
@@ -66,7 +68,7 @@ def test_resolved_font_measurement_tracks_libass_bounds(
     config = validate_subtitle_config(
         None,
         appearance_values={
-            "font": "Roboto",
+            "font": font,
             "font_weight": font_weight,
             "backdrop": "none",
         },
@@ -91,42 +93,28 @@ def test_resolved_font_measurement_tracks_libass_bounds(
     )
     if (
         metrics.text_measurer.info.mode != "font-metrics"
-        or metrics.text_measurer.info.resolved_font != "Roboto"
-        or metrics.text_measurer.info.resolved_weight != rank
+        or metrics.text_measurer.info.resolved_font != font
+        or metrics.text_measurer.info.resolved_weight != resolved_rank
     ):
-        pytest.skip(
-            f"A controlled Roboto {font_weight} face is not available through "
-            "fontconfig"
-        )
+        pytest.fail(f"Bundled {font} {font_weight} did not resolve as expected")
+    assert metrics.text_measurer.info.font_source == "bundled"
+    assert metrics.text_measurer.info.requested_weight == requested_rank
+    fonts_dir = metrics.text_measurer.info.renderer_fonts_dir
+    assert fonts_dir is not None
 
     measured_width = metrics.text_measurer.measure(text)
     assert measured_width < metrics.width_budget
     assert display[0]["text"] == text
 
     write_ass(subtitle_path, display, config, geometry)
-    selection = subprocess.run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel",
-            "info",
-            "-i",
-            str(input_path),
-            "-vf",
-            f"ass={subtitle_path}",
-            "-frames:v",
-            "1",
-            "-f",
-            "null",
-            "-",
-        ],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    assert re.search(rf"fontselect: \(Roboto, {rank}, 0\)", selection.stderr)
     output_path = Path(
-        embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
+        embed_subtitles(
+            input_path,
+            subtitle_path,
+            tmp_path,
+            geometry=geometry,
+            fonts_dir=fonts_dir,
+        )
     )
     bbox = subprocess.run(
         [
@@ -172,8 +160,8 @@ def test_resolved_font_letter_spacing_tracks_libass_bounds(
     expected_spacing: int,
 ):
     """Keep measured tracking and the native ASS spacing field aligned."""
-    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
-        pytest.skip("FFmpeg and fontconfig are required")
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("FFmpeg is required")
     try:
         validate_ffmpeg_support()
     except Exception as exc:
@@ -225,7 +213,10 @@ def test_resolved_font_letter_spacing_tracks_libass_bounds(
         metrics.text_measurer.info.mode != "font-metrics"
         or metrics.text_measurer.info.resolved_font != "Roboto"
     ):
-        pytest.skip("A controlled Roboto face is not available through fontconfig")
+        pytest.fail("Bundled Roboto did not resolve as expected")
+    assert metrics.text_measurer.info.font_source == "bundled"
+    fonts_dir = metrics.text_measurer.info.renderer_fonts_dir
+    assert fonts_dir is not None
 
     assert metrics.letter_spacing == expected_spacing
     assert display[0]["text"] == text
@@ -239,7 +230,13 @@ def test_resolved_font_letter_spacing_tracks_libass_bounds(
     assert r"{\fsp" not in subtitle_path.read_text(encoding="utf-8")
 
     output_path = Path(
-        embed_subtitles(input_path, subtitle_path, tmp_path, geometry=geometry)
+        embed_subtitles(
+            input_path,
+            subtitle_path,
+            tmp_path,
+            geometry=geometry,
+            fonts_dir=fonts_dir,
+        )
     )
     bbox = subprocess.run(
         [

@@ -6,6 +6,7 @@ import math
 import unicodedata
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 
 from .errors import ValidationError
 from .models import (
@@ -68,6 +69,7 @@ def resolve_subtitle_config(
     geometry: VideoGeometry,
     *,
     text_measurer: TextMeasurer | None = None,
+    bundled_fonts_dir: Path | None = None,
 ) -> SubtitleConfig:
     """Resolve all geometry- and font-dependent subtitle lengths exactly once."""
     from .config import parse_line_height, validate_subtitle_config
@@ -107,7 +109,16 @@ def resolve_subtitle_config(
         font_size=font_size,
         letter_spacing=letter_spacing,
     )
-    line_measurer = text_measurer or build_text_measurer(measurement_appearance)
+    line_measurer = text_measurer
+    if line_measurer is None:
+        line_measurer = (
+            build_text_measurer(measurement_appearance)
+            if bundled_fonts_dir is None
+            else build_text_measurer(
+                measurement_appearance,
+                bundled_fonts_dir=bundled_fonts_dir,
+            )
+        )
     requested_line_height = (
         validated.appearance.line_height_requested
         if validated.appearance.line_height_requested is not None
@@ -337,18 +348,21 @@ def resolve_wrapping_metrics(
     *,
     language: str | None = None,
     text_measurer: TextMeasurer | None = None,
+    bundled_fonts_dir: Path | None = None,
 ) -> WrappingMetrics:
     """Resolve the geometry-aware inputs used by adaptive cue wrapping."""
     resolved = resolve_subtitle_config(
         config,
         geometry,
         text_measurer=text_measurer,
+        bundled_fonts_dir=bundled_fonts_dir,
     )
     return _build_wrapping_metrics(
         resolved,
         geometry,
         language=language,
         text_measurer=text_measurer,
+        bundled_fonts_dir=bundled_fonts_dir,
     )
 
 
@@ -358,6 +372,7 @@ def _build_wrapping_metrics(
     *,
     language: str | None,
     text_measurer: TextMeasurer | None,
+    bundled_fonts_dir: Path | None,
 ) -> WrappingMetrics:
     layout = config.layout
     max_width = _require_resolved_layout_int(layout.max_width, "max-width")
@@ -372,9 +387,17 @@ def _build_wrapping_metrics(
     shadow_size = _require_resolved_layout_int(
         config.appearance.shadow_size, "shadow-size"
     )
-    measurer = text_measurer or build_text_measurer(
-        config.appearance, language=language
-    )
+    measurer = text_measurer
+    if measurer is None:
+        measurer = (
+            build_text_measurer(config.appearance, language=language)
+            if bundled_fonts_dir is None
+            else build_text_measurer(
+                config.appearance,
+                language=language,
+                bundled_fonts_dir=bundled_fonts_dir,
+            )
+        )
     decoration_width = 2 * backdrop_size + shadow_size
     vertical_decoration = 2 * backdrop_size + shadow_size
     width_budget = max_width - decoration_width

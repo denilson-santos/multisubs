@@ -164,11 +164,92 @@ def test_fonts_directory_matches_internal_family_before_filename(
     )
 
     assert measurer.info.font_source == "fonts-dir"
+    assert measurer.info.renderer_fonts_dir == tmp_path
+    assert "renderer_fonts_dir" not in measurer.info.as_json()
     assert measurer.info.resolved_font == "Fixture Sans"
     assert measurer.info.resolved_weight == 400
     assert measurer.info.weight_substituted is False
     assert measurer.measure("olá") == pytest.approx(30)
     assert fake_font.calls == [("olá", "ltr", "pt")]
+
+
+def test_custom_directory_precedes_a_same_named_bundled_family(
+    tmp_path: Path,
+    monkeypatch,
+):
+    font_path = tmp_path / "custom-roboto.ttf"
+    font_path.write_bytes(b"fixture")
+    image_font = _FakeImageFont(_FakeFont("Roboto", "Regular"))
+    monkeypatch.setattr(
+        "multisubs.text_measurement._load_pillow",
+        lambda: (image_font, _FakeFeatures()),
+    )
+    monkeypatch.setattr(
+        "multisubs.text_measurement.bundled_filesystem_directory",
+        lambda name: pytest.fail("bundled provider should not be queried"),
+    )
+
+    measurer = build_text_measurer(
+        _appearance(font="Roboto", fonts_dir=tmp_path),
+    )
+
+    assert measurer.info.font_source == "fonts-dir"
+    assert measurer.info.renderer_fonts_dir == tmp_path
+
+
+def test_bundled_family_precedes_fontconfig(monkeypatch):
+    monkeypatch.setattr(
+        "multisubs.text_measurement._resolve_face_from_fontconfig",
+        lambda *args, **kwargs: pytest.fail("fontconfig should not be queried"),
+    )
+
+    measurer = build_text_measurer(_appearance(font="Inter"))
+
+    assert measurer.info.font_source == "bundled"
+    assert measurer.info.resolved_font == "Inter"
+    assert measurer.info.resolved_style == "Regular"
+    assert measurer.info.renderer_fonts_dir is not None
+    assert measurer.info.renderer_fonts_dir.name == "inter"
+
+
+def test_bundled_roboto_resolves_every_supported_weight_exactly():
+    measurer = build_text_measurer(
+        _appearance(font="Roboto", font_weight=FontWeight.SEMI_BOLD)
+    )
+
+    assert measurer.info.font_source == "bundled"
+    assert measurer.info.resolved_style == "SemiBold"
+    assert measurer.info.resolved_weight == 600
+    assert measurer.info.weight_substituted is False
+
+
+@pytest.mark.parametrize(
+    ("family", "weights", "italics"),
+    [
+        ("Roboto", range(100, 1000, 100), (False, True)),
+        ("Inter", range(100, 1000, 100), (False, True)),
+        ("Montserrat", range(100, 1000, 100), (False, True)),
+        ("Oswald", range(200, 800, 100), (False,)),
+        ("Lora", range(400, 800, 100), (False, True)),
+        ("Atkinson Hyperlegible Next", range(200, 900, 100), (False, True)),
+    ],
+)
+def test_bundled_families_resolve_every_declared_weight_and_slant_exactly(
+    family,
+    weights,
+    italics,
+):
+    for rank in weights:
+        font_weight = next(weight for weight in FontWeight if weight.rank == rank)
+        for italic in italics:
+            measurer = build_text_measurer(
+                _appearance(font=family, font_weight=font_weight, italic=italic)
+            )
+
+            assert measurer.info.font_source == "bundled"
+            assert measurer.info.resolved_weight == rank
+            assert measurer.info.weight_substituted is False
+            assert ("Italic" in (measurer.info.resolved_style or "")) is italic
 
 
 def test_fonts_directory_selects_nearest_weight_with_stable_tie_breaker(
