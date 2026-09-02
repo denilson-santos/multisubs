@@ -12,8 +12,8 @@
       "license_url": "https://raw.githubusercontent.com/google/fonts/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/roboto/OFL.txt",
       "license": "OFL-1.1",
       "license_file": "OFL.txt",
-      "license_size": 4394,
-      "license_sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41",
+      "license_size": 4393,
+      "license_sha256": "ee94f8704aa81e9a3bf4271e8320e99d975a3ee08ea45a088b494b918476ec12",
       "faces": [
         {
           "filename": "Roboto-Thin.ttf",
@@ -225,8 +225,8 @@
       "license_url": "https://raw.githubusercontent.com/google/fonts/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/inter/OFL.txt",
       "license": "OFL-1.1",
       "license_file": "OFL.txt",
-      "license_size": 4377,
-      "license_sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+      "license_size": 4376,
+      "license_sha256": "5dd548d31a85f756e01d63e00d7faf1e324103ed3e9102fcbbabf2cc2db6dd39",
       "faces": [
         {
           "filename": "Inter-Thin.ttf",
@@ -438,8 +438,8 @@
       "license_url": "https://raw.githubusercontent.com/google/fonts/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/montserrat/OFL.txt",
       "license": "OFL-1.1",
       "license_file": "OFL.txt",
-      "license_size": 4400,
-      "license_sha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e",
+      "license_size": 4399,
+      "license_sha256": "fa036c290600f85c9c7747dbd2bd3ac26d28de0ac0582ff9320c53161765e19b",
       "faces": [
         {
           "filename": "Montserrat-Thin.ttf",
@@ -651,8 +651,8 @@
       "license_url": "https://raw.githubusercontent.com/google/fonts/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/oswald/OFL.txt",
       "license": "OFL-1.1",
       "license_file": "OFL.txt",
-      "license_size": 4483,
-      "license_sha256": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652",
+      "license_size": 4389,
+      "license_sha256": "0b2472b17e950b9967818f169f2618b091c0c259d250d2dd8208961c7f5700e1",
       "faces": [
         {
           "filename": "Oswald-ExtraLight.ttf",
@@ -732,8 +732,8 @@
       "license_url": "https://raw.githubusercontent.com/google/fonts/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/lora/OFL.txt",
       "license": "OFL-1.1",
       "license_file": "OFL.txt",
-      "license_size": 4423,
-      "license_sha256": "1d9a970809ac804b582a6ce7f0ebc4e7fefcbfd7ff6299cad35ee656a21be716",
+      "license_size": 4422,
+      "license_sha256": "6d6bc7bbb828514925dabcaf89e4771398d12c60dd1cb2bbb90eea129535d0f4",
       "faces": [
         {
           "filename": "Lora-Regular.ttf",
@@ -835,8 +835,8 @@
       "license_url": "https://raw.githubusercontent.com/google/fonts/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/atkinsonhyperlegiblenext/OFL.txt",
       "license": "OFL-1.1",
       "license_file": "OFL.txt",
-      "license_size": 4431,
-      "license_sha256": "aca6a428580965d2297d1b718042dd427c2a9443ece3b0d02d758e161e0c4030",
+      "license_size": 4430,
+      "license_sha256": "09636801ed3e868736cc359bb1c819c5ef76529cbb41473cb1f602ef166dad0a",
       "faces": [
         {
           "filename": "AtkinsonHyperlegibleNext-ExtraLight.ttf",
