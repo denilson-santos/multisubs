@@ -48,6 +48,13 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should keep release metadata complete: description, README reference, license, classifiers, project URLs, and supported Python versions.
 - Must use one authoritative package version. `multisubs.__version__` is the source of truth and `pyproject.toml` derives its version dynamically.
 - Should build and install a wheel from a clean environment before publishing a release.
+- Must remove the existing `dist/` directory immediately before every
+  distribution build. Artifact validation, checksums, attestation, upload, and
+  clean-install smoke checks must consume only files created by that build.
+- Must declare bundled font binaries, their per-family `OFL.txt` files, and the
+  font manifest as package data. A clean-wheel smoke check must explicitly
+  verify the complete manifest inventory instead of relying on source-tree
+  availability.
 
 ### Dependency changes
 
@@ -66,6 +73,14 @@ Update a higher-level document when a proposed change intentionally modifies the
   before italic mismatch and uses stable provider order as the final tie
   breaker; diagnostics must distinguish the requested rank from the inferred
   resolved face rank.
+- Must obtain bundled font binaries unchanged from an authoritative tagged
+  release, pinned commit, or versioned Google Fonts API response over HTTPS.
+  Record the full catalog or upstream revision, exact binary source URL,
+  internal family/style metadata, byte size, and SHA-256 in the committed
+  manifest; keep the matching OFL 1.1 text beside each family.
+- Must not subset, convert, rename internally, synthesize static instances, or
+  download a bundled font at runtime. Add or update font assets and their
+  manifest entries together, then audit both wheel and sdist inventories.
 
 ## Project structure and module boundaries
 
@@ -361,6 +376,7 @@ ruff format --check .
 ruff check .
 pyright
 python -m pytest
+rm -rf dist
 python -m build
 twine check dist/*
 ~~~

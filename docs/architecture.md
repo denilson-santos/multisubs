@@ -55,7 +55,8 @@ flowchart LR
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream or render one preview PNG. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview() |
 | multisubs/config.py | Defines supported choices, semantic appearance/effect defaults, fixed native layout defaults, and validates typed subtitle configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, and validates native regions or explicit subtitle envelopes on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement() |
-| multisubs/text_measurement.py | Resolves the nearest custom or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
+| multisubs/font_catalog.py | Loads the immutable bundled-font manifest, performs bounded family lookup, exposes unpacked package resources, and materializes only a selected family when required by the importer. | load_bundled_font_catalog(), bundled_font_directory(), verify_bundled_font_assets() |
+| multisubs/text_measurement.py | Resolves the nearest custom, bundled, or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
 | multisubs/wrapping.py | Applies typed Unicode display casing, shares font-aware bounded adaptive wrapping between transcription and preview without importing the model runtime, and partitions mapped display fragments into visual lines. | transform_display_text(), wrap_subtitle_text(), line_count(), build_visual_lines() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
@@ -73,10 +74,10 @@ flowchart LR
 7. The normal transcription path reports the resolved dimensions and semantic position or explicit envelope, then creates a private temporary work directory inside the output directory.
 8. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
 9. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
-10. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. It preserves source cue/word records, applies the selected locale-independent Unicode casing to separate display words, and retains their source indexes before measurement. The resolved layout then creates display cues using maximum width, maximum height, natural first-line metrics, configured baseline line height, letter spacing, and backdrop/shadow allowances. The text-measurement boundary normalizes named, aliased, or numeric font weights to an OpenType rank, first searches the validated custom font directory, then queries fontconfig with the corresponding weight/slant where available, measures the nearest resolved face with Pillow/RAQM, and otherwise uses its explicit Unicode estimate. Both measurement modes add spacing between rendered grapheme clusters through one shared layer, resetting at explicit line breaks. Complete cues that fit remain unbroken; required multi-line layouts use bounded global partition scoring rather than greedy first-line filling. Length-changing casing can therefore change a line or timed-cue boundary without changing source timestamps. wrapping.py supplies the same case transform and layout algorithm to preview mode, where only the first fitting lexical group is rendered when the sample would require later timed cues. Explicit line-height percentages use the natural measured line height as their basis and explicit values below that natural metric are rejected after font resolution.
+10. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. It preserves source cue/word records, applies the selected locale-independent Unicode casing to separate display words, and retains their source indexes before measurement. The resolved layout then creates display cues using maximum width, maximum height, natural first-line metrics, configured baseline line height, letter spacing, and backdrop/shadow allowances. The text-measurement boundary normalizes named, aliased, or numeric font weights to an OpenType rank, first searches the validated custom font directory, then the selected bundled family, and finally fontconfig with the corresponding weight/slant where available. It measures the nearest resolved face with Pillow/RAQM and otherwise uses its explicit Unicode estimate. Both measurement modes add spacing between rendered grapheme clusters through one shared layer, resetting at explicit line breaks. Complete cues that fit remain unbroken; required multi-line layouts use bounded global partition scoring rather than greedy first-line filling. Length-changing casing can therefore change a line or timed-cue boundary without changing source timestamps. wrapping.py supplies the same case transform and layout algorithm to preview mode, where only the first fitting lexical group is rendered when the sample would require later timed cues. Explicit line-height percentages use the natural measured line height as their basis and explicit values below that natural metric are rejected after font resolution.
 11. When karaoke is enabled, each display cue preserves a lossless sequence of `SubtitleDisplayFragment` values: transformed timed fragments retain indexes into the original aligned words, while separators and intentional line breaks remain untimed. `prepare_karaoke_cues()` validates identity and word boundaries without retokenizing transformed strings, quantizes cue/word starts, word ends, and cue ends to ASS centiseconds, then prepares both progressive durations and non-overlapping active-word intervals. Progressive intervals end at the next start; active-word intervals end at the earlier of the aligned word end or next start. It records per-cue fallback instead of inventing timestamps and prepares the same immutable outcome before JSON, SRT, and ASS serialization.
 12. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. SRT consumes transformed display cues, while JSON keeps original full/cue text and aligned words and adds per-cue `display_text` plus requested/resolved TextCase metadata. It delegates unit resolution, placement validation, and wrapping metrics to layout.py, then delegates ASS serialization to ass.py. The ASS compiler resolves one base/effective palette by multiplying each conventional RGBA alpha by global opacity with Decimal half-up rounding, then converts the result to ASS BGR/inverted-alpha values and emits the canonical 100-900 OpenType rank through a trusted event-level override. Native placement compiles semantic alignment and actual margins into the style without event positioning; explicit placement uses neutral style margins and generated per-cue `\\an`/`\\pos` tags. With explicit line height, wrapped lines become a typed visual-line model and receive synchronized per-line `\\an`/`\\pos` events around one stable anchor; a box backdrop is one lower-layer vector event for the full measured block. Progressive karaoke adds one trusted color setup and one `\\k` duration for each displayed timed word, partitioned by visual line in this path. Active-word karaoke emits interval events on every visible line. Each already-transformed plain-text fragment is escaped separately before trusted tags are assembled. Preview uses this same display transformation, compiler, and palette. JSON also preserves placement, dimensions, wrapping metrics, render strategy, native region or explicit PlayRes coordinates, base/effective opacity palette, and additive karaoke metadata.
-13. embed_subtitles() selects the same probed stream, explicitly enables autorotation, supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter, and supplies fontsdir only when a validated custom fonts directory was requested. Available audio streams are copied into a temporary rendered output when present. render_subtitle_preview() uses the same subtitles filter options, seeks to the validated timestamp, requests one PNG frame, captures bounded diagnostics, and publishes it with get_unique_path().
+13. embed_subtitles() selects the same probed stream, explicitly enables autorotation, supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter, and supplies `fontsdir` when measurement selected a custom or bundled provider directory. The bundled resource context remains alive through preview or final rendering, so Pillow/RAQM and libass consume the same family directory. Available audio streams are copied into a temporary rendered output when present. render_subtitle_preview() uses the same subtitles filter options, seeks to the validated timestamp, requests one PNG frame, captures bounded diagnostics, and publishes it with get_unique_path().
 14. After normal rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed normal runs retain transcription artifacts in that directory for diagnosis; preview runs remove their temporary ASS directory, while the renderer removes partial media in either mode.
 
 ## Subtitle-cue construction
@@ -101,8 +102,9 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   display words before width measurement. Transformed word fragments retain
   their original ordered word indexes, timestamps, and metadata; locale-specific
   casing is not inferred.
-- It measures a concrete face with Pillow when `--fonts-dir` or fontconfig can
-  resolve the nearest family, weight, and italic style that libass will use.
+- It measures a concrete face with Pillow when a custom directory, bundled
+  family, or fontconfig can resolve the nearest family, weight, and italic
+  style that libass will use.
   RAQM applies direction and language shaping when available. Otherwise it
   reports and records a Unicode-category estimate with calibrated
   proportional-width factors.
@@ -236,7 +238,7 @@ The JSON artifact has this high-level shape:
         "requested_font": "Roboto",
         "resolved_font": "Roboto",
         "resolved_style": "Regular",
-        "font_source": "fontconfig",
+        "font_source": "bundled",
         "shaping": "raqm",
         "metric_size": 65,
         "requested_weight_name": "regular",
@@ -437,16 +439,38 @@ publishes platform wheels. Typical wheels add several megabytes to an
 environment, but Pillow is already present transitively in common WhisperX
 installations; declaring it directly makes the relied-upon API explicit.
 
+The package contains 82 unmodified static TTF faces served by the official
+Google Fonts API for Roboto, Inter, Montserrat, Oswald, Lora, and Atkinson
+Hyperlegible Next under `multisubs/assets/fonts`. These static instances cover
+every 100-step weight selectable by the CLI within each family's published
+weight range, with upright and italic files where supported. Width and optical
+size remain at the API defaults because those axes are not public CLI inputs.
+One directory per family contains the `OFL.txt` from the same pinned Google
+Fonts catalog revision; `manifest.json` records that revision, the family
+stylesheet, and every face's exact versioned Google Fonts source URL, internal
+family, style, weight, italic state, byte size, and SHA-256. Setuptools includes
+the manifest, licenses, and binaries in both wheel and sdist. Integrity is
+audited by tests and release preparation, not on every normal invocation.
+
+`font_catalog.py` uses `importlib.resources` and performs bounded,
+case-insensitive family lookup without Pillow, FFmpeg, or network access.
+Unpacked wheels expose the selected family directory directly. For a non-file
+resource importer, only that family is copied into an invocation-scoped
+temporary directory which remains alive through measurement and rendering.
+
 Custom font resolution inspects only supported files directly inside
-`--fonts-dir` and matches their internal family/style metadata. Common face
-names are mapped to canonical OpenType ranks, and candidates are ordered by
-absolute weight distance, requested italic state, then stable path/index order.
-On hosts with fontconfig, `fc-match` is invoked with a bounded argument-vector
-subprocess using the corresponding fontconfig weight and slant; the returned
-file's actual metadata is still validated instead of assuming an exact match.
-Other providers are not guessed. Font objects and up to 4096 repeated text
-measurements are cached in memory for one artifact-writing run; transcript
-strings are not persisted by the cache.
+`--fonts-dir` and matches their internal family/style metadata. A matching
+custom face takes precedence over a bundled face; bundled faces precede
+fontconfig. Common face names are mapped to canonical OpenType ranks, and
+candidates are ordered by absolute weight distance, requested italic state,
+then stable path/index order within the selected provider. On hosts with
+fontconfig, `fc-match` is invoked with a bounded argument-vector subprocess
+using the corresponding fontconfig weight and slant; the returned file's actual
+metadata is still validated instead of assuming an exact match. Other providers
+are not guessed. The resolved provider kind is serialized, while its package,
+custom, system, or temporary path remains private. Font objects and up to 4096
+repeated text measurements are cached in memory for one artifact-writing run;
+transcript strings are not persisted by the cache.
 Pillow and libass can differ in shaping, hinting, and fallback, so libass remains
 the render authority and integration tests use an explicit tolerance.
 

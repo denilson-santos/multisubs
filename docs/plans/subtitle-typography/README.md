@@ -100,9 +100,11 @@ Follow [docs/conventions.md](../../conventions.md), keep behavior with its focus
 tests, and use a separate documentation commit when that makes the user-facing
 contract easier to review.
 
-Do not commit preview images, videos, retained subtitle artifacts, font files,
-model caches, or machine-specific font paths. Every commit must leave the
-package importable and its focused tests passing.
+Do not commit preview images, videos, retained subtitle artifacts, ad hoc font
+fixtures, model caches, or machine-specific font paths. The only font-binary
+exception is the verified, licensed, manifest-backed asset inventory defined by
+the [subtitle templates roadmap](../subtitle-templates/README.md). Every commit
+must leave the package importable and its focused tests passing.
 
 ## Pull-request strategy
 
