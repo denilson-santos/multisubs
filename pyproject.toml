@@ -34,6 +34,14 @@ multisubs = "multisubs.cli:main"
 [tool.setuptools.dynamic]
 version = {attr = "multisubs.__version__"}
 
+[tool.setuptools.package-data]
+multisubs = [
+    "assets/fonts/manifest.json",
+    "assets/fonts/*/OFL.txt",
+    "assets/fonts/*/*.otf",
+    "assets/fonts/*/*.ttf",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -m 'not integration'"
