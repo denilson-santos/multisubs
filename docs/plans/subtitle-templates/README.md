@@ -1,6 +1,6 @@
 # Subtitle templates roadmap
 
-Status: In review
+Status: Done
 
 This package adds reproducible bundled fonts and named subtitle templates on top
 of the completed subtitle-positioning, karaoke, and typography contracts. It
@@ -85,10 +85,10 @@ This table is the source of truth for the package. Status values follow the
 | Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
 | 0 | [Bundled OFL font catalog](00-bundled-ofl-font-catalog.md) | Done | Completed positioning and typography packages | [#60](https://github.com/denilson-santos/multisubs/pull/60) |
-| 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | In review | 0 and completed karaoke package | `feat/subtitle-templates` |
+| 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | Done | 0 and completed karaoke package | [#61](https://github.com/denilson-santos/multisubs/pull/61) |
 
-Package progress: 1 of 2 plans done. Plan 1 is ready for review on
-`feat/subtitle-templates`.
+Package progress: 2 of 2 plans done. The package is complete; Plan 1 was
+delivered in [#61](https://github.com/denilson-santos/multisubs/pull/61).
 
 ## Dependencies and delivery order
 
