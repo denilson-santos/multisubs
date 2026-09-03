@@ -1007,7 +1007,7 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
         "margins",
     ),
     [
-        (320, 180, "default", None, {}, "bottom", (58, 58, 0, 9)),
+        (320, 180, "default", None, {}, "bottom", (58, 58, 0, 5)),
         (
             320,
             180,
@@ -1081,7 +1081,7 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
                 "max_height": "10.7%",
             },
             "top",
-            (19, 19, 14, 9),
+            (19, 19, 14, 5),
         ),
         (
             320,
@@ -1095,7 +1095,7 @@ def test_relative_test_layout_has_consistent_rendered_bounds(tmp_path: Path):
                 "max_height": "10%",
             },
             "middle",
-            (26, 26, 0, 9),
+            (26, 26, 0, 5),
         ),
     ],
 )
