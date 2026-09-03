@@ -1,8 +1,8 @@
 # Bundled OFL font catalog
 
-Status: In review
+Status: Done
 
-Delivery: `feat/bundled-font-catalog`
+Delivery: [#60](https://github.com/denilson-santos/multisubs/pull/60)
 
 Depends on:
 

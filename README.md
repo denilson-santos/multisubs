@@ -23,6 +23,7 @@ WhisperX must download model assets that are not already cached.
 | Feature | What it gives you |
 | --- | --- |
 | 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
+| 🧩 Ready-made templates | Eight built-in presentations for interviews, social video, news, editorial work, high contrast, and karaoke. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
 | 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
@@ -95,6 +96,61 @@ video.
 
 ## 🧰 Common recipes
 
+### Choose a built-in subtitle template
+
+Select a complete presentation with one option:
+
+```bash
+multisubs -i ./video.mp4 -l pt \
+  --template classic-yellow
+```
+
+The current Roboto Regular, white-on-translucent-black presentation remains the
+`default`. Every explicit appearance, layout, or effect option overrides only
+its corresponding template field:
+
+```bash
+multisubs -i ./video.mp4 -l pt \
+  --template social-bold \
+  --text-color '#B8FF5A' \
+  --margin-bottom 10%
+```
+
+| Template | Good for | Font | Main presentation |
+| --- | --- | --- | --- |
+| `default` | General use | Roboto Regular | White, original case, translucent black box, bottom-center. |
+| `clean-outline` | Interviews, courses, demos | Inter Medium | White with a clean dark outline and no shadow. |
+| `social-bold` | Reels, Shorts, social clips | Montserrat ExtraBold | Large uppercase white text, strong outline, wider vertical envelope. |
+| `classic-yellow` | Interviews, archives, documentaries | Roboto Bold | Yellow text with a strong dark outline. |
+| `newsroom` | Reports, explainers, updates | Oswald SemiBold | Compact uppercase box, bottom-left. |
+| `editorial` | Documentary and cultural material | Lora SemiBold Italic | Warm off-white serif text with a subtle outline. |
+| `high-contrast` | Maximum visual differentiation | Atkinson Hyperlegible Next Bold | Black text on an opaque yellow box. |
+| `neon-karaoke` | Energetic word-timed captions | Montserrat Bold | Large outlined text with progressive turquoise highlighting. |
+
+The exact template baselines are:
+
+| Template | Size and text | Backdrop | Native layout |
+| --- | --- | --- | --- |
+| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `0px`, shadow `4%` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` |
+| `clean-outline` | `4%`, `#FFFFFF`, original, `100%` | outline `#000000CC`, `5%`, shadow `0px` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`14%` |
+| `social-bold` | `5%`, `#FFFFFF`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `3%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` |
+| `classic-yellow` | `4.2%`, `#FFD54F`, original, `100%` | outline `#000000E6`, `6%`, shadow `3%` | bottom-center; L/R `12%`, B `3%`, W/H `100%`/`16%` |
+| `newsroom` | `4.2%`, `#FFFFFF`, uppercase, `100%`, spacing `1%` | box `#0B1F3ACC`, `8%`, shadow `0px` | bottom-left; L `5%`, R `35%`, B `3%`, W/H `100%`/`16%` |
+| `editorial` | `4%`, `#FFF8E7`, original, `95%` | outline `#111111CC`, `4%`, shadow `3%` | bottom-center; L/R `16%`, B `3%`, W/H `100%`/`15%` |
+| `high-contrast` | `4.3%`, `#000000`, original, `100%` | box `#FFD600FF`, `10%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` |
+| `neon-karaoke` | `5%`, `#FFFFFF`, original, `100%` | outline `#080012E6`, `7%`, shadow `5%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`20%` |
+
+All use `auto` line height and a `0%` top margin. Unlisted letter spacing is
+`0px`. `neon-karaoke` additionally enables progressive karaoke with highlight
+color `#00F5D4`. Preview shows a representative static effect: progressive
+mode highlights the first half of the cue and active-word mode highlights its
+first word. Use `--no-karaoke` when only the static styling is wanted:
+
+```bash
+multisubs -i ./video.mp4 --preview-layout \
+  --template neon-karaoke --no-karaoke
+```
+
 ### Translate speech to English
 
 Translation requires a multilingual, non-Turbo Whisper model:
@@ -146,10 +202,11 @@ multisubs -i ./video.mp4 -l pt \
   --karaoke-mode active-word
 ```
 
-Karaoke works only with source-language transcription. It cannot be combined
-with translation or layout preview because those paths do not provide a
-lossless source-word timing map. Cues with incomplete timing data fall back to
-normal subtitles instead of receiving invented timestamps.
+Karaoke works only with source-language transcription and cannot be combined
+with translation. Layout preview does not invent timings: it shows the first
+half of a progressive cue highlighted, or only the first word in active-word
+mode. Cues with incomplete timing data in final rendering fall back to normal
+subtitles instead of receiving invented timestamps.
 
 ### Customize typography
 
@@ -277,7 +334,7 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
 | `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
 | `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
-| `--karaoke` | off | Enable aligned word highlighting. |
+| `--karaoke`, `--no-karaoke` | off | Enable karaoke or disable an effect inherited from a template. |
 | `--karaoke-mode MODE` | `progressive` when enabled | Use `progressive` or `active-word`. |
 | `--karaoke-highlight-color COLOR` | `#FFD54F` | Set the karaoke highlight color. |
 
@@ -285,6 +342,7 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 
 | Option | Default | Description |
 | --- | --- | --- |
+| `--template NAME` | `default` | Select one of the eight built-in presentation baselines. |
 | `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
 | `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
 | `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
@@ -309,6 +367,10 @@ font family does not contain the exact requested weight.
 The complete custom-font workflow and provider precedence are documented in
 [Use a custom font](#use-a-custom-font).
 
+Defaults in the appearance and layout tables describe the `default` template.
+A selected template supplies its documented baseline first; explicitly
+provided flags then replace only their own fields.
+
 ### Layout and positioning
 
 | Option | Default | Description |
@@ -317,7 +379,7 @@ The complete custom-font workflow and provider precedence are documented in
 | `--margin-left LENGTH` | `18%` | Native ASS left margin. |
 | `--margin-right LENGTH` | `18%` | Native ASS right margin. |
 | `--margin-top LENGTH` | `0%` | Native ASS margin for top positions. |
-| `--margin-bottom LENGTH` | `5%` | Native ASS margin for bottom positions. |
+| `--margin-bottom LENGTH` | `3%` | Native ASS margin for bottom positions. |
 | `--max-width LENGTH` | `100%` | Maximum subtitle width. |
 | `--max-height LENGTH` | `10%` | Maximum height used to derive line capacity. |
 | `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
@@ -333,7 +395,7 @@ Only the active vertical margin can be supplied explicitly: top positions use
 `--margin-top`, bottom positions use `--margin-bottom`, and middle positions use
 neither. An inactive vertical margin is rejected with an actionable error. The
 default `bottom-center` layout therefore keeps `--margin-top` at `0%` and uses
-the `5%` bottom inset. A top position needs an explicit `--margin-top` when an
+the `3%` bottom inset. A top position needs an explicit `--margin-top` when an
 inset is desired.
 
 Available semantic positions:
@@ -431,7 +493,9 @@ partial final media is not published.
 When `--keep-transcriptions` is enabled, the versioned JSON transcript includes
 source and processing metadata, original and displayed cue text, render
 geometry, resolved layout and typography, wrapping diagnostics, and optional
-karaoke metadata.
+karaoke metadata. Rendering diagnostics also record the requested and resolved
+template names; omitted selection is recorded as requested `null` and resolved
+`default`.
 
 ## 🧪 Development
 
@@ -481,7 +545,8 @@ and system tools retain their own licenses.
 
 - One local input video is processed per invocation.
 - Translation output is fixed to English.
-- Karaoke is unavailable for translation and preview-only samples.
+- Karaoke is unavailable for translation; previews show a static representative
+  highlight rather than timed word animation.
 - There is no interactive subtitle editor or graphical interface.
 - Speaker diarization and speaker-specific styling are not supported.
 - The output uses hard subtitles; selectable soft subtitle tracks are not

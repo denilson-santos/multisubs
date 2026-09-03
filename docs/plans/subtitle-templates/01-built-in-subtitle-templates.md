@@ -1,6 +1,8 @@
 # Built-in subtitle templates
 
-Status: Planned
+Status: In review
+
+Delivery: `feat/subtitle-templates`
 
 Depends on:
 
@@ -25,13 +27,16 @@ and bottom-center placement.
 
 Included:
 
-- Add `--subtitle-template NAME` with eight stable, kebab-case names.
+- Add `--template NAME` with eight stable, kebab-case names.
 - Treat the selected template as a complete immutable baseline and apply
   explicit CLI values as field-level overrides.
 - Resolve omitted selection to `default` without changing current semantic
   default values.
 - Use only the bundled font families delivered by Plan 0.
 - Support templates in preview and normal transcription/rendering paths.
+- Render karaoke previews as a static representative state without inventing
+  word timing: progressive highlights the first half of the displayed cue and
+  active-word highlights only its first word.
 - Make the existing `--karaoke` option symmetric through `--no-karaoke`, so a
   template-provided karaoke effect can be explicitly disabled.
 - Allow a template to define whether karaoke is enabled, its mode, and its
@@ -74,7 +79,7 @@ option is omitted.
 | Text | `#FFFFFF`, original case, `100%` opacity |
 | Backdrop | box, `#00000099`, `0px` padding, `4%` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `18%`, top `0%`, bottom `5%` |
+| Placement | bottom-center; left/right `18%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `10%` |
 
 #### `clean-outline`
@@ -87,7 +92,7 @@ Neutral, modern captions for interviews, courses, and product demonstrations.
 | Text | `#FFFFFF`, original case, `100%` opacity |
 | Backdrop | outline, `#000000CC`, `5%` thickness, `0px` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `14%`, top `0%`, bottom `5%` |
+| Placement | bottom-center; left/right `14%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `14%` |
 
 #### `social-bold`
@@ -100,7 +105,7 @@ Large, energetic mobile-first captions for short-form video.
 | Text | `#FFFFFF`, uppercase, `100%` opacity |
 | Backdrop | outline, `#000000E6`, `8%` thickness, `3%` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `8%`, top `0%`, bottom `8%` |
+| Placement | bottom-center; left/right `8%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `22%` |
 
 #### `classic-yellow`
@@ -114,7 +119,7 @@ documentaries, and general-purpose video.
 | Text | `#FFD54F`, original case, `100%` opacity |
 | Backdrop | outline, `#000000E6`, `6%` thickness, `3%` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `12%`, top `0%`, bottom `6%` |
+| Placement | bottom-center; left/right `12%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `16%` |
 
 #### `newsroom`
@@ -127,7 +132,7 @@ Compact left-aligned treatment for reports, explainers, and factual updates.
 | Text | `#FFFFFF`, uppercase, `100%` opacity |
 | Backdrop | box, `#0B1F3ACC`, `8%` padding, `0px` shadow |
 | Typography | `1%` letter spacing, `auto` line height |
-| Placement | bottom-left; left `5%`, right `35%`, top `0%`, bottom `6%` |
+| Placement | bottom-left; left `5%`, right `35%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `16%` |
 
 #### `editorial`
@@ -140,7 +145,7 @@ Quiet serif styling for documentary, cultural, and cinematic material.
 | Text | `#FFF8E7`, original case, `95%` opacity |
 | Backdrop | outline, `#111111CC`, `4%` thickness, `3%` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `16%`, top `0%`, bottom `7%` |
+| Placement | bottom-center; left/right `16%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `15%` |
 
 #### `high-contrast`
@@ -154,7 +159,7 @@ legibility.
 | Text | `#000000`, original case, `100%` opacity |
 | Backdrop | box, `#FFD600FF`, `10%` padding, `0px` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `10%`, top `0%`, bottom `5%` |
+| Placement | bottom-center; left/right `10%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `18%` |
 
 The name describes visual contrast, not a formal accessibility conformance
@@ -172,14 +177,14 @@ a vivid highlight palette.
 | Text | `#FFFFFF`, original case, `100%` opacity |
 | Backdrop | outline, `#080012E6`, `7%` thickness, `5%` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
-| Placement | bottom-center; left/right `8%`, top `0%`, bottom `7%` |
+| Placement | bottom-center; left/right `8%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `20%` |
 | Karaoke effect | enabled, progressive mode, highlight `#00F5D4` |
 
 Selecting this template is equivalent to an explicit request for karaoke.
-Consequently, translation and layout preview reject it through the existing
-karaoke restrictions unless the user supplies `--no-karaoke`. Disabling the
-effect retains every other `neon-karaoke` template value.
+Consequently, translation rejects it unless the user supplies `--no-karaoke`.
+Layout preview accepts it and renders the documented static representative
+highlight. Disabling the effect retains every other `neon-karaoke` value.
 
 ### Default compatibility
 
@@ -192,7 +197,7 @@ wrapping, and placement boundaries:
 
 ~~~
 multisubs -i video.mp4
-multisubs -i video.mp4 --subtitle-template default
+multisubs -i video.mp4 --template default
 ~~~
 
 Rendered glyph pixels may become more reproducible because Plan 0 supplies a
@@ -207,17 +212,17 @@ runs the existing typed validation and geometry resolution once.
 Examples:
 
 ~~~
-multisubs -i video.mp4 --subtitle-template social-bold --text-color '#FFFFFF'
-multisubs -i video.mp4 --subtitle-template editorial --no-italic
-multisubs -i video.mp4 --subtitle-template newsroom --position top-left --margin-top 6%
-multisubs -i video.mp4 --subtitle-template neon-karaoke --karaoke-mode active-word
-multisubs -i video.mp4 --preview-layout --subtitle-template neon-karaoke --no-karaoke
+multisubs -i video.mp4 --template social-bold --text-color '#FFFFFF'
+multisubs -i video.mp4 --template editorial --no-italic
+multisubs -i video.mp4 --template newsroom --position top-left --margin-top 6%
+multisubs -i video.mp4 --template neon-karaoke --karaoke-mode active-word
+multisubs -i video.mp4 --preview-layout --template neon-karaoke
 ~~~
 
 An explicit override changes only its named field. It does not import values
 from another template. Existing conflicts remain errors, including an explicit
 inactive vertical margin, custom coordinates without their required envelope,
-translation with resolved karaoke, and preview with resolved karaoke.
+and translation with resolved karaoke.
 
 `--karaoke` becomes an `argparse.BooleanOptionalAction` whose parser default is
 `None`, preserving the existing `--karaoke` spelling while adding
@@ -261,14 +266,16 @@ short template option is added. The existing `--karaoke` flag remains valid and
 Preview accepts the same option and renders the same final configuration:
 
 ~~~
-multisubs -i video.mp4 --preview-layout --subtitle-template high-contrast
-multisubs -i video.mp4 --preview-layout --subtitle-template neon-karaoke --no-karaoke
+multisubs -i video.mp4 --preview-layout --template high-contrast
+multisubs -i video.mp4 --preview-layout --template neon-karaoke
+multisubs -i video.mp4 --preview-layout --template neon-karaoke --karaoke-mode active-word
 ~~~
 
-Preview does not synthesize word timings. A karaoke-enabled final composition,
-whether enabled by a template or `--karaoke`, remains invalid with
-`--preview-layout`. Explicit `--no-karaoke` previews only the static appearance
-of `neon-karaoke` and does not claim to preview its timed effect.
+Preview does not synthesize word timings or animate the sample. It compiles a
+typed, static representative state from the displayed text: progressive mode
+highlights the first half of its words, rounding up, and active-word mode
+highlights only the first word. Explicit `--no-karaoke` previews the same
+template without a highlighted word.
 
 SRT text and timing are unaffected except when a selected template's existing
 `text-case` baseline changes the displayed text, such as `social-bold` and
@@ -298,15 +305,17 @@ translation constraints, transcription, and cue timing are unchanged.
 
 - Add the immutable template model and ordered registry in
   `multisubs/templates.py`, sourcing `default` from current config constants.
-- Add `--subtitle-template` to `multisubs/cli.py` with stable choices and no
+- Add `--template` to `multisubs/cli.py` with stable choices and no
   short alias.
 - Convert `--karaoke` to `argparse.BooleanOptionalAction` with `None` as the
   omitted value, preserving `--karaoke` and adding `--no-karaoke`.
 - Compose template baseline plus explicit CLI overrides before the existing
   `validate_subtitle_config()` boundary, while retaining explicit-field
   presence for actionable placement errors.
-- Validate karaoke mode/color presence, translation, and preview restrictions
-  against the final composed effect rather than raw argparse values.
+- Validate karaoke mode/color presence and the translation restriction against
+  the final composed effect rather than raw argparse values.
+- Compile a static, fragment-aware karaoke snapshot for preview without
+  generated timing tags or model imports.
 - Report the selected template in preview and normal progress without changing
   error-stream behavior.
 - Add requested/resolved template diagnostics to retained JSON while keeping
@@ -316,19 +325,40 @@ translation constraints, transcription, and cue timing are unchanged.
 
 ## Implementation tasks
 
-- [ ] Add the typed immutable template model, registry, stable choices, and
+- [x] Add the typed immutable template model, registry, stable choices, and
   exact eight baseline definitions.
-- [ ] Add symmetric `--karaoke`/`--no-karaoke` parsing and final-state effect
+- [x] Add symmetric `--karaoke`/`--no-karaoke` parsing and final-state effect
   validation without weakening early failure timing.
-- [ ] Implement CLI parsing and field-level template/override composition with
+- [x] Implement CLI parsing and field-level template/override composition with
   existing presence-sensitive validation.
-- [ ] Integrate selection into preview and normal render progress and JSON
+- [x] Integrate selection into preview and normal render progress and JSON
   diagnostics.
-- [ ] Add default-equivalence, per-template, override-precedence, invalid-name,
+- [x] Add default-equivalence, per-template, override-precedence, invalid-name,
   placement-conflict, preview, effect, and serialization tests.
-- [ ] Add controlled 16:9 and 9:16 FFmpeg/libass visual verification for all
+- [x] Add controlled 16:9 and 9:16 FFmpeg/libass visual verification for all
   templates without committing generated media.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, and roadmap status.
+- [x] Change every template's bottom margin to `3%`, shorten the public option
+  to `--template`, and support static progressive/active-word karaoke preview.
+- [x] Update README.md, docs/prd.md, docs/architecture.md, and roadmap status.
+
+## Verification performed
+
+- Hermetic suite: 555 passed, 41 integration tests deselected.
+- Focused real FFmpeg/libass coverage: 18 passed for template, font, preview,
+  and karaoke paths, including all eight templates at 1920x1080 and 1080x1920
+  plus progressive and active-word preview states.
+- Static progressive and active-word karaoke preview output was visually
+  inspected for the intended highlighted word count; all templates were also
+  inspected in both orientations for legibility, alignment, palette, and
+  avoidable clipping.
+- Ruff formatting and lint, Pyright, compileall, CLI help, and diff whitespace
+  checks passed.
+- A clean `dist/` produced wheel and sdist artifacts accepted by Twine.
+- The wheel was installed without dependencies in an isolated environment with
+  host runtime libraries. The latest smoke rendered progressive and active-word
+  `neon-karaoke` previews from the installed wheel; earlier coverage also
+  rendered `default`, `classic-yellow`, `social-bold`, `editorial`, and
+  `high-contrast` using only packaged font resources.
 
 ## Unit tests
 
@@ -343,15 +373,16 @@ translation constraints, transcription, and cue timing are unchanged.
   field, proving unrelated template fields remain unchanged.
 - `--bold`/`--no-bold`, `--italic`/`--no-italic`, explicit font weight, and
   explicit custom font directory compatibility.
-- Unknown names, template plus invalid inactive margin, template plus incomplete
-  explicit coordinates, and resolved karaoke/translation and karaoke/preview
-  conflicts all fail at their current early boundaries.
+- Unknown names, the removed `--subtitle-template` spelling, template plus
+  invalid inactive margin, template plus incomplete explicit coordinates, and
+  resolved karaoke/translation conflicts all fail at their current early
+  boundaries.
 - `neon-karaoke` enables progressive karaoke and its highlight color; explicit
   mode/color overrides win, and `--no-karaoke` disables the effect without
   changing unrelated template fields.
 - `--no-karaoke` plus an explicit karaoke mode or highlight color is rejected,
-  while translation and preview become valid with `neon-karaoke` only after
-  the effect is explicitly disabled.
+  while translation becomes valid with `neon-karaoke` only after the effect is
+  explicitly disabled. Karaoke preview is valid in both modes.
 - JSON requested null/resolved default behavior, explicit selection, effective
   values, and absence of raw template mappings or asset paths.
 
@@ -359,8 +390,8 @@ translation constraints, transcription, and cue timing are unchanged.
 
 - Render the same licensed test text with every static template on one
   1920x1080 and one 1080x1920 fixture; verify legibility, intended alignment,
-  no envelope crossing, and no avoidable clipping. Preview the static
-  `neon-karaoke` appearance with `--no-karaoke` on both geometries.
+  no envelope crossing, and no avoidable clipping. Preview the progressive and
+  active-word static `neon-karaoke` states on both geometries.
 - Use preview and normal transcription paths with the same template and compare
   font provider, resolved dimensions, wrapping, placement, palette, and ASS
   compiler strategy.
@@ -377,10 +408,10 @@ translation constraints, transcription, and cue timing are unchanged.
 
 - Add a README template gallery table with name, intended use, font, main
   visual traits, command examples, preview recipe, and override precedence.
-- Add `--subtitle-template` to the command reference and clarify that the
+- Add `--template` to the command reference and clarify that the
   default is the current presentation.
 - Document template-provided effects, `--no-karaoke`, final-state validation,
-  and the static-preview recipe for `neon-karaoke`.
+  and the representative static-preview behavior for `neon-karaoke`.
 - Document the bundled family/variation table and per-family OFL files in the
   README license section; do not add removed-layout migration history.
 - Extend FR-9 and product acceptance criteria in docs/prd.md with template
@@ -426,8 +457,8 @@ Before opening the pull request:
   `python -m twine check dist/*`.
 - Install the wheel in a clean environment and render at least `default`,
   `classic-yellow`, `social-bold`, `editorial`, and `high-contrast` previews
-  without host copies of their fonts, plus the `neon-karaoke` static appearance
-  with `--no-karaoke`.
+  without host copies of their fonts, plus both representative static karaoke
+  states for `neon-karaoke`.
 - Attach or describe temporary 16:9 and 9:16 visual evidence in the pull-request
   body without committing generated media.
 - In the final pre-PR documentation commit, move Plan 1 and the package to
@@ -443,7 +474,7 @@ After merge:
 
 ## Acceptance criteria
 
-- `--subtitle-template` accepts exactly the eight documented names and rejects
+- `--template` accepts exactly the eight documented names and rejects
   unknown names before probing or model loading.
 - Omitting the option and selecting `default` produce identical current
   semantic appearance, wrapping, ASS, and placement values.
@@ -456,13 +487,14 @@ After merge:
 - `neon-karaoke` enables progressive karaoke by default, explicit effect
   fields override its mode and color, and `--no-karaoke` disables only the
   effect.
-- Resolved karaoke remains incompatible with translation and preview before
-  expensive work; `neon-karaoke --no-karaoke` is valid for those paths, while
-  disabled karaoke plus mode/color options is rejected.
+- Resolved karaoke remains incompatible with translation before expensive work;
+  `neon-karaoke --no-karaoke` is valid for translation, while disabled karaoke
+  plus mode/color options is rejected.
 - Preview and normal rendering agree for every static template's font provider,
   typography, palette, wrapping, and placement on controlled 16:9 and 9:16
-  fixtures. `neon-karaoke` timed behavior is verified through controlled
-  transcription/ASS fixtures, not simulated in preview.
+  fixtures. Progressive preview highlights the first half of the displayed cue
+  and active-word preview highlights only its first word without timing tags;
+  timed behavior remains verified through controlled transcription/ASS fixtures.
 - JSON records requested/resolved template identity and complete effective
   configuration without changing schema version or exposing asset paths.
 - SRT/ASS safety, timing, output lifecycle, collision handling, translation
