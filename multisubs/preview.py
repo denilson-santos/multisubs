@@ -18,6 +18,7 @@ from .layout import (
 )
 from .models import (
     AssDrawingEvent,
+    KaraokeCue,
     PreviewRequest,
     RelativeLength,
     SubtitleConfig,
@@ -26,6 +27,7 @@ from .models import (
     VideoGeometry,
 )
 from .wrapping import (
+    build_display_fragments,
     fit_first_text_segment,
     has_multiple_visual_lines,
     normalise_display_text,
@@ -143,9 +145,18 @@ def build_preview_ass(
         if request.guides
         else ()
     )
+    segment: dict[str, object] = {
+        "start": 0.0,
+        "end": end,
+        "text": display_text,
+    }
+    if resolved_config.effects.karaoke:
+        preview_cue = _build_preview_karaoke_cue(display_text)
+        if preview_cue is not None:
+            segment["_karaoke_preview_cue"] = preview_cue
     write_ass(
         path,
-        [{"start": 0.0, "end": end, "text": display_text}],
+        [segment],
         request.subtitle_config,
         geometry,
         guide_events=guide_events,
@@ -153,6 +164,19 @@ def build_preview_ass(
         wrapping_metrics=metrics,
     )
     return resolved_config, display_text
+
+
+def _build_preview_karaoke_cue(display_text: str) -> KaraokeCue | None:
+    """Map sample words for a static, representative karaoke snapshot."""
+    words = [{"word": match.group()} for match in re.finditer(r"\S+", display_text)]
+    fragments = build_display_fragments(display_text, words)
+    if fragments is None:
+        return None
+    return KaraokeCue(
+        fragments=fragments,
+        durations=(0,) * len(words),
+        active_intervals=(),
+    )
 
 
 def build_preview_guide_events(

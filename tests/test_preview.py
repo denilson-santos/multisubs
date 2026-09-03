@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from multisubs import cli
-from multisubs.ass import write_ass
+from multisubs.ass import rgba_to_ass_color_override, write_ass
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
@@ -210,6 +210,79 @@ def test_preview_ass_uses_global_opacity_for_the_effective_palette(tmp_path: Pat
         "&HB2000000",
         "&HB2000000",
     ]
+
+
+@pytest.mark.parametrize(
+    ("mode", "highlighted_word_count"),
+    [("progressive", 2), ("active-word", 1)],
+)
+def test_preview_ass_shows_representative_static_karaoke_state(
+    tmp_path: Path, mode: str, highlighted_word_count: int
+):
+    config = validate_subtitle_config(
+        None,
+        effects_values={
+            "karaoke": True,
+            "karaoke_mode": mode,
+            "highlight_color": "#00F5D4",
+        },
+    )
+    path = tmp_path / f"preview-{mode}.ass"
+
+    build_preview_ass(
+        path,
+        _request(
+            tmp_path,
+            subtitle_config=config,
+            preview_at=0.0,
+            preview_text="one two three four",
+        ),
+        GEOMETRY,
+        0.0,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    highlight_override = "{" + rgba_to_ass_color_override("#00F5D4", 1) + "}"
+    assert content.count(highlight_override) == highlighted_word_count
+    assert r"\k" not in content
+    assert all(word in content for word in ("one", "two", "three", "four"))
+
+
+def test_karaoke_preview_preserves_escaping_and_explicit_line_height(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "40px",
+            "line_height": "125%",
+            "margin_left": "0px",
+            "margin_right": "0px",
+            "max_width": "240px",
+            "max_height": "30%",
+        },
+        effects_values={"karaoke": True, "karaoke_mode": "progressive"},
+    )
+    path = tmp_path / "preview-karaoke-lines.ass"
+
+    _, display_text = build_preview_ass(
+        path,
+        _request(
+            tmp_path,
+            subtitle_config=config,
+            preview_at=0.0,
+            preview_text="{one} two three four five six",
+        ),
+        GEOMETRY,
+        0.0,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    dialogue_lines = [
+        line for line in content.splitlines() if line.startswith("Dialogue:")
+    ]
+    assert "\n" in display_text
+    assert len(dialogue_lines) > 1
+    assert r"\{one\}" in content
+    assert r"\k" not in content
 
 
 def test_preview_renders_only_the_first_segment_that_fits_the_envelope(

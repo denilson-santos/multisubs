@@ -282,6 +282,8 @@ def write_transcription_artifacts(
     geometry: VideoGeometry | None = None,
     resolved_subtitle_config: SubtitleConfig | None = None,
     wrapping_metrics: WrappingMetrics | None = None,
+    template_requested: str | None = None,
+    template_resolved: str = "default",
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
@@ -338,6 +340,8 @@ def write_transcription_artifacts(
         geometry=geometry,
         wrapping_metrics=resolved_wrapping_metrics,
         karaoke_fallback_cues=fallback_cues,
+        template_requested=template_requested,
+        template_resolved=template_resolved,
     )
     _report(progress, "Completed JSON transcript.")
 
@@ -972,6 +976,8 @@ def _write_json(
     geometry: VideoGeometry,
     wrapping_metrics: WrappingMetrics | None = None,
     karaoke_fallback_cues: int = 0,
+    template_requested: str | None = None,
+    template_resolved: str = "default",
 ) -> None:
     requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
@@ -1007,6 +1013,10 @@ def _write_json(
                 "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
                 "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
                 "container_duration": geometry.duration_seconds,
+                "template": {
+                    "requested": template_requested,
+                    "resolved": template_resolved,
+                },
                 "placement_mode": resolved_layout.placement_mode.value,
                 "requested_position": (
                     None if explicit else requested_layout.position.value
