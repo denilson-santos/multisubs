@@ -1,8 +1,8 @@
 # Built-in subtitle templates
 
-Status: In review
+Status: Done
 
-Delivery: `feat/subtitle-templates`
+Delivery: [#61](https://github.com/denilson-santos/multisubs/pull/61)
 
 Depends on:
 
