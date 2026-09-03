@@ -23,6 +23,7 @@ from multisubs.layout import resolve_subtitle_config
 from multisubs.models import (
     KaraokeCue,
     KaraokeMode,
+    PreviewRequest,
     SubtitleDisplayFragment,
     TranscriptDocument,
     VideoGeometry,
@@ -151,18 +152,18 @@ def test_karaoke_cli_rejects_effect_options_without_karaoke(
     assert error.value.code == 2
 
 
-def test_karaoke_cli_rejects_transcription_free_preview(tmp_path: Path):
+def test_karaoke_cli_accepts_transcription_free_preview(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = cli.build_parser()
 
-    with pytest.raises(SystemExit) as error:
-        cli._build_request(
-            parser.parse_args(["-i", str(input_path), "--preview-layout", "--karaoke"]),
-            parser,
-        )
+    request = cli._build_request(
+        parser.parse_args(["-i", str(input_path), "--preview-layout", "--karaoke"]),
+        parser,
+    )
 
-    assert error.value.code == 2
+    assert isinstance(request, PreviewRequest)
+    assert request.subtitle_config.effects.karaoke is True
 
 
 def test_karaoke_duration_allocation_conserves_quantized_cue_duration():

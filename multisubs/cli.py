@@ -59,11 +59,17 @@ from .models import (
     RelativeLength,
     RunArtifacts,
     RunRequest,
+    SubtitleConfig,
     SubtitleOpacity,
     TextCase,
     TranscriptionPaths,
 )
 from .preview import DEFAULT_PREVIEW_TEXT, parse_preview_timestamp
+from .templates import (
+    DEFAULT_SUBTITLE_TEMPLATE,
+    TEMPLATE_CHOICES,
+    get_subtitle_template,
+)
 from .utils import (
     create_unique_dir,
     create_work_dir,
@@ -134,6 +140,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-transcriptions",
         action="store_true",
         help="Retain JSON, SRT, and ASS files in a subtitles directory.",
+    )
+    parser.add_argument(
+        "--template",
+        choices=TEMPLATE_CHOICES,
+        default=None,
+        metavar="{" + ",".join(TEMPLATE_CHOICES) + "}",
+        help=(
+            "Built-in subtitle presentation; explicit appearance, layout, and "
+            f"effect options override individual fields (default: "
+            f"{DEFAULT_SUBTITLE_TEMPLATE})."
+        ),
     )
     preview_group = parser.add_argument_group(
         "Subtitle layout preview",
@@ -270,8 +287,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     effects_group.add_argument(
         "--karaoke",
-        action="store_true",
-        help="Highlight aligned words using a karaoke effect.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable aligned-word karaoke highlighting.",
     )
     effects_group.add_argument(
         "--karaoke-mode",
@@ -476,19 +494,6 @@ def _build_request(
         )
     if args.preview_layout and args.keep_transcriptions:
         parser.error("--keep-transcriptions cannot be used with --preview-layout")
-    _validate_effect_request(args, parser)
-    if not args.preview_layout:
-        _validate_translation_request(args.task, args.model, parser)
-    input_path = Path(args.input_path).expanduser().resolve(strict=False)
-    if not input_path.exists() or not input_path.is_file():
-        parser.error(f"Video file not found at '{args.input_path}'")
-
-    output_dir = Path(args.output_dir).expanduser().resolve(strict=False)
-    if output_dir.exists() and not output_dir.is_dir():
-        parser.error(
-            f"Output path '{args.output_dir}' is a file; provide a directory instead"
-        )
-
     appearance_values = {
         key: value
         for key, value in {
@@ -533,8 +538,10 @@ def _build_request(
         if value is not None
     }
     try:
+        template = get_subtitle_template(args.template)
         subtitle_config = validate_subtitle_config(
             None,
+            defaults=template.config,
             appearance_values=appearance_values,
             effects_values=effects_values,
             position=args.position,
@@ -543,6 +550,24 @@ def _build_request(
         )
     except ValidationError as exc:
         parser.error(str(exc))
+
+    _validate_effect_request(
+        subtitle_config,
+        task=args.task,
+        parser=parser,
+    )
+    if not args.preview_layout:
+        _validate_translation_request(args.task, args.model, parser)
+
+    input_path = Path(args.input_path).expanduser().resolve(strict=False)
+    if not input_path.exists() or not input_path.is_file():
+        parser.error(f"Video file not found at '{args.input_path}'")
+
+    output_dir = Path(args.output_dir).expanduser().resolve(strict=False)
+    if output_dir.exists() and not output_dir.is_dir():
+        parser.error(
+            f"Output path '{args.output_dir}' is a file; provide a directory instead"
+        )
 
     if args.preview_layout:
         return PreviewRequest(
@@ -554,6 +579,8 @@ def _build_request(
                 DEFAULT_PREVIEW_TEXT if args.preview_text is None else args.preview_text
             ),
             guides=args.preview_guides,
+            subtitle_template_requested=args.template,
+            subtitle_template_resolved=template.name,
         )
 
     return RunRequest(
@@ -564,6 +591,8 @@ def _build_request(
         model_name=args.model,
         subtitle_config=subtitle_config,
         keep_transcriptions=args.keep_transcriptions,
+        subtitle_template_requested=args.template,
+        subtitle_template_resolved=template.name,
     )
 
 
@@ -587,19 +616,12 @@ def _validate_translation_request(
 
 
 def _validate_effect_request(
-    args: argparse.Namespace, parser: argparse.ArgumentParser
+    subtitle_config: SubtitleConfig,
+    *,
+    task: str,
+    parser: argparse.ArgumentParser,
 ) -> None:
-    if args.karaoke_highlight_color is not None and not args.karaoke:
-        parser.error("--karaoke-highlight-color requires --karaoke")
-    if args.karaoke_mode is not None and not args.karaoke:
-        parser.error("--karaoke-mode requires --karaoke")
-    if args.preview_layout and (
-        args.karaoke
-        or args.karaoke_mode is not None
-        or args.karaoke_highlight_color is not None
-    ):
-        parser.error("--karaoke options cannot be used with --preview-layout")
-    if args.karaoke and args.task == "translate":
+    if subtitle_config.effects.karaoke and task == "translate":
         parser.error(
             "--karaoke cannot be combined with --task translate because "
             "source-language word timings do not map losslessly to translated text"
@@ -627,6 +649,7 @@ def _run_request_with_fonts(
     bundled_fonts_dir: Path | None,
 ) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
+    progress(f"Using subtitle template: {request.subtitle_template_resolved}.")
     if isinstance(request, PreviewRequest):
         return _run_preview_request(
             request,
@@ -691,6 +714,8 @@ def _run_request_with_fonts(
             geometry=geometry,
             resolved_subtitle_config=resolved_subtitle_config,
             wrapping_metrics=wrapping_metrics,
+            template_requested=request.subtitle_template_requested,
+            template_resolved=request.subtitle_template_resolved,
             progress=progress,
         )
         transcripts = TranscriptionPaths(

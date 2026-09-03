@@ -54,6 +54,7 @@ flowchart LR
 | multisubs/ass.py | Compiles semantic appearance into private ASS fields and serializes headers, timestamps, placement overrides, optional karaoke color/timing overrides, and safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream or render one preview PNG. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview() |
 | multisubs/config.py | Defines supported choices, semantic appearance/effect defaults, fixed native layout defaults, and validates typed subtitle configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
+| multisubs/templates.py | Owns the immutable ordered registry of built-in semantic subtitle presentation baselines. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, and validates native regions or explicit subtitle envelopes on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement() |
 | multisubs/font_catalog.py | Loads the immutable bundled-font manifest, performs bounded family lookup, exposes unpacked package resources, and materializes only a selected family when required by the importer. | load_bundled_font_catalog(), bundled_font_directory(), verify_bundled_font_assets() |
 | multisubs/text_measurement.py | Resolves the nearest custom, bundled, or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
@@ -66,8 +67,8 @@ flowchart LR
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths verify that the input exists, the output path is not an existing file, semantic colors, appearance values, and effect options are valid, every unit value has an explicit suffix (except the `auto` line-height keyword), global opacity is an explicit finite percentage from 0 through 100, text case is `original`, `uppercase`, or `lowercase`, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values, opacity as SubtitleOpacity, and display casing as TextCase; raw ASS style mappings and `--style-*` options are not accepted. Native configuration begins with fixed position, margin, maximum-width, and maximum-height values before explicit field overrides are applied. Explicit inactive vertical margins are rejected for named positions. Custom X/Y coordinates must be supplied as a pair, cannot be combined with `--position` or explicitly supplied margins, and require user-supplied anchor, maximum width, and maximum height values before native defaults are filled. Karaoke is rejected for translation and preview before probing or model loading.
-3. When `--preview-layout` is present, the CLI rejects only misleading conflicts, skips translation/model validation, validates FFmpeg and ffprobe, probes geometry and duration, resolves the layout, and creates a temporary ASS sample. It then calls `render_subtitle_preview()` for exactly one PNG and exits without importing transcriber.py, WhisperX, or PyTorch. Preview temporary files are removed on both success and failure.
+2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths resolve the omitted template name to `default`, load one complete immutable semantic baseline from templates.py, overlay only explicitly supplied appearance, layout, and effect fields, and validate the final typed configuration once. Template-provided fields are defaults rather than explicit option presence for conflict diagnostics. Both paths verify that the input exists, the output path is not an existing file, semantic colors, appearance values, and effect options are valid, every unit value has an explicit suffix (except the `auto` line-height keyword), global opacity is an explicit finite percentage from 0 through 100, text case is `original`, `uppercase`, or `lowercase`, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values, opacity as SubtitleOpacity, and display casing as TextCase; raw ASS style mappings and `--style-*` options are not accepted. Explicit inactive vertical margins are rejected for named positions. Custom X/Y coordinates must be supplied as a pair, cannot be combined with `--position` or explicitly supplied margins, and require user-supplied anchor, maximum width, and maximum height values even when the selected template contains native maximum dimensions. Resolved karaoke is rejected for translation before probing or model loading; `--no-karaoke` may disable a template-provided effect first.
+3. When `--preview-layout` is present, the CLI rejects only misleading conflicts, skips translation/model validation, validates FFmpeg and ffprobe, probes geometry and duration, resolves the layout, and creates a temporary ASS sample. For resolved karaoke, preview.py maps the displayed sample into typed fragments and ass.py emits a static state without timing tags: progressive mode highlights the first half of the displayed words, rounding up, while active-word highlights only the first word. It then calls `render_subtitle_preview()` for exactly one PNG and exits without importing transcriber.py, WhisperX, or PyTorch. Preview temporary files are removed on both success and failure.
 4. For a normal translation task, the CLI rejects turbo and English-only model names before model loading.
 5. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() resolves the complete requested configuration without classifying the video shape, resolves all dimensions, resolves `--line-height` against measured natural font metrics, and rejects explicit leading below that metric. Native placement resolves maximum width after horizontal ASS margins and maximum height after the active top or bottom margin; middle alignment uses the full height. Explicit placement resolves X/Y and both user-supplied maximum dimensions against the full PlayRes canvas, compiles retained native defaults to zero, and rejects a complete envelope that crosses an edge. resolve_wrapping_metrics() also validates that at least one decorated line fits before WhisperX is loaded.
 6. The geometry policy follows explicitly enabled FFmpeg autorotation: 0° and 180° retain the coded axes; 90° and 270° swap the render axes and invert the sample-aspect-ratio axes. Legacy rotate tags are normalized from their sign convention to the display-matrix convention. Contradictory metadata is rejected.
@@ -164,6 +165,10 @@ The JSON artifact has this high-level shape:
       "sample_aspect_ratio": "1:1",
       "display_aspect_ratio": "9:16",
       "container_duration": 123.45,
+      "template": {
+        "requested": null,
+        "resolved": "default"
+      },
       "placement_mode": "native-style",
       "requested_position": "bottom-center",
       "resolved_position": "bottom-center",
@@ -173,7 +178,7 @@ The JSON artifact has this high-level shape:
         "left": 194,
         "right": 194,
         "top": 0,
-        "bottom": 96
+        "bottom": 58
       },
       "requested": {
         "font_size": "4%",
@@ -185,7 +190,7 @@ The JSON artifact has this high-level shape:
           "left": "18%",
           "right": "18%",
           "top": "0%",
-          "bottom": "5%"
+          "bottom": "3%"
         },
         "max_width": "100%",
         "max_height": "10%"
@@ -200,17 +205,17 @@ The JSON artifact has this high-level shape:
           "left": 194,
           "right": 194,
           "top": 0,
-          "bottom": 96
+          "bottom": 58
         },
         "max_width": 692,
-        "max_height": 182,
+        "max_height": 186,
         "line_capacity": 2
       },
       "wrapping": {
         "available_width": 692,
-        "available_height": 1824,
+        "available_height": 1862,
         "max_width": 692,
-        "max_height": 182,
+        "max_height": 186,
         "width_budget": 689,
         "line_height": 77.0,
         "natural_line_height": 77.0,
@@ -283,9 +288,9 @@ The JSON artifact has this high-level shape:
         "left": 194,
         "top": 0,
         "right": 886,
-        "bottom": 1824,
+        "bottom": 1862,
         "width": 692,
-        "height": 1824
+        "height": 1862
       }
     }
   },
@@ -307,6 +312,10 @@ The JSON artifact has this high-level shape:
 
 `schema_version` identifies the top-level JSON contract; version 2 records the concrete requested and resolved layout. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX; its exact optional fields are owned by that dependency. Each serialized cue keeps its original normalized semantic text in `text`, retains original aligned words and timestamps, and adds the wrapped/case-transformed `display_text` used by SRT and ASS. The top-level transcription text remains the original WhisperX output. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records normalized geometry, placement mode, whether margins apply, requested/resolved font size, letter spacing, line height, text case, position, margins, maximum dimensions, percentage bases, the render strategy, and the reproducibility inputs used by adaptive wrapping. The `wrapping` object records available and maximum dimensions, effective width budget after decorations and measured tracking, natural and resolved line heights, ascent/descent metrics, vertical decoration allowance, derived line capacity, and resolved typography values. `text_measurement` records `font-metrics` or `unicode-estimate`, requested and resolved family/style names, the original weight token and input form, canonical requested and inferred resolved weight names/ranks, substitution state, font source, and shaping mode. Letter spacing is measured as one gap between consecutive rendered grapheme clusters on each visual line; combining marks and zero-width joiner sequences remain attached to their base cluster. Explicit line-height percentages use the natural measured line height as their basis, while pixels are PlayRes baseline advances; `auto` preserves that natural metric. `text_case` records the requested and resolved `original`, `uppercase`, or `lowercase` mode; conversion uses Python's locale-independent Unicode behavior. The `opacity` object records the requested token, percentage and normalized multiplier, and canonical eight-digit conventional RGBA colors before and after composition. `effects.karaoke` records whether word highlighting is enabled, the resolved `progressive` or `active-word` mode, normal/highlight semantic colors, and the exact number of plain fallback cues. Unresolved values are null, font-family and font-weight substitutions remain visible, and absolute local font paths are never serialized. Native mode adds `native_region` and deliberately omits synthetic coordinates. Explicit mode omits `native_region` and adds requested and resolved X/Y values with `coordinate_space: playres`. The metadata does not claim exact equivalence with final libass shaping or store generated ASS strings or raw command lines. `container_duration` is null when ffprobe cannot report it.
 
+The `template` object records requested and resolved template identity. Omitted
+selection is stored as requested `null` and resolved `default`; only names are
+serialized, never registry mappings or asset paths.
+
 ### SRT and ASS
 
 SRT is generated from cue start time, end time, and layout-aware wrapped text.
@@ -315,9 +324,12 @@ The appearance contract includes the resolved font size, non-negative letter
 spacing, resolved baseline line height, global opacity, and typed display case
 in addition to font family, weight, colors, backdrop, and shadow.
 Raw ASS style mappings are rejected. `SubtitleConfig` stores a complete native
-layout assembled from the fixed defaults and explicit field overrides, or a
-complete explicit-coordinate envelope. layout.py resolves those values directly
-without selecting a named or aspect-ratio-dependent profile.
+presentation assembled from one built-in template baseline and explicit
+field-level overrides, or a complete explicit-coordinate envelope. The
+`default` registry entry is built from config.py's authoritative fixed defaults,
+so omitted selection and explicit `default` cannot drift. templates.py contains
+semantic values only; layout.py resolves them directly without template-aware
+branches or aspect-ratio-dependent selection.
 
 SRT is always transformed plain display text and timing; it never contains
 generated ASS override markup. ASS receives the same transformed fragments only

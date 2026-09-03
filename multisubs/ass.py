@@ -139,9 +139,12 @@ def write_ass(
         if metrics is None:
             raise ArtifactError("Explicit line height requires wrapping metrics")
         karaoke_cue = segment.get("_karaoke_cue")
+        karaoke_preview_cue = segment.get("_karaoke_preview_cue")
         fragments = (
             karaoke_cue.fragments
             if isinstance(karaoke_cue, KaraokeCue)
+            else karaoke_preview_cue.fragments
+            if isinstance(karaoke_preview_cue, KaraokeCue)
             else segment.get("display_fragments")
         )
         visual_lines = build_visual_lines(
@@ -221,6 +224,7 @@ def write_ass(
         cue_start = quantize_ass_centiseconds(segment["start"])
         cue_end = quantize_ass_centiseconds(segment["end"])
         karaoke_cue = segment.get("_karaoke_cue")
+        karaoke_preview_cue = segment.get("_karaoke_preview_cue")
         visual_line_events = positioned_lines[index]
         if visual_line_events:
             if metrics is None:
@@ -249,6 +253,28 @@ def write_ass(
                 )
                 for item in visual_line_events
             ]
+            if isinstance(karaoke_preview_cue, KaraokeCue):
+                for line_override, item in zip(
+                    line_overrides, visual_line_events, strict=True
+                ):
+                    preview_text = serialize_karaoke_preview_cue(
+                        karaoke_preview_cue,
+                        config,
+                        fragments=item.line.fragments,
+                        palette=effective_palette,
+                    )
+                    if preview_text is None:
+                        preview_text = escape_ass_text(item.line.text)
+                    _append_dialogue_line(
+                        lines,
+                        cue_start,
+                        cue_end,
+                        line_override,
+                        preview_text,
+                        layer=1,
+                        style_name=positioned_style_name,
+                    )
+                continue
             if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
                 karaoke_cue, KaraokeCue
             ):
@@ -321,6 +347,20 @@ def write_ass(
         generated_override += (
             serialize_ass_placement(placement) if placement is not None else ""
         )
+        preview_text = serialize_karaoke_preview_cue(
+            karaoke_preview_cue,
+            config,
+            palette=effective_palette,
+        )
+        if preview_text is not None:
+            _append_dialogue_line(
+                lines,
+                cue_start,
+                cue_end,
+                generated_override,
+                preview_text,
+            )
+            continue
         if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
             karaoke_cue, KaraokeCue
         ):
@@ -871,6 +911,36 @@ def serialize_karaoke_cue(
         raise ArtifactError("Karaoke highlight color is not resolved")
     _validate_karaoke_cue(cue)
     return _serialize_karaoke_fragments(cue.fragments, cue.durations, palette)
+
+
+def serialize_karaoke_preview_cue(
+    cue: object,
+    config: SubtitleConfig,
+    *,
+    fragments: Sequence[SubtitleDisplayFragment] | None = None,
+    palette: SubtitlePalette | None = None,
+) -> str | None:
+    """Compile a static preview snapshot of the selected karaoke mode."""
+    if not isinstance(cue, KaraokeCue) or not config.effects.karaoke:
+        return None
+    _validate_karaoke_cue(cue)
+    visible_fragments = cue.fragments if fragments is None else fragments
+    if not all(
+        isinstance(fragment, SubtitleDisplayFragment) for fragment in visible_fragments
+    ):
+        raise ArtifactError("Karaoke preview fragments must use the typed contract")
+    if palette is None:
+        _, palette = resolve_subtitle_palettes(config)
+    if config.effects.mode is KaraokeMode.PROGRESSIVE:
+        highlighted_words = (len(cue.durations) + 1) // 2
+        return _serialize_progressive_state(
+            visible_fragments,
+            palette,
+            highlighted_words,
+        )
+    if config.effects.mode is KaraokeMode.ACTIVE_WORD:
+        return _serialize_active_word_fragments(visible_fragments, palette, 0)
+    return None
 
 
 def _serialize_karaoke_fragments(

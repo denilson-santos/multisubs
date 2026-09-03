@@ -162,7 +162,7 @@ def test_build_request_uses_fixed_layout_defaults(tmp_path: Path):
     assert layout.margin_left == parse_relative_length("18%")
     assert layout.margin_right == parse_relative_length("18%")
     assert layout.margin_top == parse_relative_length("0%")
-    assert layout.margin_bottom == parse_relative_length("5%")
+    assert layout.margin_bottom == parse_relative_length("3%")
     assert layout.max_width == parse_relative_length("100%")
     assert layout.max_height == parse_relative_length("10%")
 
@@ -512,7 +512,7 @@ def test_help_exposes_fixed_defaults_without_layout_or_safe_area():
 
     assert "--layout" not in help_text
     assert "--safe-area" not in help_text
-    for value in ("bottom-center", "18%", "5%", "100%", "10%"):
+    for value in ("bottom-center", "18%", "3%", "100%", "10%"):
         assert value in help_text
 
 
@@ -595,11 +595,15 @@ def test_run_request_cleans_private_work_dir_after_default_success(
         geometry,
         resolved_subtitle_config,
         wrapping_metrics,
+        template_requested,
+        template_resolved,
         progress,
     ):
         assert geometry is GEOMETRY
         assert resolved_subtitle_config is not None
         assert wrapping_metrics.line_capacity >= 1
+        assert template_requested is None
+        assert template_resolved == "default"
         paths = TranscriptionPaths(
             Path(destination) / "video-pt.json",
             Path(destination) / "video-pt.srt",
@@ -642,6 +646,7 @@ def test_run_request_cleans_private_work_dir_after_default_success(
 
     assert result == output_dir / "video-pt.mp4"
     assert progress_messages
+    assert progress_messages[0] == "Using subtitle template: default."
     assert all("preset" not in message.lower() for message in progress_messages)
     assert not list(output_dir.glob(".multisubs-*"))
     assert sorted(path.name for path in output_dir.iterdir()) == ["video-pt.mp4"]

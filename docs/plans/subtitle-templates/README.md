@@ -12,7 +12,7 @@ existing CLI options.
 ## Product outcome
 
 Users can render a useful subtitle presentation with one option, preview its
-static appearance before transcription, and then override any individual
+appearance before transcription, and then override any individual
 appearance, effect, or placement field. Templates may activate an effect when
 that behavior is intrinsic to their name and purpose; `neon-karaoke` therefore
 enables progressive karaoke and can be neutralized with `--no-karaoke`. The
@@ -32,7 +32,7 @@ selection.
 The package adds the template option and a symmetric karaoke override:
 
 ~~~
---subtitle-template {default,clean-outline,social-bold,classic-yellow,newsroom,editorial,high-contrast,neon-karaoke}
+--template {default,clean-outline,social-bold,classic-yellow,newsroom,editorial,high-contrast,neon-karaoke}
 --karaoke | --no-karaoke
 ~~~
 
@@ -48,8 +48,10 @@ still fail at the existing validation boundary; templates do not suppress or
 silently rewrite errors. `neon-karaoke` enables progressive word highlighting
 as part of its baseline. Explicit `--no-karaoke` disables that effect while
 retaining the template's font, palette, backdrop, and placement. Karaoke
-translation and preview restrictions remain enforced against the final
-composed configuration.
+translation restrictions remain enforced against the final composed
+configuration. Preview represents progressive mode by highlighting the first
+half of the displayed cue and active-word mode by highlighting its first word,
+without inventing timing.
 
 ## Bundled font families
 
@@ -82,11 +84,11 @@ This table is the source of truth for the package. Status values follow the
 
 | Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
-| 0 | [Bundled OFL font catalog](00-bundled-ofl-font-catalog.md) | In review | Completed positioning and typography packages | `feat/bundled-font-catalog` |
-| 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | Planned | 0 and completed karaoke package | — |
+| 0 | [Bundled OFL font catalog](00-bundled-ofl-font-catalog.md) | Done | Completed positioning and typography packages | [#60](https://github.com/denilson-santos/multisubs/pull/60) |
+| 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | In review | 0 and completed karaoke package | `feat/subtitle-templates` |
 
-Package progress: 0 of 2 plans done. Plan 0 is ready for review on
-`feat/bundled-font-catalog`.
+Package progress: 1 of 2 plans done. Plan 1 is ready for review on
+`feat/subtitle-templates`.
 
 ## Dependencies and delivery order
 
@@ -153,14 +155,14 @@ never move an existing tag.
   provider precedence, non-installing behavior, and licensing responsibility.
 - No absolute asset path or machine-specific path is serialized to retained
   JSON, and routine invocations do not hash every bundled binary.
-- Omitting `--subtitle-template` and selecting `default` resolve to the exact
+- Omitting `--template` and selecting `default` resolve to the exact
   current semantic defaults in `multisubs/config.py`.
 - Explicit CLI appearance, layout, and effect options override one template
   field at a time without hidden coupling or validation bypasses.
-- Every static template previews and renders with the same font, values,
-  wrapping, placement, and ASS compilation. `neon-karaoke` renders with its
-  timed effect in transcription and previews its static appearance only when
-  the user explicitly supplies `--no-karaoke`.
+- Every template previews and renders with the same font, values, wrapping,
+  placement, and ASS compilation. `neon-karaoke` renders with its timed effect
+  in transcription and with the documented representative static highlight in
+  preview; `--no-karaoke` removes only that effect.
 - Hermetic tests, controlled FFmpeg/libass integration checks, package builds,
   clean-wheel smoke checks, Ruff, Pyright, and documentation checks pass.
 - README.md, docs/prd.md, docs/architecture.md, and applicable conventions

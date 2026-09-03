@@ -148,7 +148,7 @@ DEFAULT_KARAOKE_MODE = KaraokeMode.PROGRESSIVE
 DEFAULT_MARGIN_LEFT = "18%"
 DEFAULT_MARGIN_RIGHT = "18%"
 DEFAULT_MARGIN_TOP = "0%"
-DEFAULT_MARGIN_BOTTOM = "5%"
+DEFAULT_MARGIN_BOTTOM = "3%"
 DEFAULT_MAX_WIDTH = "100%"
 DEFAULT_MAX_HEIGHT = "10%"
 
@@ -273,6 +273,7 @@ def _font_weight_error() -> ValidationError:
 def validate_subtitle_config(
     value: SubtitleConfig | None,
     *,
+    defaults: SubtitleConfig | None = None,
     appearance_values: Mapping[str, object] | None = None,
     position: SubtitlePosition | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
@@ -286,7 +287,8 @@ def validate_subtitle_config(
     resolved_anchor = parse_position(anchor) if anchor is not None else None
     if isinstance(value, SubtitleConfig):
         if (
-            appearance_values
+            defaults is not None
+            or appearance_values
             or relative_values
             or effects_values
             or position_x is not None
@@ -324,6 +326,14 @@ def validate_subtitle_config(
         raise ValidationError(
             "raw ASS style mappings are no longer supported; use SubtitleConfig"
         )
+    if defaults is not None:
+        if not isinstance(defaults, SubtitleConfig):
+            raise ValidationError("subtitle defaults must use SubtitleConfig")
+        _validate_typed_subtitle_config(defaults)
+
+    default_appearance = defaults.appearance if defaults is not None else None
+    default_layout = defaults.layout if defaults is not None else None
+    default_effects = defaults.effects if defaults is not None else SubtitleEffects()
 
     appearance_overrides = dict(appearance_values or {})
     effects_overrides = dict(effects_values or {})
@@ -358,11 +368,30 @@ def validate_subtitle_config(
         font_weight_input = font_weight.canonical_name
         font_weight_input_form = FontWeightInputForm.BOLD_SHORTHAND
     else:
-        font_weight = DEFAULT_FONT_WEIGHT
-        font_weight_input = DEFAULT_FONT_WEIGHT.canonical_name
-        font_weight_input_form = FontWeightInputForm.DEFAULT
+        font_weight = (
+            default_appearance.font_weight
+            if default_appearance is not None
+            else DEFAULT_FONT_WEIGHT
+        )
+        font_weight_input = (
+            default_appearance.font_weight_input
+            if default_appearance is not None
+            else DEFAULT_FONT_WEIGHT.canonical_name
+        )
+        font_weight_input_form = (
+            default_appearance.font_weight_input_form
+            if default_appearance is not None
+            else FontWeightInputForm.DEFAULT
+        )
 
-    opacity = _validate_opacity(appearance_overrides.get("opacity", DEFAULT_OPACITY))
+    opacity = _validate_opacity(
+        appearance_overrides.get(
+            "opacity",
+            default_appearance.opacity
+            if default_appearance is not None
+            else DEFAULT_OPACITY,
+        )
+    )
 
     if "karaoke_highlight_color" in effects_overrides:
         if "highlight_color" in effects_overrides:
@@ -380,25 +409,29 @@ def validate_subtitle_config(
     if unknown_effect_fields:
         names = ", ".join(sorted(unknown_effect_fields))
         raise ValidationError(f"Unknown effect value(s): {names}")
-    karaoke = _validate_boolean(effects_overrides.get("karaoke", False), "karaoke")
-    raw_karaoke_mode = effects_overrides.get("karaoke_mode")
-    if not karaoke and raw_karaoke_mode is not None:
-        raise ValidationError("karaoke-mode requires --karaoke")
-    karaoke_mode = (
-        _validate_karaoke_mode(
-            DEFAULT_KARAOKE_MODE if raw_karaoke_mode is None else raw_karaoke_mode
-        )
-        if karaoke
-        else None
+    karaoke = _validate_boolean(
+        effects_overrides.get("karaoke", default_effects.enabled), "karaoke"
     )
-    raw_highlight_color = effects_overrides.get("highlight_color")
-    if not karaoke and raw_highlight_color is not None:
+    explicit_karaoke_mode = effects_overrides.get("karaoke_mode")
+    if not karaoke and explicit_karaoke_mode is not None:
+        raise ValidationError("karaoke-mode requires --karaoke")
+    raw_karaoke_mode = (
+        explicit_karaoke_mode
+        if explicit_karaoke_mode is not None
+        else default_effects.karaoke_mode or DEFAULT_KARAOKE_MODE
+    )
+    karaoke_mode = _validate_karaoke_mode(raw_karaoke_mode) if karaoke else None
+    explicit_highlight_color = effects_overrides.get("highlight_color")
+    if not karaoke and explicit_highlight_color is not None:
         raise ValidationError("karaoke-highlight-color requires --karaoke")
+    raw_highlight_color = (
+        explicit_highlight_color
+        if explicit_highlight_color is not None
+        else default_effects.highlight_color or DEFAULT_KARAOKE_HIGHLIGHT_COLOR
+    )
     highlight_color = (
         _validate_color(
-            DEFAULT_KARAOKE_HIGHLIGHT_COLOR
-            if raw_highlight_color is None
-            else raw_highlight_color,
+            raw_highlight_color,
             "karaoke-highlight-color",
         )
         if karaoke
@@ -426,7 +459,12 @@ def validate_subtitle_config(
         for key, value in parsed_relative_values.items()
         if isinstance(value, RelativeLength)
     }
-    parsed_line_height = parsed_relative_values.get("line_height", DEFAULT_LINE_HEIGHT)
+    parsed_line_height = parsed_relative_values.get(
+        "line_height",
+        default_appearance.line_height
+        if default_appearance is not None
+        else DEFAULT_LINE_HEIGHT,
+    )
 
     has_position_x = "position_x" in parsed_relative_values
     has_position_y = "position_y" in parsed_relative_values
@@ -447,61 +485,139 @@ def validate_subtitle_config(
         raise ValidationError("custom coordinates require an explicit max-height")
     _validate_layout_option_effects(
         parsed_relative_values,
-        position=resolved_position or DEFAULT_POSITION,
+        position=(
+            resolved_position
+            or (
+                default_layout.position
+                if default_layout is not None
+                else DEFAULT_POSITION
+            )
+        ),
         has_custom_coordinates=has_custom_coordinates,
     )
     config = SubtitleConfig(
         appearance=SubtitleAppearance(
-            font=_validate_font(appearance_overrides.get("font", DEFAULT_FONT)),
+            font=_validate_font(
+                appearance_overrides.get(
+                    "font",
+                    default_appearance.font
+                    if default_appearance is not None
+                    else DEFAULT_FONT,
+                )
+            ),
             font_size=parsed_length_values.get(
-                "font_size", parse_relative_length(DEFAULT_FONT_SIZE)
+                "font_size",
+                default_appearance.font_size
+                if default_appearance is not None
+                else parse_relative_length(DEFAULT_FONT_SIZE),
             ),
             letter_spacing=parsed_length_values.get(
-                "letter_spacing", parse_relative_length(DEFAULT_LETTER_SPACING)
+                "letter_spacing",
+                default_appearance.letter_spacing
+                if default_appearance is not None
+                else parse_relative_length(DEFAULT_LETTER_SPACING),
             ),
             text_color=_validate_color(
-                appearance_overrides.get("text_color", DEFAULT_TEXT_COLOR),
+                appearance_overrides.get(
+                    "text_color",
+                    default_appearance.text_color
+                    if default_appearance is not None
+                    else DEFAULT_TEXT_COLOR,
+                ),
                 "text-color",
             ),
             font_weight=font_weight,
             italic=_validate_boolean(
-                appearance_overrides.get("italic", DEFAULT_ITALIC), "italic"
+                appearance_overrides.get(
+                    "italic",
+                    default_appearance.italic
+                    if default_appearance is not None
+                    else DEFAULT_ITALIC,
+                ),
+                "italic",
             ),
             backdrop=_validate_backdrop(
-                appearance_overrides.get("backdrop", DEFAULT_BACKDROP)
+                appearance_overrides.get(
+                    "backdrop",
+                    default_appearance.backdrop
+                    if default_appearance is not None
+                    else DEFAULT_BACKDROP,
+                )
             ),
             backdrop_color=_validate_color(
-                appearance_overrides.get("backdrop_color", DEFAULT_BACKDROP_COLOR),
+                appearance_overrides.get(
+                    "backdrop_color",
+                    default_appearance.backdrop_color
+                    if default_appearance is not None
+                    else DEFAULT_BACKDROP_COLOR,
+                ),
                 "backdrop-color",
             ),
             backdrop_size=parsed_length_values.get(
-                "outline_weight", parse_relative_length(DEFAULT_BACKDROP_SIZE)
+                "outline_weight",
+                default_appearance.backdrop_size
+                if default_appearance is not None
+                else parse_relative_length(DEFAULT_BACKDROP_SIZE),
             ),
             shadow_size=parsed_length_values.get(
-                "shadow_weight", parse_relative_length(DEFAULT_SHADOW_SIZE)
+                "shadow_weight",
+                default_appearance.shadow_size
+                if default_appearance is not None
+                else parse_relative_length(DEFAULT_SHADOW_SIZE),
             ),
-            fonts_dir=_coerce_fonts_dir(appearance_overrides.get("fonts_dir")),
+            fonts_dir=_coerce_fonts_dir(
+                appearance_overrides.get(
+                    "fonts_dir",
+                    default_appearance.fonts_dir
+                    if default_appearance is not None
+                    else None,
+                )
+            ),
             font_weight_input=font_weight_input,
             font_weight_input_form=font_weight_input_form,
             line_height=parsed_line_height,
             opacity=opacity,
             text_case=parse_text_case(
-                appearance_overrides.get("text_case", DEFAULT_TEXT_CASE)
+                appearance_overrides.get(
+                    "text_case",
+                    default_appearance.text_case
+                    if default_appearance is not None
+                    else DEFAULT_TEXT_CASE,
+                )
             ),
         ),
         layout=SubtitleLayout(
-            position=resolved_position or DEFAULT_POSITION,
+            position=(
+                resolved_position
+                or (
+                    default_layout.position
+                    if default_layout is not None
+                    else DEFAULT_POSITION
+                )
+            ),
             margin_left=parsed_length_values.get(
-                "margin_left", parse_relative_length(DEFAULT_MARGIN_LEFT)
+                "margin_left",
+                default_layout.margin_left
+                if default_layout is not None
+                else parse_relative_length(DEFAULT_MARGIN_LEFT),
             ),
             margin_right=parsed_length_values.get(
-                "margin_right", parse_relative_length(DEFAULT_MARGIN_RIGHT)
+                "margin_right",
+                default_layout.margin_right
+                if default_layout is not None
+                else parse_relative_length(DEFAULT_MARGIN_RIGHT),
             ),
             margin_top=parsed_length_values.get(
-                "margin_top", parse_relative_length(DEFAULT_MARGIN_TOP)
+                "margin_top",
+                default_layout.margin_top
+                if default_layout is not None
+                else parse_relative_length(DEFAULT_MARGIN_TOP),
             ),
             margin_bottom=parsed_length_values.get(
-                "margin_bottom", parse_relative_length(DEFAULT_MARGIN_BOTTOM)
+                "margin_bottom",
+                default_layout.margin_bottom
+                if default_layout is not None
+                else parse_relative_length(DEFAULT_MARGIN_BOTTOM),
             ),
             placement_mode=(
                 SubtitlePlacementMode.EXPLICIT
@@ -512,10 +628,16 @@ def validate_subtitle_config(
             position_y=parsed_length_values.get("position_y"),
             anchor=resolved_anchor if has_custom_coordinates else None,
             max_width=parsed_length_values.get(
-                "max_width", parse_relative_length(DEFAULT_MAX_WIDTH)
+                "max_width",
+                default_layout.max_width
+                if default_layout is not None
+                else parse_relative_length(DEFAULT_MAX_WIDTH),
             ),
             max_height=parsed_length_values.get(
-                "max_height", parse_relative_length(DEFAULT_MAX_HEIGHT)
+                "max_height",
+                default_layout.max_height
+                if default_layout is not None
+                else parse_relative_length(DEFAULT_MAX_HEIGHT),
             ),
         ),
         effects=SubtitleEffects(

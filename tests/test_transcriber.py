@@ -562,6 +562,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "sample_aspect_ratio": "1:1",
         "display_aspect_ratio": "16:9",
         "container_duration": 12.5,
+        "template": {"requested": None, "resolved": "default"},
         "placement_mode": "native-style",
         "requested_position": "bottom-center",
         "resolved_position": "bottom-center",
@@ -571,7 +572,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "left": 346,
             "right": 346,
             "top": 0,
-            "bottom": 54,
+            "bottom": 32,
         },
         "requested": {
             "font_size": "4%",
@@ -583,7 +584,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "left": "18%",
                 "right": "18%",
                 "top": "0%",
-                "bottom": "5%",
+                "bottom": "3%",
             },
             "max_width": "100%",
             "max_height": "10%",
@@ -598,17 +599,17 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "left": 346,
                 "right": 346,
                 "top": 0,
-                "bottom": 54,
+                "bottom": 32,
             },
             "max_width": 1228,
-            "max_height": 103,
+            "max_height": 105,
             "line_capacity": 1,
         },
         "wrapping": {
             "available_width": 1228,
-            "available_height": 1026,
+            "available_height": 1048,
             "max_width": 1228,
-            "max_height": 103,
+            "max_height": 105,
             "width_budget": 1226,
             "line_height": 51.6,
             "natural_line_height": 51.6,
@@ -678,9 +679,9 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "left": 346,
             "top": 0,
             "right": 1574,
-            "bottom": 1026,
+            "bottom": 1048,
             "width": 1228,
-            "height": 1026,
+            "height": 1048,
         },
     }
     assert srt_path.exists() and ass_path.exists()
@@ -1000,14 +1001,14 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
         "left": "8%",
         "right": "8%",
         "top": "0%",
-        "bottom": "5%",
+        "bottom": "3%",
     }
     assert rendering["resolved"]["font_size"] == 49
     assert rendering["resolved"]["margins"] == {
         "left": 154,
         "right": 154,
         "top": 0,
-        "bottom": 54,
+        "bottom": 32,
     }
     assert "requested_preset" not in rendering
     assert "resolved_preset" not in rendering

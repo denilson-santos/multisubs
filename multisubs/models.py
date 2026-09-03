@@ -312,6 +312,8 @@ class RunRequest:
     model_name: str
     subtitle_config: SubtitleConfig
     keep_transcriptions: bool
+    subtitle_template_requested: str | None = None
+    subtitle_template_resolved: str = "default"
 
 
 @dataclass(frozen=True)
@@ -324,3 +326,5 @@ class PreviewRequest:
     preview_at: float | None
     preview_text: str
     guides: bool
+    subtitle_template_requested: str | None = None
+    subtitle_template_resolved: str = "default"
