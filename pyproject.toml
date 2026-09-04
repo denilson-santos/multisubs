@@ -40,6 +40,7 @@ multisubs = [
     "assets/fonts/*/OFL.txt",
     "assets/fonts/*/*.otf",
     "assets/fonts/*/*.ttf",
+    "assets/templates/*.json",
 ]
 
 [tool.pytest.ini_options]
