@@ -837,7 +837,10 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
     config = validate_subtitle_config(None)
     config = replace(
         config,
-        appearance=replace(config.appearance, font_size=16),
+        style=replace(
+            config.style,
+            typography=replace(config.style.typography, font_size=16),
+        ),
         layout=replace(config.layout, margin_top=12, margin_bottom=12),
     )
     write_ass(

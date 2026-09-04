@@ -99,23 +99,24 @@ def test_public_choices_match_supported_models_and_alignment_languages():
 
 
 def test_default_appearance_is_semantic_and_resolution_independent():
-    appearance = validate_subtitle_config(None).appearance
+    config = validate_subtitle_config(None)
+    typography = config.style.typography
 
-    assert appearance.font == "Roboto"
-    assert appearance.font_size == parse_relative_length("4%")
-    assert appearance.letter_spacing == parse_relative_length("0px")
-    assert appearance.text_color == "#FFFFFF"
-    assert appearance.font_weight is FontWeight.REGULAR
-    assert appearance.font_weight_input == "regular"
-    assert appearance.font_weight_input_form is FontWeightInputForm.DEFAULT
-    assert appearance.italic is False
-    assert appearance.backdrop is SubtitleBackdrop.BOX
-    assert appearance.backdrop_color == "#00000099"
-    assert appearance.backdrop_size == parse_relative_length("0px")
-    assert appearance.shadow_size == parse_relative_length("4%")
-    assert appearance.opacity == SubtitleOpacity(Decimal("100"), "100%")
-    assert appearance.text_case is TextCase.ORIGINAL
-    assert appearance.fonts_dir is None
+    assert typography.font == "Roboto"
+    assert typography.font_size == parse_relative_length("4%")
+    assert typography.letter_spacing == parse_relative_length("0px")
+    assert typography.color == "#FFFFFF"
+    assert typography.font_weight is FontWeight.REGULAR
+    assert typography.font_weight_input == "regular"
+    assert typography.font_weight_input_form is FontWeightInputForm.DEFAULT
+    assert typography.italic is False
+    assert config.style.backdrop.kind is SubtitleBackdrop.BOX
+    assert config.style.backdrop.color == "#00000099"
+    assert config.style.backdrop.size == parse_relative_length("0px")
+    assert config.style.shadow.size == parse_relative_length("4%")
+    assert config.style.opacity == SubtitleOpacity(Decimal("100"), "100%")
+    assert typography.text_case is TextCase.ORIGINAL
+    assert typography.fonts_dir is None
     assert BACKDROP_CHOICES == ("none", "outline", "box")
     assert TEXT_CASE_CHOICES == ("original", "uppercase", "lowercase")
 
@@ -156,7 +157,7 @@ def test_letter_spacing_is_a_typed_appearance_length():
         relative_values={"letter_spacing": "4.5%"},
     )
 
-    assert config.appearance.letter_spacing == parse_relative_length("4.5%")
+    assert config.style.typography.letter_spacing == parse_relative_length("4.5%")
 
 
 @pytest.mark.parametrize(
@@ -169,7 +170,7 @@ def test_line_height_accepts_auto_or_positive_typed_lengths(raw_value, expected)
         relative_values={"line_height": raw_value},
     )
 
-    assert config.appearance.line_height == expected
+    assert config.style.typography.line_height == expected
 
 
 @pytest.mark.parametrize("raw_value", ["0px", "0%", "64", "-1px", "1em"])
@@ -189,7 +190,7 @@ def test_opacity_accepts_explicit_bounded_percentages(raw_value, percentage):
         appearance_values={"opacity": opacity},
     )
 
-    assert config.appearance.opacity == opacity
+    assert config.style.opacity == opacity
     assert opacity.percentage == Decimal(percentage)
     assert opacity.normalized == Decimal(percentage) / Decimal(100)
 
@@ -217,7 +218,7 @@ def test_text_case_accepts_canonical_case_insensitive_values(raw_value, expected
     assert (
         validate_subtitle_config(
             None, appearance_values={"text_case": raw_value}
-        ).appearance.text_case
+        ).style.typography.text_case
         is expected
     )
 
@@ -331,18 +332,19 @@ def test_semantic_appearance_options_build_typed_config(tmp_path):
     )
 
     assert isinstance(config, SubtitleConfig)
-    assert config.appearance.font == "Inter"
-    assert config.appearance.font_size == parse_relative_length("22px")
-    assert config.appearance.text_color == "#ABCDEF80"
-    assert config.appearance.font_weight is FontWeight.BOLD
-    assert config.appearance.font_weight_input == "bold"
+    assert config.style.typography.font == "Inter"
+    assert config.style.typography.font_size == parse_relative_length("22px")
+    assert config.style.typography.color == "#ABCDEF80"
+    assert config.style.typography.font_weight is FontWeight.BOLD
+    assert config.style.typography.font_weight_input == "bold"
     assert (
-        config.appearance.font_weight_input_form is FontWeightInputForm.BOLD_SHORTHAND
+        config.style.typography.font_weight_input_form
+        is FontWeightInputForm.BOLD_SHORTHAND
     )
-    assert config.appearance.italic is True
-    assert config.appearance.backdrop is SubtitleBackdrop.BOX
-    assert config.appearance.backdrop_color == "#123456"
-    assert config.appearance.fonts_dir == fonts_dir
+    assert config.style.typography.italic is True
+    assert config.style.backdrop.kind is SubtitleBackdrop.BOX
+    assert config.style.backdrop.color == "#123456"
+    assert config.style.typography.fonts_dir == fonts_dir
     assert config.layout.position is SubtitlePosition.TOP_RIGHT
 
 
@@ -447,7 +449,7 @@ def test_font_weight_request_metadata_preserves_input_form(
 ):
     appearance = validate_subtitle_config(
         None, appearance_values={"font_weight": raw_value}
-    ).appearance
+    ).style.typography
 
     assert appearance.font_weight is weight
     assert appearance.font_weight_input == raw_value
@@ -458,7 +460,7 @@ def test_font_weight_request_metadata_preserves_input_form(
 def test_bold_shorthand_maps_to_regular_or_bold_weight(bold):
     appearance = validate_subtitle_config(
         None, appearance_values={"bold": bold}
-    ).appearance
+    ).style.typography
 
     assert appearance.font_weight is (FontWeight.BOLD if bold else FontWeight.REGULAR)
     assert appearance.font_weight_input_form is FontWeightInputForm.BOLD_SHORTHAND
@@ -503,9 +505,9 @@ def test_relative_values_are_stored_until_geometry_is_available():
         },
     )
 
-    assert config.appearance.font_size == parse_relative_length("4.5%")
-    assert config.appearance.backdrop_size == parse_relative_length("6%")
-    assert config.appearance.shadow_size == parse_relative_length("4%")
+    assert config.style.typography.font_size == parse_relative_length("4.5%")
+    assert config.style.backdrop.size == parse_relative_length("6%")
+    assert config.style.shadow.size == parse_relative_length("4%")
     assert config.layout.margin_left == parse_relative_length("8%")
     assert config.layout.margin_bottom == parse_relative_length("72px")
 
@@ -594,7 +596,10 @@ def test_typed_font_weight_metadata_is_revalidated():
     config = validate_subtitle_config(None)
     inconsistent = replace(
         config,
-        appearance=replace(config.appearance, font_weight=FontWeight.BOLD),
+        style=replace(
+            config.style,
+            typography=replace(config.style.typography, font_weight=FontWeight.BOLD),
+        ),
     )
 
     with pytest.raises(ValidationError, match="metadata"):
@@ -605,7 +610,10 @@ def test_typed_letter_spacing_is_revalidated():
     config = validate_subtitle_config(None)
     inconsistent = replace(
         config,
-        appearance=replace(config.appearance, letter_spacing=-1),
+        style=replace(
+            config.style,
+            typography=replace(config.style.typography, letter_spacing=-1),
+        ),
     )
 
     with pytest.raises(ValidationError, match="letter-spacing"):
@@ -616,8 +624,8 @@ def test_typed_opacity_metadata_is_revalidated():
     config = validate_subtitle_config(None)
     inconsistent = replace(
         config,
-        appearance=replace(
-            config.appearance,
+        style=replace(
+            config.style,
             opacity=SubtitleOpacity(Decimal("50"), "75%"),
         ),
     )
@@ -630,7 +638,12 @@ def test_typed_text_case_is_revalidated():
     config = validate_subtitle_config(None)
     inconsistent = replace(
         config,
-        appearance=replace(config.appearance, text_case=cast(Any, "uppercase")),
+        style=replace(
+            config.style,
+            typography=replace(
+                config.style.typography, text_case=cast(Any, "uppercase")
+            ),
+        ),
     )
 
     with pytest.raises(ValidationError, match="typed TextCase"):

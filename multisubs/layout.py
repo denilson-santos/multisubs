@@ -77,7 +77,7 @@ def resolve_subtitle_config(
     _validate_geometry(geometry)
     validated = validate_subtitle_config(config)
     font_size = resolve_relative_length(
-        validated.appearance.font_size,
+        validated.style.typography.font_size,
         geometry.render_height,
         field="font-size",
         maximum=min(_MAX_FONT_SIZE_PIXELS, geometry.render_height),
@@ -86,43 +86,43 @@ def resolve_subtitle_config(
         raise ValidationError("font-size must resolve to a value greater than zero")
 
     letter_spacing = resolve_relative_length(
-        validated.appearance.letter_spacing,
+        validated.style.typography.letter_spacing,
         font_size,
         field="letter-spacing",
         maximum=font_size * _MAX_LETTER_SPACING_FACTOR,
     )
 
     outline_weight = resolve_relative_length(
-        validated.appearance.backdrop_size,
+        validated.style.backdrop.size,
         font_size,
         field="backdrop-size",
         maximum=font_size,
     )
     shadow_weight = resolve_relative_length(
-        validated.appearance.shadow_size,
+        validated.style.shadow.size,
         font_size,
         field="shadow-size",
         maximum=font_size,
     )
-    measurement_appearance = replace(
-        validated.appearance,
+    measurement_typography = replace(
+        validated.style.typography,
         font_size=font_size,
         letter_spacing=letter_spacing,
     )
     line_measurer = text_measurer
     if line_measurer is None:
         line_measurer = (
-            build_text_measurer(measurement_appearance)
+            build_text_measurer(measurement_typography)
             if bundled_fonts_dir is None
             else build_text_measurer(
-                measurement_appearance,
+                measurement_typography,
                 bundled_fonts_dir=bundled_fonts_dir,
             )
         )
     requested_line_height = (
-        validated.appearance.line_height_requested
-        if validated.appearance.line_height_requested is not None
-        else validated.appearance.line_height
+        validated.style.typography.line_height_requested
+        if validated.style.typography.line_height_requested is not None
+        else validated.style.typography.line_height
     )
     if isinstance(requested_line_height, str):
         requested_line_height = parse_line_height(requested_line_height)
@@ -213,17 +213,20 @@ def resolve_subtitle_config(
         max_height=max_height,
     )
     resolved = SubtitleConfig(
-        appearance=replace(
-            validated.appearance,
-            font_size=font_size,
-            letter_spacing=letter_spacing,
-            backdrop_size=outline_weight,
-            shadow_size=shadow_weight,
-            line_height=line_height,
-            line_height_requested=requested_line_height,
+        style=replace(
+            validated.style,
+            typography=replace(
+                validated.style.typography,
+                font_size=font_size,
+                letter_spacing=letter_spacing,
+                line_height=line_height,
+                line_height_requested=requested_line_height,
+            ),
+            backdrop=replace(validated.style.backdrop, size=outline_weight),
+            shadow=replace(validated.style.shadow, size=shadow_weight),
         ),
         layout=resolved_layout,
-        effects=validated.effects,
+        animation=validated.animation,
     )
     if explicit:
         _validated_explicit_placement(resolved, geometry)
@@ -379,21 +382,17 @@ def _build_wrapping_metrics(
     max_height = _require_resolved_layout_int(layout.max_height, "max-height")
     backdrop_size = (
         0
-        if config.appearance.backdrop is SubtitleBackdrop.NONE
-        else _require_resolved_layout_int(
-            config.appearance.backdrop_size, "backdrop-size"
-        )
+        if config.style.backdrop.kind is SubtitleBackdrop.NONE
+        else _require_resolved_layout_int(config.style.backdrop.size, "backdrop-size")
     )
-    shadow_size = _require_resolved_layout_int(
-        config.appearance.shadow_size, "shadow-size"
-    )
+    shadow_size = _require_resolved_layout_int(config.style.shadow.size, "shadow-size")
     measurer = text_measurer
     if measurer is None:
         measurer = (
-            build_text_measurer(config.appearance, language=language)
+            build_text_measurer(config.style.typography, language=language)
             if bundled_fonts_dir is None
             else build_text_measurer(
-                config.appearance,
+                config.style.typography,
                 language=language,
                 bundled_fonts_dir=bundled_fonts_dir,
             )
@@ -407,7 +406,7 @@ def _build_wrapping_metrics(
             "max-width is too small for the configured backdrop and shadow"
         )
     natural_line_height = measurer.natural_line_height
-    resolved_line_height = _require_line_height(config.appearance.line_height)
+    resolved_line_height = _require_line_height(config.style.typography.line_height)
     if content_height < natural_line_height:
         required = math.ceil(natural_line_height + vertical_decoration)
         raise ValidationError(
@@ -440,10 +439,10 @@ def _build_wrapping_metrics(
         vertical_decoration=vertical_decoration,
         line_capacity=line_capacity,
         font_size=_require_resolved_layout_int(
-            config.appearance.font_size, "font-size"
+            config.style.typography.font_size, "font-size"
         ),
         letter_spacing=_require_resolved_layout_int(
-            config.appearance.letter_spacing, "letter-spacing"
+            config.style.typography.letter_spacing, "letter-spacing"
         ),
         backdrop_size=backdrop_size,
         shadow_size=shadow_size,

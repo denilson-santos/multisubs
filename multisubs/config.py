@@ -12,19 +12,27 @@ from types import MappingProxyType
 
 from .errors import ValidationError
 from .models import (
+    CueAnimationType,
     FontWeight,
     FontWeightInputForm,
     KaraokeMode,
     RelativeLength,
-    SubtitleAppearance,
+    SubtitleAnimation,
+    SubtitleAnimationPhase,
     SubtitleBackdrop,
+    SubtitleBackdropStyle,
     SubtitleConfig,
-    SubtitleEffects,
+    SubtitleCueAnimation,
     SubtitleLayout,
     SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
+    SubtitleShadow,
+    SubtitleStyle,
+    SubtitleTypography,
+    SubtitleWordAnimation,
     TextCase,
+    WordAnimationType,
 )
 
 SUPPORTED_LANGUAGES = (
@@ -308,17 +316,21 @@ def validate_subtitle_config(
                 "configuration"
             )
         _validate_typed_subtitle_config(value)
-        if value.effects.enabled:
+        if value.animation.word.enabled:
             highlight_color = _validate_color(
-                value.effects.highlight_color or DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
+                value.style.typography.highlight_color
+                or DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
                 "karaoke-highlight-color",
             )
-            if highlight_color != value.effects.highlight_color:
+            if highlight_color != value.style.typography.highlight_color:
                 return replace(
                     value,
-                    effects=replace(
-                        value.effects,
-                        highlight_color=highlight_color,
+                    style=replace(
+                        value.style,
+                        typography=replace(
+                            value.style.typography,
+                            highlight_color=highlight_color,
+                        ),
                     ),
                 )
         return value
@@ -331,9 +343,14 @@ def validate_subtitle_config(
             raise ValidationError("subtitle defaults must use SubtitleConfig")
         _validate_typed_subtitle_config(defaults)
 
-    default_appearance = defaults.appearance if defaults is not None else None
+    default_style = defaults.style if defaults is not None else None
+    default_typography = default_style.typography if default_style is not None else None
+    default_backdrop = default_style.backdrop if default_style is not None else None
+    default_shadow = default_style.shadow if default_style is not None else None
     default_layout = defaults.layout if defaults is not None else None
-    default_effects = defaults.effects if defaults is not None else SubtitleEffects()
+    default_word_animation = (
+        defaults.animation.word if defaults is not None else SubtitleWordAnimation()
+    )
 
     appearance_overrides = dict(appearance_values or {})
     effects_overrides = dict(effects_values or {})
@@ -369,27 +386,25 @@ def validate_subtitle_config(
         font_weight_input_form = FontWeightInputForm.BOLD_SHORTHAND
     else:
         font_weight = (
-            default_appearance.font_weight
-            if default_appearance is not None
+            default_typography.font_weight
+            if default_typography is not None
             else DEFAULT_FONT_WEIGHT
         )
         font_weight_input = (
-            default_appearance.font_weight_input
-            if default_appearance is not None
+            default_typography.font_weight_input
+            if default_typography is not None
             else DEFAULT_FONT_WEIGHT.canonical_name
         )
         font_weight_input_form = (
-            default_appearance.font_weight_input_form
-            if default_appearance is not None
+            default_typography.font_weight_input_form
+            if default_typography is not None
             else FontWeightInputForm.DEFAULT
         )
 
     opacity = _validate_opacity(
         appearance_overrides.get(
             "opacity",
-            default_appearance.opacity
-            if default_appearance is not None
-            else DEFAULT_OPACITY,
+            default_style.opacity if default_style is not None else DEFAULT_OPACITY,
         )
     )
 
@@ -410,7 +425,7 @@ def validate_subtitle_config(
         names = ", ".join(sorted(unknown_effect_fields))
         raise ValidationError(f"Unknown effect value(s): {names}")
     karaoke = _validate_boolean(
-        effects_overrides.get("karaoke", default_effects.enabled), "karaoke"
+        effects_overrides.get("karaoke", default_word_animation.enabled), "karaoke"
     )
     explicit_karaoke_mode = effects_overrides.get("karaoke_mode")
     if not karaoke and explicit_karaoke_mode is not None:
@@ -418,7 +433,7 @@ def validate_subtitle_config(
     raw_karaoke_mode = (
         explicit_karaoke_mode
         if explicit_karaoke_mode is not None
-        else default_effects.karaoke_mode or DEFAULT_KARAOKE_MODE
+        else default_word_animation.mode or DEFAULT_KARAOKE_MODE
     )
     karaoke_mode = _validate_karaoke_mode(raw_karaoke_mode) if karaoke else None
     explicit_highlight_color = effects_overrides.get("highlight_color")
@@ -427,7 +442,12 @@ def validate_subtitle_config(
     raw_highlight_color = (
         explicit_highlight_color
         if explicit_highlight_color is not None
-        else default_effects.highlight_color or DEFAULT_KARAOKE_HIGHLIGHT_COLOR
+        else (
+            default_typography.highlight_color
+            if default_typography is not None
+            else None
+        )
+        or DEFAULT_KARAOKE_HIGHLIGHT_COLOR
     )
     highlight_color = (
         _validate_color(
@@ -461,8 +481,8 @@ def validate_subtitle_config(
     }
     parsed_line_height = parsed_relative_values.get(
         "line_height",
-        default_appearance.line_height
-        if default_appearance is not None
+        default_typography.line_height
+        if default_typography is not None
         else DEFAULT_LINE_HEIGHT,
     )
 
@@ -496,95 +516,102 @@ def validate_subtitle_config(
         has_custom_coordinates=has_custom_coordinates,
     )
     config = SubtitleConfig(
-        appearance=SubtitleAppearance(
-            font=_validate_font(
-                appearance_overrides.get(
-                    "font",
-                    default_appearance.font
-                    if default_appearance is not None
-                    else DEFAULT_FONT,
-                )
-            ),
-            font_size=parsed_length_values.get(
-                "font_size",
-                default_appearance.font_size
-                if default_appearance is not None
-                else parse_relative_length(DEFAULT_FONT_SIZE),
-            ),
-            letter_spacing=parsed_length_values.get(
-                "letter_spacing",
-                default_appearance.letter_spacing
-                if default_appearance is not None
-                else parse_relative_length(DEFAULT_LETTER_SPACING),
-            ),
-            text_color=_validate_color(
-                appearance_overrides.get(
-                    "text_color",
-                    default_appearance.text_color
-                    if default_appearance is not None
-                    else DEFAULT_TEXT_COLOR,
+        style=SubtitleStyle(
+            typography=SubtitleTypography(
+                font=_validate_font(
+                    appearance_overrides.get(
+                        "font",
+                        default_typography.font
+                        if default_typography is not None
+                        else DEFAULT_FONT,
+                    )
                 ),
-                "text-color",
-            ),
-            font_weight=font_weight,
-            italic=_validate_boolean(
-                appearance_overrides.get(
+                font_size=parsed_length_values.get(
+                    "font_size",
+                    default_typography.font_size
+                    if default_typography is not None
+                    else parse_relative_length(DEFAULT_FONT_SIZE),
+                ),
+                letter_spacing=parsed_length_values.get(
+                    "letter_spacing",
+                    default_typography.letter_spacing
+                    if default_typography is not None
+                    else parse_relative_length(DEFAULT_LETTER_SPACING),
+                ),
+                color=_validate_color(
+                    appearance_overrides.get(
+                        "text_color",
+                        default_typography.color
+                        if default_typography is not None
+                        else DEFAULT_TEXT_COLOR,
+                    ),
+                    "text-color",
+                ),
+                font_weight=font_weight,
+                italic=_validate_boolean(
+                    appearance_overrides.get(
+                        "italic",
+                        default_typography.italic
+                        if default_typography is not None
+                        else DEFAULT_ITALIC,
+                    ),
                     "italic",
-                    default_appearance.italic
-                    if default_appearance is not None
-                    else DEFAULT_ITALIC,
                 ),
-                "italic",
+                fonts_dir=_coerce_fonts_dir(
+                    appearance_overrides.get(
+                        "fonts_dir",
+                        default_typography.fonts_dir
+                        if default_typography is not None
+                        else None,
+                    )
+                ),
+                font_weight_input=font_weight_input,
+                font_weight_input_form=font_weight_input_form,
+                line_height=parsed_line_height,
+                text_case=parse_text_case(
+                    appearance_overrides.get(
+                        "text_case",
+                        default_typography.text_case
+                        if default_typography is not None
+                        else DEFAULT_TEXT_CASE,
+                    )
+                ),
+                highlight_color=highlight_color,
             ),
-            backdrop=_validate_backdrop(
-                appearance_overrides.get(
-                    "backdrop",
-                    default_appearance.backdrop
-                    if default_appearance is not None
-                    else DEFAULT_BACKDROP,
+            backdrop=SubtitleBackdropStyle(
+                kind=_validate_backdrop(
+                    appearance_overrides.get(
+                        "backdrop",
+                        default_backdrop.kind
+                        if default_backdrop is not None
+                        else DEFAULT_BACKDROP,
+                    )
+                ),
+                color=_validate_color(
+                    appearance_overrides.get(
+                        "backdrop_color",
+                        default_backdrop.color
+                        if default_backdrop is not None
+                        else DEFAULT_BACKDROP_COLOR,
+                    ),
+                    "backdrop-color",
+                ),
+                size=parsed_length_values.get(
+                    "outline_weight",
+                    default_backdrop.size
+                    if default_backdrop is not None
+                    else parse_relative_length(DEFAULT_BACKDROP_SIZE),
+                ),
+            ),
+            shadow=SubtitleShadow(
+                size=parsed_length_values.get(
+                    "shadow_weight",
+                    default_shadow.size
+                    if default_shadow is not None
+                    else parse_relative_length(DEFAULT_SHADOW_SIZE),
                 )
             ),
-            backdrop_color=_validate_color(
-                appearance_overrides.get(
-                    "backdrop_color",
-                    default_appearance.backdrop_color
-                    if default_appearance is not None
-                    else DEFAULT_BACKDROP_COLOR,
-                ),
-                "backdrop-color",
-            ),
-            backdrop_size=parsed_length_values.get(
-                "outline_weight",
-                default_appearance.backdrop_size
-                if default_appearance is not None
-                else parse_relative_length(DEFAULT_BACKDROP_SIZE),
-            ),
-            shadow_size=parsed_length_values.get(
-                "shadow_weight",
-                default_appearance.shadow_size
-                if default_appearance is not None
-                else parse_relative_length(DEFAULT_SHADOW_SIZE),
-            ),
-            fonts_dir=_coerce_fonts_dir(
-                appearance_overrides.get(
-                    "fonts_dir",
-                    default_appearance.fonts_dir
-                    if default_appearance is not None
-                    else None,
-                )
-            ),
-            font_weight_input=font_weight_input,
-            font_weight_input_form=font_weight_input_form,
-            line_height=parsed_line_height,
             opacity=opacity,
-            text_case=parse_text_case(
-                appearance_overrides.get(
-                    "text_case",
-                    default_appearance.text_case
-                    if default_appearance is not None
-                    else DEFAULT_TEXT_CASE,
-                )
-            ),
         ),
         layout=SubtitleLayout(
             position=(
@@ -640,9 +667,15 @@ def validate_subtitle_config(
                 else parse_relative_length(DEFAULT_MAX_HEIGHT),
             ),
         ),
-        effects=SubtitleEffects(
-            karaoke_mode=karaoke_mode,
-            highlight_color=highlight_color,
+        animation=SubtitleAnimation(
+            cue=SubtitleCueAnimation(
+                entrance=SubtitleAnimationPhase(CueAnimationType.NONE),
+                exit=SubtitleAnimationPhase(CueAnimationType.NONE),
+            ),
+            word=SubtitleWordAnimation(
+                type=(WordAnimationType.KARAOKE if karaoke else WordAnimationType.NONE),
+                mode=karaoke_mode,
+            ),
         ),
     )
     _validate_typed_subtitle_config(config)
@@ -806,60 +839,60 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError("explicit placement requires max-width")
     if is_explicit and config.layout.max_height is None:
         raise ValidationError("explicit placement requires max-height")
-    _validate_font(config.appearance.font)
-    _validate_color(config.appearance.text_color, "text-color")
-    if not isinstance(config.appearance.font_weight, FontWeight):
+    typography = config.style.typography
+    backdrop = config.style.backdrop
+    shadow = config.style.shadow
+    _validate_font(typography.font)
+    _validate_color(typography.color, "text-color")
+    if not isinstance(typography.font_weight, FontWeight):
         raise ValidationError("font-weight must use the typed FontWeight contract")
     if (
-        not isinstance(config.appearance.font_weight_input, str)
-        or not config.appearance.font_weight_input.strip()
+        not isinstance(typography.font_weight_input, str)
+        or not typography.font_weight_input.strip()
     ):
         raise ValidationError("font-weight input must not be empty")
-    if not isinstance(config.appearance.font_weight_input_form, FontWeightInputForm):
+    if not isinstance(typography.font_weight_input_form, FontWeightInputForm):
         raise ValidationError(
             "font-weight input form must use the typed FontWeightInputForm contract"
         )
-    input_form = config.appearance.font_weight_input_form
+    input_form = typography.font_weight_input_form
     if input_form is FontWeightInputForm.BOLD_SHORTHAND:
-        expected_input = config.appearance.font_weight.canonical_name
+        expected_input = typography.font_weight.canonical_name
         if (
-            config.appearance.font_weight not in {FontWeight.REGULAR, FontWeight.BOLD}
-            or config.appearance.font_weight_input != expected_input
+            typography.font_weight not in {FontWeight.REGULAR, FontWeight.BOLD}
+            or typography.font_weight_input != expected_input
         ):
             raise ValidationError("bold shorthand must resolve to regular or bold")
     elif input_form is FontWeightInputForm.DEFAULT:
         if (
-            config.appearance.font_weight is not DEFAULT_FONT_WEIGHT
-            or config.appearance.font_weight_input != DEFAULT_FONT_WEIGHT.canonical_name
+            typography.font_weight is not DEFAULT_FONT_WEIGHT
+            or typography.font_weight_input != DEFAULT_FONT_WEIGHT.canonical_name
         ):
             raise ValidationError("default font-weight metadata is inconsistent")
     else:
         parsed_weight, _, parsed_form = _parse_font_weight_request(
-            config.appearance.font_weight_input
+            typography.font_weight_input
         )
-        if (
-            parsed_weight is not config.appearance.font_weight
-            or parsed_form is not input_form
-        ):
+        if parsed_weight is not typography.font_weight or parsed_form is not input_form:
             raise ValidationError("font-weight metadata is inconsistent")
-    _validate_boolean(config.appearance.italic, "italic")
-    _validate_backdrop(config.appearance.backdrop)
-    _validate_color(config.appearance.backdrop_color, "backdrop-color")
-    _validate_opacity(config.appearance.opacity)
-    if not isinstance(config.appearance.text_case, TextCase):
+    _validate_boolean(typography.italic, "italic")
+    _validate_backdrop(backdrop.kind)
+    _validate_color(backdrop.color, "backdrop-color")
+    _validate_opacity(config.style.opacity)
+    if not isinstance(typography.text_case, TextCase):
         raise ValidationError("text-case must use the typed TextCase contract")
-    _coerce_fonts_dir(config.appearance.fonts_dir)
-    _validate_line_height_value(config.appearance.line_height, "line-height")
-    if config.appearance.line_height_requested is not None:
+    _coerce_fonts_dir(typography.fonts_dir)
+    _validate_line_height_value(typography.line_height, "line-height")
+    if typography.line_height_requested is not None:
         _validate_line_height_value(
-            config.appearance.line_height_requested, "line-height-requested"
+            typography.line_height_requested, "line-height-requested"
         )
-    _validate_effects(config.effects)
+    _validate_animation(config.animation, typography)
     relative_fields = {
-        "font_size": config.appearance.font_size,
-        "letter_spacing": config.appearance.letter_spacing,
-        "outline_weight": config.appearance.backdrop_size,
-        "shadow_weight": config.appearance.shadow_size,
+        "font_size": typography.font_size,
+        "letter_spacing": typography.letter_spacing,
+        "outline_weight": backdrop.size,
+        "shadow_weight": shadow.size,
         "margin_left": config.layout.margin_left,
         "margin_right": config.layout.margin_right,
         "margin_top": config.layout.margin_top,
@@ -976,20 +1009,42 @@ def _validate_backdrop(value: object) -> SubtitleBackdrop:
     raise ValidationError("backdrop must be one of: " + ", ".join(BACKDROP_CHOICES))
 
 
-def _validate_effects(value: object) -> SubtitleEffects:
-    if not isinstance(value, SubtitleEffects):
-        raise ValidationError("subtitle effects must use the typed effects contract")
-    if value.karaoke_mode is None:
-        if value.highlight_color is not None:
+def _validate_animation(
+    value: object, typography: SubtitleTypography
+) -> SubtitleAnimation:
+    if not isinstance(value, SubtitleAnimation):
+        raise ValidationError(
+            "subtitle animation must use the typed animation contract"
+        )
+    if not isinstance(value.cue, SubtitleCueAnimation):
+        raise ValidationError("cue animation must use the typed cue contract")
+    for phase_name, phase in (
+        ("entrance", value.cue.entrance),
+        ("exit", value.cue.exit),
+    ):
+        if not isinstance(phase, SubtitleAnimationPhase):
+            raise ValidationError(
+                f"cue {phase_name} must use the typed animation phase contract"
+            )
+        if phase.type is not CueAnimationType.NONE:
+            raise ValidationError(f"cue {phase_name} animation must be none")
+    if not isinstance(value.word, SubtitleWordAnimation):
+        raise ValidationError("word animation must use the typed word contract")
+    if value.word.type is WordAnimationType.NONE:
+        if value.word.mode is not None:
+            raise ValidationError("karaoke-mode requires karaoke to be enabled")
+        if typography.highlight_color is not None:
             raise ValidationError(
                 "karaoke-highlight-color requires karaoke to be enabled"
             )
         return value
-    if not isinstance(value.karaoke_mode, KaraokeMode):
+    if value.word.type is not WordAnimationType.KARAOKE:
+        raise ValidationError("word animation type must be none or karaoke")
+    if not isinstance(value.word.mode, KaraokeMode):
         raise ValidationError("karaoke-mode must use the typed KaraokeMode contract")
     _validate_color(
-        value.highlight_color
-        if value.highlight_color is not None
+        typography.highlight_color
+        if typography.highlight_color is not None
         else DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
         "karaoke-highlight-color",
     )

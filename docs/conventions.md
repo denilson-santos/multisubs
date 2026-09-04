@@ -55,6 +55,9 @@ Update a higher-level document when a proposed change intentionally modifies the
   font manifest as package data. A clean-wheel smoke check must explicitly
   verify the complete manifest inventory instead of relying on source-tree
   availability.
+- Must declare built-in template JSON resources as package data. Their
+  deterministic index and complete resource inventory must be audited in the
+  source tree, wheel, and sdist, then exercised from a clean wheel install.
 
 ### Dependency changes
 
@@ -132,6 +135,10 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must delete temporary artifacts only after the step that consumes them succeeds, and must not delete artifacts outside the current invocation's output scope.
 - Should preserve the original exception context when a filesystem operation fails and tell the user which path and operation failed.
 - Must write JSON, SRT, and ASS text as UTF-8.
+- Must load packaged declarative resources through `importlib.resources`,
+  validate their version, complete key set, types, names, and inventory before
+  use, and fail with a project-specific diagnostic rather than silently
+  ignoring fields or falling back to another resource.
 
 ## Command-line interface conventions
 
@@ -253,10 +260,12 @@ Update a higher-level document when a proposed change intentionally modifies the
   drawing coordinates remain separate from escaped transcript fragments.
 - Word-timed effects must preserve exact display-fragment reconstruction and use only validated aligned timestamps; missing or lossy mappings must fall back without inventing timing tokens.
 - When a word-timed effect expands one cue into multiple ASS events, those events must be adjacent and non-overlapping, retain the complete cue text and placement, and never layer duplicate full-cue glyphs at the same timestamp.
-- Must pass subtitle appearance and layout through typed configuration objects.
-  Public inputs use semantic names and conventional color notation; ASS field
-  ordering, fixed internal defaults, color conversion, and numeric codes belong
-  only in the ASS serializer.
+- Must pass subtitle style, layout, and animation through typed configuration
+  objects. Typography, backdrop, shadow, opacity, cue phases, and word
+  animation have one semantic runtime path. Public inputs use semantic names
+  and conventional color notation; ASS field ordering, fixed internal
+  defaults, color conversion, and numeric codes belong only in the ASS
+  serializer.
 - Must compose global opacity in conventional alpha space (`00` transparent,
   `FF` opaque) exactly once, using Decimal half-up rounding for
   `base_alpha * percentage / 100`, before ASS alpha inversion. Preview,
@@ -273,7 +282,9 @@ Update a higher-level document when a proposed change intentionally modifies the
   margins without adding a synthetic event `\\pos`. Explicit coordinate mode
   must use event `\\an`/`\\pos`, neutral style margins, and a previously validated
   PlayRes envelope.
-- Must validate appearance and layout values that can produce invalid ASS or unsafe filter input. Treat colors, font names, positions, margins, and numeric values as user input.
+- Must validate style, layout, and animation values that can produce invalid ASS
+  or unsafe filter input. Treat colors, font names, positions, margins, and
+  numeric values as user input.
 - Must not add bundled layout profiles or a safe-area abstraction without a
   separate product decision and public-contract review.
 - Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.

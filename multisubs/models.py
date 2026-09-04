@@ -85,19 +85,15 @@ class KaraokeMode(str, Enum):
 
 
 @dataclass(frozen=True)
-class SubtitleAppearance:
-    """Validated semantic appearance values passed through the pipeline."""
+class SubtitleTypography:
+    """Validated semantic typography values passed through the pipeline."""
 
     font: str
     font_size: int | RelativeLength
     letter_spacing: int | RelativeLength
-    text_color: str
+    color: str
     font_weight: FontWeight
     italic: bool
-    backdrop: SubtitleBackdrop
-    backdrop_color: str
-    backdrop_size: int | RelativeLength
-    shadow_size: int | RelativeLength
     fonts_dir: Path | None = None
     font_weight_input: str = "regular"
     font_weight_input_form: FontWeightInputForm = FontWeightInputForm.DEFAULT
@@ -107,38 +103,90 @@ class SubtitleAppearance:
     # per-line ASS strategy from the backwards-compatible automatic path.
     line_height: float | int | RelativeLength | str = "auto"
     line_height_requested: float | int | RelativeLength | str | None = None
-    opacity: SubtitleOpacity = field(
-        default_factory=lambda: SubtitleOpacity(Decimal(100), "100%")
-    )
     text_case: TextCase = TextCase.ORIGINAL
+    highlight_color: str | None = None
 
 
 @dataclass(frozen=True)
-class SubtitleEffects:
-    """Validated optional subtitle effects passed through the pipeline."""
+class SubtitleBackdropStyle:
+    """Validated semantic backdrop values passed through the pipeline."""
 
-    karaoke_mode: KaraokeMode | None = None
-    highlight_color: str | None = None
+    kind: SubtitleBackdrop
+    color: str
+    size: int | RelativeLength
+
+
+@dataclass(frozen=True)
+class SubtitleShadow:
+    """Validated semantic shadow values passed through the pipeline."""
+
+    size: int | RelativeLength
+
+
+@dataclass(frozen=True)
+class SubtitleStyle:
+    """Validated semantic subtitle style passed through the pipeline."""
+
+    typography: SubtitleTypography
+    backdrop: SubtitleBackdropStyle
+    shadow: SubtitleShadow
+    opacity: SubtitleOpacity = field(
+        default_factory=lambda: SubtitleOpacity(Decimal(100), "100%")
+    )
+
+
+class CueAnimationType(str, Enum):
+    """Supported cue animation phase types."""
+
+    NONE = "none"
+
+
+class WordAnimationType(str, Enum):
+    """Supported word animation types."""
+
+    NONE = "none"
+    KARAOKE = "karaoke"
+
+
+@dataclass(frozen=True)
+class SubtitleAnimationPhase:
+    """One validated cue animation phase."""
+
+    type: CueAnimationType = CueAnimationType.NONE
+
+
+@dataclass(frozen=True)
+class SubtitleCueAnimation:
+    """Validated entrance and exit phases for one logical cue."""
+
+    entrance: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
+    exit: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
+
+
+@dataclass(frozen=True)
+class SubtitleWordAnimation:
+    """Validated optional word animation passed through the pipeline."""
+
+    type: WordAnimationType = WordAnimationType.NONE
+    mode: KaraokeMode | None = None
 
     @property
     def enabled(self) -> bool:
         """Return whether the word-timed karaoke effect is enabled."""
-        return self.karaoke_mode is not None
+        return self.type is WordAnimationType.KARAOKE
 
     @property
     def karaoke(self) -> bool:
         """Return whether karaoke is enabled."""
         return self.enabled
 
-    @property
-    def mode(self) -> KaraokeMode | None:
-        """Return the resolved karaoke mode."""
-        return self.karaoke_mode
 
-    @property
-    def karaoke_highlight_color(self) -> str | None:
-        """Return the highlight color using the public option terminology."""
-        return self.highlight_color
+@dataclass(frozen=True)
+class SubtitleAnimation:
+    """Validated cue and word animation configuration."""
+
+    cue: SubtitleCueAnimation = field(default_factory=SubtitleCueAnimation)
+    word: SubtitleWordAnimation = field(default_factory=SubtitleWordAnimation)
 
 
 @dataclass(frozen=True)
@@ -234,9 +282,9 @@ class CuePlacement:
 class SubtitleConfig:
     """Typed subtitle configuration passed through the orchestration layer."""
 
-    appearance: SubtitleAppearance
+    style: SubtitleStyle
     layout: SubtitleLayout
-    effects: SubtitleEffects = field(default_factory=SubtitleEffects)
+    animation: SubtitleAnimation = field(default_factory=SubtitleAnimation)
 
 
 @dataclass(frozen=True)

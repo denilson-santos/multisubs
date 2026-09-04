@@ -129,7 +129,7 @@ def build_preview_ass(
     metrics = wrapping_metrics or resolve_wrapping_metrics(resolved_config, geometry)
     transformed_text = transform_display_text(
         normalise_preview_text(request.preview_text),
-        resolved_config.appearance.text_case,
+        resolved_config.style.typography.text_case,
     )
     display_text = fit_first_text_segment(transformed_text, metrics=metrics)
     end = max(1.0, timestamp + 1.0)
@@ -150,7 +150,7 @@ def build_preview_ass(
         "end": end,
         "text": display_text,
     }
-    if resolved_config.effects.karaoke:
+    if resolved_config.animation.word.karaoke:
         preview_cue = _build_preview_karaoke_cue(display_text)
         if preview_cue is not None:
             segment["_karaoke_preview_cue"] = preview_cue
@@ -236,12 +236,12 @@ def build_preview_guide_events(
         events.append(_crosshair_event(end, placement.position_x, placement.position_y))
 
     requested_spacing = (
-        _format_preview_length(requested_config.appearance.letter_spacing)
+        _format_preview_length(requested_config.style.typography.letter_spacing)
         if requested_config is not None
         else f"{int(metrics.letter_spacing)}px"
     )
     requested_line_height = (
-        _format_preview_length(requested_config.appearance.line_height)
+        _format_preview_length(requested_config.style.typography.line_height)
         if requested_config is not None
         else f"{int(metrics.resolved_line_height)}px"
     )
@@ -261,8 +261,8 @@ def build_preview_guide_events(
         f" ({metrics.resolved_line_height:.1f}px resolved; "
         f"natural {metrics.natural_line_height:.1f}px)"
         f"\\NLine capacity: {metrics.line_capacity}"
-        f"\\NOpacity: {config.appearance.opacity.original}"
-        f"\\NText case: {config.appearance.text_case.value}"
+        f"\\NOpacity: {config.style.opacity.original}"
+        f"\\NText case: {config.style.typography.text_case.value}"
         f"\\NRender strategy: {render_strategy}"
         f"\\NPlayRes: {geometry.render_width}x{geometry.render_height}"
     )
@@ -280,9 +280,9 @@ def _format_preview_length(value: int | float | RelativeLength | str) -> str:
 
 def _line_height_is_explicit(config: SubtitleConfig) -> bool:
     value = (
-        config.appearance.line_height_requested
-        if config.appearance.line_height_requested is not None
-        else config.appearance.line_height
+        config.style.typography.line_height_requested
+        if config.style.typography.line_height_requested is not None
+        else config.style.typography.line_height
     )
     return not (isinstance(value, str) and value.casefold() == "auto")
 

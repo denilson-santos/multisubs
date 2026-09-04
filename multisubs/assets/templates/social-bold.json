@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "social-bold",
+  "description": "Large energetic uppercase captions for short-form video.",
+  "style": {
+    "typography": {
+      "font_family": "Montserrat",
+      "font_weight": "extra-bold",
+      "font_size": "5%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "uppercase",
+      "color": "#FFFFFF",
+      "highlight_color": null
+    },
+    "backdrop": {"type": "outline", "color": "#000000E6", "size": "8%"},
+    "shadow": {"size": "3%"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "8%", "right": "8%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "22%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "none", "mode": null}
+  }
+}

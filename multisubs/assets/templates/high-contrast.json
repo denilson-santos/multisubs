@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "high-contrast",
+  "description": "Strong letter differentiation on an opaque yellow contrast surface.",
+  "style": {
+    "typography": {
+      "font_family": "Atkinson Hyperlegible Next",
+      "font_weight": "bold",
+      "font_size": "4.3%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#000000",
+      "highlight_color": null
+    },
+    "backdrop": {"type": "box", "color": "#FFD600FF", "size": "10%"},
+    "shadow": {"size": "0px"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "10%", "right": "10%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "18%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "none", "mode": null}
+  }
+}

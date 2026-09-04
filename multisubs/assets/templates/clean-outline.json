@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "clean-outline",
+  "description": "Neutral modern captions for interviews, courses, and demonstrations.",
+  "style": {
+    "typography": {
+      "font_family": "Inter",
+      "font_weight": "medium",
+      "font_size": "4%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#FFFFFF",
+      "highlight_color": null
+    },
+    "backdrop": {"type": "outline", "color": "#000000CC", "size": "5%"},
+    "shadow": {"size": "0px"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "14%", "right": "14%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "14%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "none", "mode": null}
+  }
+}

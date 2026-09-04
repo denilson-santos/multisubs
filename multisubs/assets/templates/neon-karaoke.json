@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "neon-karaoke",
+  "description": "High-energy captions with progressive word highlighting.",
+  "style": {
+    "typography": {
+      "font_family": "Montserrat",
+      "font_weight": "bold",
+      "font_size": "5%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#FFFFFF",
+      "highlight_color": "#00F5D4"
+    },
+    "backdrop": {"type": "outline", "color": "#080012E6", "size": "7%"},
+    "shadow": {"size": "5%"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "8%", "right": "8%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "20%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "karaoke", "mode": "progressive"}
+  }
+}

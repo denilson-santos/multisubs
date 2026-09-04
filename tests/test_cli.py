@@ -134,18 +134,20 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
 
     request = cli._build_request(args, parser)
 
-    assert request.subtitle_config.appearance.font == "Inter"
-    assert request.subtitle_config.appearance.font_size == parse_relative_length("22px")
-    assert request.subtitle_config.appearance.text_color == "#ABCDEF80"
-    assert request.subtitle_config.appearance.opacity.original == "32.5%"
-    assert request.subtitle_config.appearance.text_case is TextCase.UPPERCASE
-    assert request.subtitle_config.appearance.font_weight is FontWeight.BOLD
+    assert request.subtitle_config.style.typography.font == "Inter"
+    assert request.subtitle_config.style.typography.font_size == parse_relative_length(
+        "22px"
+    )
+    assert request.subtitle_config.style.typography.color == "#ABCDEF80"
+    assert request.subtitle_config.style.opacity.original == "32.5%"
+    assert request.subtitle_config.style.typography.text_case is TextCase.UPPERCASE
+    assert request.subtitle_config.style.typography.font_weight is FontWeight.BOLD
     assert (
-        request.subtitle_config.appearance.font_weight_input_form
+        request.subtitle_config.style.typography.font_weight_input_form
         is FontWeightInputForm.BOLD_SHORTHAND
     )
-    assert request.subtitle_config.appearance.italic is True
-    assert request.subtitle_config.appearance.backdrop is SubtitleBackdrop.BOX
+    assert request.subtitle_config.style.typography.italic is True
+    assert request.subtitle_config.style.backdrop.kind is SubtitleBackdrop.BOX
     assert request.subtitle_config.layout.position.value == "top-right"
 
 
@@ -190,7 +192,7 @@ def test_build_request_accepts_named_alias_and_numeric_font_weights(
         parser,
     )
 
-    appearance = request.subtitle_config.appearance
+    appearance = request.subtitle_config.style.typography
     assert appearance.font_weight is expected
     assert appearance.font_weight_input == raw_weight
     assert appearance.font_weight_input_form is input_form
@@ -267,15 +269,17 @@ def test_build_request_accepts_relative_layout_values(tmp_path: Path):
 
     request = cli._build_request(args, parser)
 
-    font_size = request.subtitle_config.appearance.font_size
+    font_size = request.subtitle_config.style.typography.font_size
     assert isinstance(font_size, RelativeLength)
     assert font_size.original == "4.5%"
     assert str(font_size.value) == "4.5"
-    assert request.subtitle_config.appearance.letter_spacing == parse_relative_length(
-        "2px"
+    assert (
+        request.subtitle_config.style.typography.letter_spacing
+        == parse_relative_length("2px")
     )
-    assert request.subtitle_config.appearance.line_height == parse_relative_length(
-        "125%"
+    assert (
+        request.subtitle_config.style.typography.line_height
+        == parse_relative_length("125%")
     )
     margin_left = request.subtitle_config.layout.margin_left
     margin_right = request.subtitle_config.layout.margin_right

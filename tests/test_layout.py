@@ -135,10 +135,10 @@ def test_resolve_subtitle_config_uses_render_geometry_for_each_axis():
 
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
-    assert resolved.appearance.font_size == 49
-    assert resolved.appearance.letter_spacing == 2
-    assert resolved.appearance.backdrop_size == 3
-    assert resolved.appearance.shadow_size == 2
+    assert resolved.style.typography.font_size == 49
+    assert resolved.style.typography.letter_spacing == 2
+    assert resolved.style.backdrop.size == 3
+    assert resolved.style.shadow.size == 2
     assert resolved.layout.margin_left == 154
     assert resolved.layout.margin_right == 72
     assert resolved.layout.margin_top == 0
@@ -157,11 +157,11 @@ def test_fixed_defaults_resolve_against_portrait_geometry():
     )
     config = validate_subtitle_config(None)
     resolved = resolve_subtitle_config(config, portrait_geometry)
-    assert isinstance(resolved.appearance.font_size, int)
-    assert resolved.appearance.font_size == 77
+    assert isinstance(resolved.style.typography.font_size, int)
+    assert resolved.style.typography.font_size == 77
     measurer = build_unicode_text_measurer(
-        resolved.appearance.font,
-        resolved.appearance.font_size,
+        resolved.style.typography.font,
+        resolved.style.typography.font_size,
     )
     metrics = resolve_wrapping_metrics(
         resolved,
@@ -194,7 +194,7 @@ def test_percentage_font_size_uses_render_height_across_aspect_ratios(width):
 
     resolved = resolve_subtitle_config(validate_subtitle_config(None), geometry)
 
-    assert resolved.appearance.font_size == 43
+    assert resolved.style.typography.font_size == 43
 
 
 def test_pixel_font_size_is_independent_of_render_height():
@@ -209,8 +209,11 @@ def test_pixel_font_size_is_independent_of_render_height():
         display_aspect_ratio=Fraction(9, 16),
     )
 
-    assert resolve_subtitle_config(config, GEOMETRY).appearance.font_size == 40
-    assert resolve_subtitle_config(config, portrait_geometry).appearance.font_size == 40
+    assert resolve_subtitle_config(config, GEOMETRY).style.typography.font_size == 40
+    assert (
+        resolve_subtitle_config(config, portrait_geometry).style.typography.font_size
+        == 40
+    )
 
 
 def test_letter_spacing_percentage_uses_resolved_font_size():
@@ -221,8 +224,8 @@ def test_letter_spacing_percentage_uses_resolved_font_size():
 
     resolved = resolve_subtitle_config(config, GEOMETRY)
 
-    assert resolved.appearance.font_size == 40
-    assert resolved.appearance.letter_spacing == 20
+    assert resolved.style.typography.font_size == 40
+    assert resolved.style.typography.letter_spacing == 20
 
 
 def test_letter_spacing_is_bounded_relative_to_font_size():

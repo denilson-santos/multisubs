@@ -16,6 +16,7 @@ flowchart LR
     input --> probe[ffprobe geometry]
     probe --> cli
     config[config.py<br/>typed subtitle config] --> cli
+    templates[templates.py + packaged JSON<br/>validated baselines] --> cli
     cli --> preview[preview.py<br/>sample cue + guides]
     cli --> transcriber[transcriber.py]
     transcriber --> whisper[WhisperX + PyTorch]
@@ -53,21 +54,21 @@ flowchart LR
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, and generates optional native or explicit ASS guide events. | build_preview_ass(), resolve_preview_timestamp() |
 | multisubs/ass.py | Compiles semantic appearance into private ASS fields and serializes headers, timestamps, placement overrides, optional karaoke color/timing overrides, and safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream or render one preview PNG. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview() |
-| multisubs/config.py | Defines supported choices, semantic appearance/effect defaults, fixed native layout defaults, and validates typed subtitle configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
-| multisubs/templates.py | Owns the immutable ordered registry of built-in semantic subtitle presentation baselines. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
+| multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
+| multisubs/templates.py | Strictly loads the deterministic packaged JSON index and complete built-in style/layout/animation baselines, then compiles them through the normal semantic validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, and validates native regions or explicit subtitle envelopes on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement() |
 | multisubs/font_catalog.py | Loads the immutable bundled-font manifest, performs bounded family lookup, exposes unpacked package resources, and materializes only a selected family when required by the importer. | load_bundled_font_catalog(), bundled_font_directory(), verify_bundled_font_assets() |
 | multisubs/text_measurement.py | Resolves the nearest custom, bundled, or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
 | multisubs/wrapping.py | Applies typed Unicode display casing, shares font-aware bounded adaptive wrapping between transcription and preview without importing the model runtime, and partitions mapped display fragments into visual lines. | transform_display_text(), wrap_subtitle_text(), line_count(), build_visual_lines() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
-| multisubs/errors.py | Defines user-actionable validation, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
-| multisubs/models.py | Defines typed request, unit-bearing subtitle configuration, global opacity, display casing, semantic backdrop/layout/effect choices, karaoke modes, immutable display fragments, visual lines and karaoke cues, video geometry, per-cue placement, generated guide events, semantic transcript, and artifact value objects. | RelativeLength, SubtitleOpacity, TextCase, SubtitleEffects, KaraokeMode, SubtitleDisplayFragment, SubtitleVisualLine, KaraokeCue, AssDrawingEvent, CuePlacement, RunRequest, PreviewRequest, SubtitleBackdrop, SubtitleConfig, VideoGeometry, TranscriptDocument, RunArtifacts, TranscriptionPaths |
+| multisubs/errors.py | Defines user-actionable validation, template-catalog, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
+| multisubs/models.py | Defines typed request, style/layout/animation configuration, typography, backdrop, shadow, global opacity, display casing, karaoke modes, immutable display fragments, visual lines and karaoke cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
 | multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
 
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths resolve the omitted template name to `default`, load one complete immutable semantic baseline from templates.py, overlay only explicitly supplied appearance, layout, and effect fields, and validate the final typed configuration once. Template-provided fields are defaults rather than explicit option presence for conflict diagnostics. Both paths verify that the input exists, the output path is not an existing file, semantic colors, appearance values, and effect options are valid, every unit value has an explicit suffix (except the `auto` line-height keyword), global opacity is an explicit finite percentage from 0 through 100, text case is `original`, `uppercase`, or `lowercase`, and any named position or custom anchor is one of the nine supported screen anchors. Unit-bearing options are stored as RelativeLength values, opacity as SubtitleOpacity, and display casing as TextCase; raw ASS style mappings and `--style-*` options are not accepted. Explicit inactive vertical margins are rejected for named positions. Custom X/Y coordinates must be supplied as a pair, cannot be combined with `--position` or explicitly supplied margins, and require user-supplied anchor, maximum width, and maximum height values even when the selected template contains native maximum dimensions. Resolved karaoke is rejected for translation before probing or model loading; `--no-karaoke` may disable a template-provided effect first.
+2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths resolve the omitted template name to `default`, load one complete immutable semantic baseline from the strictly validated packaged template catalog, overlay only explicitly supplied style, layout, and current karaoke fields, and validate the final typed `style`/`layout`/`animation` configuration once. Template-provided fields are defaults rather than explicit option presence for conflict diagnostics. The current karaoke flags compile into `animation.word`; cue entrance and exit are explicit typed `none` phases until the animation increment. Both paths verify that the input exists, the output path is not an existing file, semantic colors and options are valid, every unit value has an explicit suffix (except `auto` line height), global opacity is an explicit finite percentage from 0 through 100, text case is supported, and positions or anchors are valid. Unit-bearing options use RelativeLength, opacity uses SubtitleOpacity, and display casing uses TextCase; raw ASS mappings are not accepted. Explicit inactive vertical margins are rejected for named positions. Custom coordinates retain their existing presence and envelope validation. Resolved karaoke is rejected for translation before probing or model loading; `--no-karaoke` may disable the template word animation first.
 3. When `--preview-layout` is present, the CLI rejects only misleading conflicts, skips translation/model validation, validates FFmpeg and ffprobe, probes geometry and duration, resolves the layout, and creates a temporary ASS sample. For resolved karaoke, preview.py maps the displayed sample into typed fragments and ass.py emits a static state without timing tags: progressive mode highlights the first half of the displayed words, rounding up, while active-word highlights only the first word. It then calls `render_subtitle_preview()` for exactly one PNG and exits without importing transcriber.py, WhisperX, or PyTorch. Preview temporary files are removed on both success and failure.
 4. For a normal translation task, the CLI rejects turbo and English-only model names before model loading.
 5. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() resolves the complete requested configuration without classifying the video shape, resolves all dimensions, resolves `--line-height` against measured natural font metrics, and rejects explicit leading below that metric. Native placement resolves maximum width after horizontal ASS margins and maximum height after the active top or bottom margin; middle alignment uses the full height. Explicit placement resolves X/Y and both user-supplied maximum dimensions against the full PlayRes canvas, compiles retained native defaults to zero, and rejects a complete envelope that crosses an edge. resolve_wrapping_metrics() also validates that at least one decorated line fits before WhisperX is loaded.
@@ -320,16 +321,20 @@ serialized, never registry mappings or asset paths.
 
 SRT is generated from cue start time, end time, and layout-aware wrapped text.
 ASS contains a Default style compiled from semantic `SubtitleConfig` values.
-The appearance contract includes the resolved font size, non-negative letter
-spacing, resolved baseline line height, global opacity, and typed display case
-in addition to font family, weight, colors, backdrop, and shadow.
+The `style` branch owns typography, backdrop, shadow, and global opacity;
+`layout` owns placement and the wrapping envelope; and `animation` owns
+explicit cue entrance/exit phases plus the current word animation. Typography
+includes the resolved font size, non-negative letter spacing, resolved baseline
+line height, display case, text color, and inactive or active karaoke highlight
+color.
 Raw ASS style mappings are rejected. `SubtitleConfig` stores a complete native
 presentation assembled from one built-in template baseline and explicit
 field-level overrides, or a complete explicit-coordinate envelope. The
-`default` registry entry is built from config.py's authoritative fixed defaults,
-so omitted selection and explicit `default` cannot drift. templates.py contains
-semantic values only; layout.py resolves them directly without template-aware
-branches or aspect-ratio-dependent selection.
+The packaged `default.json` definition duplicates config.py's authoritative
+fixed defaults and is covered by exact equivalence tests, so omitted selection
+and explicit `default` cannot drift silently. templates.py contains no
+hard-coded presentation registry; layout.py resolves the typed result without
+template-aware branches or aspect-ratio-dependent selection.
 
 SRT is always transformed plain display text and timing; it never contains
 generated ASS override markup. ASS receives the same transformed fragments only
@@ -408,6 +413,33 @@ so they cannot become unintended controls. Every generated ASS declares
 ScriptType, PlayResX, PlayResY, ScaledBorderAndShadow, and WrapStyle in a stable
 order. PlayRes matches the autorotated render dimensions. SRT retains text and
 timing only; it cannot represent named or custom positioning.
+
+## Internal template resources
+
+Built-in templates are package data under `multisubs/assets/templates`. One
+versioned `index.json` is the sole ordering authority and names each resource
+exactly once. Each indexed UTF-8 JSON file is a complete semantic baseline with
+`style`, `layout`, and `animation` branches. Style separates typography,
+backdrop, shadow, and opacity; layout stores native position, four margins, and
+the width/height envelope; animation stores explicit `cue.entrance`,
+`cue.exit`, and `word` objects. Text and optional karaoke highlight colors
+belong to typography. Every current cue phase has type `none`; progressive
+karaoke in `neon-karaoke` is represented as word animation.
+
+The loader uses `importlib.resources`, rejects malformed UTF-8/JSON, duplicate
+or unknown fields, unsupported schema versions, unsafe or duplicate filenames,
+index/directory drift, name/file mismatches, invalid types, and semantically
+invalid values. It performs no writes, network access, rendering, font loading,
+or model loading. Valid resources compile through `validate_subtitle_config()`
+into immutable runtime objects and may then be cached for the process. A
+damaged packaged catalog produces a concise `TemplateError` before probing or
+model loading; it never falls back to a different template.
+
+This schema is private implementation data. It is not copied into retained
+transcription JSON and is not a user template or discovery interface. The
+public JSON remains schema version 2 in this increment, including its existing
+`effects.karaoke` diagnostics, even though the private runtime represents that
+behavior as `animation.word`.
 
 ## Output layouts
 

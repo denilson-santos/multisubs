@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "classic-yellow",
+  "description": "Familiar yellow captions with a strong dark edge.",
+  "style": {
+    "typography": {
+      "font_family": "Roboto",
+      "font_weight": "bold",
+      "font_size": "4.2%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#FFD54F",
+      "highlight_color": null
+    },
+    "backdrop": {"type": "outline", "color": "#000000E6", "size": "6%"},
+    "shadow": {"size": "3%"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "12%", "right": "12%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "16%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "none", "mode": null}
+  }
+}

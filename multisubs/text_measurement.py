@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .font_catalog import bundled_filesystem_directory
-from .models import FontWeight, FontWeightInputForm, SubtitleAppearance
+from .models import FontWeight, FontWeightInputForm, SubtitleTypography
 
 _FONT_SUFFIXES = frozenset({".otf", ".ttc", ".ttf"})
 _FONT_COLLECTION_LIMIT = 32
@@ -195,7 +195,7 @@ class _ResolvedFace:
 
 
 def build_text_measurer(
-    appearance: SubtitleAppearance,
+    appearance: SubtitleTypography,
     *,
     language: str | None = None,
     bundled_fonts_dir: Path | None = None,
@@ -329,7 +329,7 @@ def _load_pillow() -> tuple[Any, Any] | None:
 def _resolve_face(
     image_font: Any,
     features: Any,
-    appearance: SubtitleAppearance,
+    appearance: SubtitleTypography,
     font_size: int,
     *,
     bundled_fonts_dir: Path | None,

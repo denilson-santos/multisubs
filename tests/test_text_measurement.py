@@ -7,8 +7,7 @@ from multisubs import text_measurement
 from multisubs.models import (
     FontWeight,
     FontWeightInputForm,
-    SubtitleAppearance,
-    SubtitleBackdrop,
+    SubtitleTypography,
 )
 from multisubs.text_measurement import (
     TextMeasurementInfo,
@@ -27,17 +26,13 @@ def _appearance(
     italic: bool = False,
     letter_spacing: int = 0,
 ):
-    return SubtitleAppearance(
+    return SubtitleTypography(
         font=font,
         font_size=40,
         letter_spacing=letter_spacing,
-        text_color="#FFFFFF",
+        color="#FFFFFF",
         font_weight=font_weight,
         italic=italic,
-        backdrop=SubtitleBackdrop.BOX,
-        backdrop_color="#00000099",
-        backdrop_size=0,
-        shadow_size=2,
         fonts_dir=fonts_dir,
         font_weight_input=font_weight.canonical_name,
         font_weight_input_form=FontWeightInputForm.NAME,

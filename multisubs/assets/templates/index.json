@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "templates": [
+    "default.json",
+    "clean-outline.json",
+    "social-bold.json",
+    "classic-yellow.json",
+    "newsroom.json",
+    "editorial.json",
+    "high-contrast.json",
+    "neon-karaoke.json"
+  ]
+}

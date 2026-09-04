@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "editorial",
+  "description": "Quiet serif styling for documentary and cultural material.",
+  "style": {
+    "typography": {
+      "font_family": "Lora",
+      "font_weight": "semi-bold",
+      "font_size": "4%",
+      "italic": true,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#FFF8E7",
+      "highlight_color": null
+    },
+    "backdrop": {"type": "outline", "color": "#111111CC", "size": "4%"},
+    "shadow": {"size": "3%"},
+    "opacity": "95%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "16%", "right": "16%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "15%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "none", "mode": null}
+  }
+}

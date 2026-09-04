@@ -69,6 +69,7 @@ from .templates import (
     DEFAULT_SUBTITLE_TEMPLATE,
     TEMPLATE_CHOICES,
     get_subtitle_template,
+    require_template_catalog,
 )
 from .utils import (
     create_unique_dir,
@@ -83,6 +84,7 @@ ProgressReporter = Callable[[str], None]
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the public CLI parser without importing model runtime dependencies."""
+    require_template_catalog()
     parser = argparse.ArgumentParser(
         description="Generate and embed subtitles into a local video.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -421,11 +423,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return a process-appropriate exit status."""
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    request = _build_request(args, parser)
-
     try:
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        request = _build_request(args, parser)
         result_path = _run_request(request, print)
     except MultisubsError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -621,7 +622,7 @@ def _validate_effect_request(
     task: str,
     parser: argparse.ArgumentParser,
 ) -> None:
-    if subtitle_config.effects.karaoke and task == "translate":
+    if subtitle_config.animation.word.karaoke and task == "translate":
         parser.error(
             "--karaoke cannot be combined with --task translate because "
             "source-language word timings do not map losslessly to translated text"
@@ -634,7 +635,9 @@ def _run_request(
     """Keep a selected bundled family alive through measurement and rendering."""
     from .font_catalog import bundled_font_directory
 
-    with bundled_font_directory(request.subtitle_config.appearance.font) as directory:
+    with bundled_font_directory(
+        request.subtitle_config.style.typography.font
+    ) as directory:
         return _run_request_with_fonts(
             request,
             progress,
