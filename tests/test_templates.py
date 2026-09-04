@@ -1,12 +1,16 @@
 import json
+import shutil
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from multisubs import cli, transcriber
+from multisubs import templates as template_catalog
 from multisubs.ass import write_ass
 from multisubs.config import parse_relative_length, validate_subtitle_config
+from multisubs.errors import TemplateError
 from multisubs.font_catalog import find_bundled_font_family
 from multisubs.layout import resolve_subtitle_config
 from multisubs.models import (
@@ -238,21 +242,21 @@ def _build_request(tmp_path: Path, *options: str):
 
 def _template_snapshot(name: str):
     config = get_subtitle_template(name).config
-    appearance = config.appearance
+    typography = config.style.typography
     layout = config.layout
     return (
-        appearance.font,
-        appearance.font_weight,
-        appearance.italic,
-        _relative_original(appearance.font_size),
-        appearance.text_color,
-        appearance.opacity.original,
-        appearance.text_case,
-        appearance.backdrop,
-        appearance.backdrop_color,
-        _relative_original(appearance.backdrop_size),
-        _relative_original(appearance.shadow_size),
-        _relative_original(appearance.letter_spacing),
+        typography.font,
+        typography.font_weight,
+        typography.italic,
+        _relative_original(typography.font_size),
+        typography.color,
+        config.style.opacity.original,
+        typography.text_case,
+        config.style.backdrop.kind,
+        config.style.backdrop.color,
+        _relative_original(config.style.backdrop.size),
+        _relative_original(config.style.shadow.size),
+        _relative_original(typography.letter_spacing),
         layout.position,
         _relative_original(layout.margin_left),
         _relative_original(layout.margin_right),
@@ -260,14 +264,27 @@ def _template_snapshot(name: str):
         _relative_original(layout.margin_bottom),
         _relative_original(layout.max_width),
         _relative_original(layout.max_height),
-        config.effects.karaoke_mode,
-        config.effects.highlight_color,
+        config.animation.word.mode,
+        config.style.typography.highlight_color,
     )
 
 
 def _relative_original(value: int | RelativeLength | None) -> str:
     assert isinstance(value, RelativeLength)
     return value.original
+
+
+def _copy_template_catalog(tmp_path: Path) -> Path:
+    source = Path(template_catalog.__file__).parent / "assets" / "templates"
+    target = tmp_path / "templates"
+    shutil.copytree(source, target)
+    return target
+
+
+def _rewrite_json(path: Path, transform) -> None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    transform(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_registry_has_stable_order_and_immutable_templates():
@@ -278,16 +295,101 @@ def test_registry_has_stable_order_and_immutable_templates():
     assert all(hash(template) for template in SUBTITLE_TEMPLATES)
 
 
+def test_packaged_catalog_has_complete_deterministic_inventory():
+    root = Path(template_catalog.__file__).parent / "assets" / "templates"
+    index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+
+    assert index == {
+        "schema_version": 1,
+        "templates": [f"{name}.json" for name in EXPECTED_TEMPLATES],
+    }
+    assert {path.name for path in root.glob("*.json")} == {
+        "index.json",
+        *index["templates"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload: payload["style"]["typography"].update(
+                {"unexpected": "value"}
+            ),
+            "unknown field",
+        ),
+        (
+            lambda payload: payload["animation"]["cue"]["entrance"].update(
+                {"type": "fade"}
+            ),
+            "must be none",
+        ),
+        (
+            lambda payload: payload["style"]["typography"].update(
+                {"font_size": "invalid"}
+            ),
+            "semantically invalid",
+        ),
+    ],
+)
+def test_catalog_rejects_invalid_template_resources(
+    tmp_path: Path, mutate, message: str
+):
+    root = _copy_template_catalog(tmp_path)
+    _rewrite_json(root / "default.json", mutate)
+
+    with pytest.raises(TemplateError, match=message):
+        template_catalog._load_template_catalog(root)
+
+
+def test_catalog_rejects_duplicate_index_entries(tmp_path: Path):
+    root = _copy_template_catalog(tmp_path)
+    _rewrite_json(
+        root / "index.json",
+        lambda payload: payload["templates"].append("default.json"),
+    )
+
+    with pytest.raises(TemplateError, match="duplicate file"):
+        template_catalog._load_template_catalog(root)
+
+
+def test_catalog_rejects_unindexed_resources(tmp_path: Path):
+    root = _copy_template_catalog(tmp_path)
+    shutil.copyfile(root / "default.json", root / "unindexed.json")
+
+    with pytest.raises(TemplateError, match="unindexed: unindexed.json"):
+        template_catalog._load_template_catalog(root)
+
+
+def test_catalog_rejects_duplicate_json_keys(tmp_path: Path):
+    root = _copy_template_catalog(tmp_path)
+    (root / "index.json").write_text(
+        '{"schema_version": 1, "schema_version": 1, "templates": []}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TemplateError, match="duplicate key"):
+        template_catalog._load_template_catalog(root)
+
+
+def test_cli_reports_a_stored_catalog_failure(monkeypatch, capsys):
+    error = TemplateError("Packaged template catalog is damaged")
+    monkeypatch.setattr(template_catalog, "_CATALOG_ERROR", error)
+
+    assert cli.main([]) == 1
+    assert capsys.readouterr().err == "Error: Packaged template catalog is damaged\n"
+
+
 @pytest.mark.parametrize("name", TEMPLATE_CHOICES)
 def test_template_has_exact_documented_baseline_and_bundled_face(name: str):
     assert _template_snapshot(name) == EXPECTED_TEMPLATES[name]
 
     config = get_subtitle_template(name).config
-    family = find_bundled_font_family(config.appearance.font)
+    family = find_bundled_font_family(config.style.typography.font)
     assert family is not None
     assert any(
-        face.weight == config.appearance.font_weight.rank
-        and face.italic is config.appearance.italic
+        face.weight == config.style.typography.font_weight.rank
+        and face.italic is config.style.typography.italic
         for face in family.faces
     )
 
@@ -320,9 +422,9 @@ def test_cli_selection_resolves_exact_registry_baseline(tmp_path: Path, name: st
     request = _build_request(tmp_path, *options)
     expected = get_subtitle_template(name).config
 
-    assert request.subtitle_config.appearance == expected.appearance
+    assert request.subtitle_config.style.typography == expected.style.typography
     assert request.subtitle_config.layout == expected.layout
-    assert request.subtitle_config.effects == expected.effects
+    assert request.subtitle_config.animation == expected.animation
 
 
 def test_omitted_and_explicit_default_generate_identical_ass(tmp_path: Path):
@@ -410,22 +512,23 @@ def test_explicit_appearance_and_layout_fields_override_only_their_fields(
         "--max-height",
         "30%",
     )
-    appearance = request.subtitle_config.appearance
+    style = request.subtitle_config.style
+    typography = style.typography
     layout = request.subtitle_config.layout
 
-    assert appearance.font == "Inter"
-    assert appearance.font_weight is FontWeight.LIGHT
-    assert appearance.italic is False
-    assert appearance.font_size == parse_relative_length("6%")
-    assert appearance.text_color == "#12345678"
-    assert appearance.opacity.original == "80%"
-    assert appearance.text_case is TextCase.LOWERCASE
-    assert appearance.backdrop is SubtitleBackdrop.BOX
-    assert appearance.backdrop_color == "#ABCDEF"
-    assert appearance.backdrop_size == parse_relative_length("9%")
-    assert appearance.shadow_size == parse_relative_length("2%")
-    assert appearance.letter_spacing == parse_relative_length("3%")
-    assert appearance.line_height == parse_relative_length("120%")
+    assert typography.font == "Inter"
+    assert typography.font_weight is FontWeight.LIGHT
+    assert typography.italic is False
+    assert typography.font_size == parse_relative_length("6%")
+    assert typography.color == "#12345678"
+    assert style.opacity.original == "80%"
+    assert typography.text_case is TextCase.LOWERCASE
+    assert style.backdrop.kind is SubtitleBackdrop.BOX
+    assert style.backdrop.color == "#ABCDEF"
+    assert style.backdrop.size == parse_relative_length("9%")
+    assert style.shadow.size == parse_relative_length("2%")
+    assert typography.letter_spacing == parse_relative_length("3%")
+    assert typography.line_height == parse_relative_length("120%")
     assert layout.position is SubtitlePosition.TOP_RIGHT
     assert layout.margin_left == parse_relative_length("4%")
     assert layout.margin_right == parse_relative_length("5%")
@@ -445,10 +548,12 @@ def test_single_override_preserves_unrelated_template_values(tmp_path: Path):
         "#00FF00",
     )
 
-    assert request.subtitle_config.appearance.text_color == "#00FF00"
-    assert request.subtitle_config.appearance.font == baseline.appearance.font
-    assert request.subtitle_config.appearance.font_weight is FontWeight.EXTRA_BOLD
-    assert request.subtitle_config.appearance.text_case is TextCase.UPPERCASE
+    assert request.subtitle_config.style.typography.color == "#00FF00"
+    assert (
+        request.subtitle_config.style.typography.font == baseline.style.typography.font
+    )
+    assert request.subtitle_config.style.typography.font_weight is FontWeight.EXTRA_BOLD
+    assert request.subtitle_config.style.typography.text_case is TextCase.UPPERCASE
     assert request.subtitle_config.layout == baseline.layout
 
 
@@ -461,8 +566,8 @@ def test_bold_shorthand_overrides_template_weight(
 ):
     request = _build_request(tmp_path, "--template", "social-bold", flag)
 
-    assert request.subtitle_config.appearance.font_weight is expected
-    assert request.subtitle_config.appearance.font == "Montserrat"
+    assert request.subtitle_config.style.typography.font_weight is expected
+    assert request.subtitle_config.style.typography.font == "Montserrat"
 
 
 def test_custom_fonts_directory_is_compatible_with_template(tmp_path: Path):
@@ -477,9 +582,9 @@ def test_custom_fonts_directory_is_compatible_with_template(tmp_path: Path):
         str(fonts_dir),
     )
 
-    assert request.subtitle_config.appearance.fonts_dir == fonts_dir.resolve()
-    assert request.subtitle_config.appearance.font == "Lora"
-    assert request.subtitle_config.appearance.italic is True
+    assert request.subtitle_config.style.typography.fonts_dir == fonts_dir.resolve()
+    assert request.subtitle_config.style.typography.font == "Lora"
+    assert request.subtitle_config.style.typography.italic is True
 
 
 def test_template_margin_is_not_treated_as_explicit_after_position_override(
@@ -548,10 +653,12 @@ def test_neon_template_effects_can_be_overridden_or_disabled(tmp_path: Path):
         "--no-karaoke",
     )
 
-    assert active.subtitle_config.effects.karaoke_mode is KaraokeMode.ACTIVE_WORD
-    assert active.subtitle_config.effects.highlight_color == "#FF00FF"
-    assert disabled.subtitle_config.effects.karaoke is False
-    assert disabled.subtitle_config.appearance == active.subtitle_config.appearance
+    assert active.subtitle_config.animation.word.mode is KaraokeMode.ACTIVE_WORD
+    assert active.subtitle_config.style.typography.highlight_color == "#FF00FF"
+    assert disabled.subtitle_config.animation.word.karaoke is False
+    assert disabled.subtitle_config.style.typography == replace(
+        active.subtitle_config.style.typography, highlight_color=None
+    )
     assert disabled.subtitle_config.layout == active.subtitle_config.layout
 
 
@@ -596,7 +703,7 @@ def test_neon_karaoke_is_valid_for_preview(tmp_path: Path):
     )
 
     assert isinstance(request, PreviewRequest)
-    assert request.subtitle_config.effects.karaoke is True
+    assert request.subtitle_config.animation.word.karaoke is True
 
 
 def test_no_karaoke_makes_neon_template_valid_for_translation(tmp_path: Path):
@@ -611,7 +718,7 @@ def test_no_karaoke_makes_neon_template_valid_for_translation(tmp_path: Path):
         "medium",
     )
 
-    assert request.subtitle_config.effects.karaoke is False
+    assert request.subtitle_config.animation.word.karaoke is False
 
 
 def test_preview_request_records_template_identity(tmp_path: Path):

@@ -310,7 +310,7 @@ def write_transcription_artifacts(
         display_segments,
         resolved_config,
     )
-    if resolved_config.effects.karaoke and fallback_cues:
+    if resolved_config.animation.word.karaoke and fallback_cues:
         _report(
             progress,
             f"Warning: {fallback_cues} subtitle cue(s) could not be mapped "
@@ -382,7 +382,7 @@ def _normalise_output_dir(output_dir: str | Path) -> Path:
 
 
 def _validate_effect_task(config: SubtitleConfig, task: str) -> None:
-    if config.effects.karaoke and task == "translate":
+    if config.animation.word.karaoke and task == "translate":
         raise ValidationError(
             "Karaoke subtitles cannot be generated for translation because "
             "source-language word timings do not map losslessly to translated text"
@@ -768,7 +768,7 @@ def layout_subtitle_cues(
     metrics = wrapping_metrics or resolve_wrapping_metrics(
         resolved_config, geometry, language=language, text_measurer=text_measurer
     )
-    text_case = resolved_config.appearance.text_case
+    text_case = resolved_config.style.typography.text_case
     display_cues: list[dict[str, Any]] = []
     for segment in segments:
         semantic_text = segment.get("semantic_text", segment.get("text", ""))
@@ -879,9 +879,9 @@ def prepare_karaoke_cues(
     for segment in segments:
         prepared_segment = dict(segment)
         prepared_segment.pop("_karaoke_cue", None)
-        if resolved_config.effects.karaoke:
+        if resolved_config.animation.word.karaoke:
             karaoke_cue = _prepare_karaoke_cue(
-                segment, resolved_config.appearance.text_case
+                segment, resolved_config.style.typography.text_case
             )
             if karaoke_cue is None:
                 fallback_cues += 1
@@ -1037,21 +1037,22 @@ def _write_json(
                 },
                 "requested": {
                     "font_size": _format_requested_length(
-                        subtitle_config.appearance.font_size
+                        subtitle_config.style.typography.font_size
                     ),
                     "letter_spacing": _format_requested_length(
-                        subtitle_config.appearance.letter_spacing
+                        subtitle_config.style.typography.letter_spacing
                     ),
                     "line_height": _format_requested_length(
-                        subtitle_config.appearance.line_height_requested
-                        if subtitle_config.appearance.line_height_requested is not None
-                        else subtitle_config.appearance.line_height
+                        subtitle_config.style.typography.line_height_requested
+                        if subtitle_config.style.typography.line_height_requested
+                        is not None
+                        else subtitle_config.style.typography.line_height
                     ),
                     "backdrop_size": _format_requested_length(
-                        subtitle_config.appearance.backdrop_size
+                        subtitle_config.style.backdrop.size
                     ),
                     "shadow_size": _format_requested_length(
-                        subtitle_config.appearance.shadow_size
+                        subtitle_config.style.shadow.size
                     ),
                     "margins": {
                         "left": _format_requested_length(requested_layout.margin_left),
@@ -1067,13 +1068,15 @@ def _write_json(
                     "max_height": _format_requested_length(requested_layout.max_height),
                 },
                 "resolved": {
-                    "font_size": resolved_subtitle_config.appearance.font_size,
+                    "font_size": resolved_subtitle_config.style.typography.font_size,
                     "letter_spacing": (
-                        resolved_subtitle_config.appearance.letter_spacing
+                        resolved_subtitle_config.style.typography.letter_spacing
                     ),
-                    "line_height": resolved_subtitle_config.appearance.line_height,
-                    "backdrop_size": resolved_subtitle_config.appearance.backdrop_size,
-                    "shadow_size": resolved_subtitle_config.appearance.shadow_size,
+                    "line_height": (
+                        resolved_subtitle_config.style.typography.line_height
+                    ),
+                    "backdrop_size": resolved_subtitle_config.style.backdrop.size,
+                    "shadow_size": resolved_subtitle_config.style.shadow.size,
                     "margins": {
                         "left": resolved_layout.margin_left,
                         "right": resolved_layout.margin_right,
@@ -1123,16 +1126,18 @@ def _write_json(
                 },
                 "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
                 "text_case": {
-                    "requested": subtitle_config.appearance.text_case.value,
-                    "resolved": resolved_subtitle_config.appearance.text_case.value,
+                    "requested": subtitle_config.style.typography.text_case.value,
+                    "resolved": (
+                        resolved_subtitle_config.style.typography.text_case.value
+                    ),
                 },
                 "opacity": {
-                    "requested": subtitle_config.appearance.opacity.original,
+                    "requested": subtitle_config.style.opacity.original,
                     "percentage": _decimal_json_number(
-                        resolved_subtitle_config.appearance.opacity.percentage
+                        resolved_subtitle_config.style.opacity.percentage
                     ),
                     "normalized": _decimal_json_number(
-                        resolved_subtitle_config.appearance.opacity.normalized
+                        resolved_subtitle_config.style.opacity.normalized
                     ),
                     "base_colors": {
                         "text": base_palette.text_color,
@@ -1149,17 +1154,17 @@ def _write_json(
                 },
                 "effects": {
                     "karaoke": {
-                        "enabled": resolved_subtitle_config.effects.karaoke,
+                        "enabled": resolved_subtitle_config.animation.word.karaoke,
                         "mode": (
-                            resolved_subtitle_config.effects.mode.value
-                            if resolved_subtitle_config.effects.mode is not None
+                            resolved_subtitle_config.animation.word.mode.value
+                            if resolved_subtitle_config.animation.word.mode is not None
                             else None
                         ),
                         "normal_color": (
-                            resolved_subtitle_config.appearance.text_color
+                            resolved_subtitle_config.style.typography.color
                         ),
                         "highlight_color": (
-                            resolved_subtitle_config.effects.highlight_color
+                            resolved_subtitle_config.style.typography.highlight_color
                         ),
                         "fallback_cues": karaoke_fallback_cues,
                     }
@@ -1228,9 +1233,9 @@ def _line_height_render_strategy(
     config: SubtitleConfig,
     segments: Sequence[Mapping[str, Any]],
 ) -> str:
-    requested = config.appearance.line_height_requested
+    requested = config.style.typography.line_height_requested
     if requested is None:
-        requested = config.appearance.line_height
+        requested = config.style.typography.line_height
     explicit = not (isinstance(requested, str) and requested.casefold() == "auto")
     positioned = explicit and any(
         _wrapping_has_multiple_visual_lines(str(segment.get("text", "")))

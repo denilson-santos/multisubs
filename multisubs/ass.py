@@ -175,7 +175,7 @@ def write_ass(
             backdrop_bounds.append(None)
             positioned_lines.append(())
     needs_shared_backdrop = any(positioned_lines) and (
-        config.appearance.backdrop is SubtitleBackdrop.BOX
+        config.style.backdrop.kind is SubtitleBackdrop.BOX
     )
     positioned_style_name = "Default"
     positioned_style: dict[str, str | int] | None = None
@@ -218,7 +218,7 @@ def write_ass(
         # field to boolean bold. Event-level \b accepts the exact OpenType rank
         # across those releases, so keep the base style neutral and apply the
         # validated semantic weight through the trusted override path.
-        generated_override = rf"{{\b{config.appearance.font_weight.rank}}}"
+        generated_override = rf"{{\b{config.style.typography.font_weight.rank}}}"
         if preserve_line_breaks:
             generated_override += r"{\q2}"
         cue_start = quantize_ass_centiseconds(segment["start"])
@@ -275,7 +275,7 @@ def write_ass(
                         style_name=positioned_style_name,
                     )
                 continue
-            if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
+            if config.animation.word.mode is KaraokeMode.ACTIVE_WORD and isinstance(
                 karaoke_cue, KaraokeCue
             ):
                 for line_override, item in zip(
@@ -303,7 +303,7 @@ def write_ass(
                             style_name=positioned_style_name,
                         )
                 continue
-            if config.effects.mode is KaraokeMode.PROGRESSIVE and isinstance(
+            if config.animation.word.mode is KaraokeMode.PROGRESSIVE and isinstance(
                 karaoke_cue, KaraokeCue
             ):
                 for line_override, item in zip(
@@ -361,7 +361,7 @@ def write_ass(
                 preview_text,
             )
             continue
-        if config.effects.mode is KaraokeMode.ACTIVE_WORD and isinstance(
+        if config.animation.word.mode is KaraokeMode.ACTIVE_WORD and isinstance(
             karaoke_cue, KaraokeCue
         ):
             for event_start, event_end, event_text in serialize_active_word_events(
@@ -385,7 +385,7 @@ def write_ass(
                 config,
                 palette=effective_palette,
             )
-            if config.effects.mode is KaraokeMode.PROGRESSIVE
+            if config.animation.word.mode is KaraokeMode.PROGRESSIVE
             else None
         )
         dialogue_text = (
@@ -438,9 +438,9 @@ def _serialize_style_line(
 
 
 def _uses_explicit_line_height(config: SubtitleConfig) -> bool:
-    requested = config.appearance.line_height_requested
+    requested = config.style.typography.line_height_requested
     if requested is None:
-        requested = config.appearance.line_height
+        requested = config.style.typography.line_height
     return not (isinstance(requested, str) and requested.casefold() == "auto")
 
 
@@ -627,11 +627,11 @@ def _compile_style(
     palette: SubtitlePalette | None = None,
 ) -> dict[str, str | int]:
     """Compile semantic layout into the private numeric ASS style fields."""
-    appearance = config.appearance
+    appearance = config.style.typography
     if palette is None:
         _, palette = resolve_subtitle_palettes(config)
     layout = config.layout
-    backdrop_size = _resolved_style_int(appearance.backdrop_size, "backdrop-size")
+    backdrop_size = _resolved_style_int(config.style.backdrop.size, "backdrop-size")
     margin_top = _resolved_style_int(layout.margin_top, "margin-top")
     margin_bottom = _resolved_style_int(layout.margin_bottom, "margin-bottom")
     explicit = layout.placement_mode is SubtitlePlacementMode.EXPLICIT
@@ -672,11 +672,13 @@ def _compile_style(
         "angle": 0,
         # libass BorderStyle 4 creates one box for the whole cue, matching the
         # backdrop used by multisubs before the semantic CLI cutover.
-        "border_style": 4 if appearance.backdrop is SubtitleBackdrop.BOX else 1,
-        "outline_weight": (
-            0 if appearance.backdrop is SubtitleBackdrop.NONE else backdrop_size
+        "border_style": (
+            4 if config.style.backdrop.kind is SubtitleBackdrop.BOX else 1
         ),
-        "shadow_weight": _resolved_style_int(appearance.shadow_size, "shadow-size"),
+        "outline_weight": (
+            0 if config.style.backdrop.kind is SubtitleBackdrop.NONE else backdrop_size
+        ),
+        "shadow_weight": _resolved_style_int(config.style.shadow.size, "shadow-size"),
         "alignment": _ass_alignment_for_position(
             layout.anchor if explicit and layout.anchor is not None else layout.position
         ),
@@ -691,15 +693,15 @@ def resolve_subtitle_palettes(
 ) -> tuple[SubtitlePalette, SubtitlePalette]:
     """Return canonical base colors and their once-composed effective palette."""
     base = SubtitlePalette(
-        text_color=_canonical_rgba(config.appearance.text_color),
-        backdrop_color=_canonical_rgba(config.appearance.backdrop_color),
+        text_color=_canonical_rgba(config.style.typography.color),
+        backdrop_color=_canonical_rgba(config.style.backdrop.color),
         highlight_color=(
-            _canonical_rgba(config.effects.highlight_color)
-            if config.effects.highlight_color is not None
+            _canonical_rgba(config.style.typography.highlight_color)
+            if config.style.typography.highlight_color is not None
             else None
         ),
     )
-    opacity = config.appearance.opacity
+    opacity = config.style.opacity
     effective = SubtitlePalette(
         text_color=compose_rgba_opacity(base.text_color, opacity),
         backdrop_color=compose_rgba_opacity(base.backdrop_color, opacity),
@@ -902,7 +904,7 @@ def serialize_karaoke_cue(
     """Compile one prepared karaoke cue without escaping generated overrides."""
     if (
         not isinstance(cue, KaraokeCue)
-        or config.effects.mode is not KaraokeMode.PROGRESSIVE
+        or config.animation.word.mode is not KaraokeMode.PROGRESSIVE
     ):
         return None
     if palette is None:
@@ -921,7 +923,7 @@ def serialize_karaoke_preview_cue(
     palette: SubtitlePalette | None = None,
 ) -> str | None:
     """Compile a static preview snapshot of the selected karaoke mode."""
-    if not isinstance(cue, KaraokeCue) or not config.effects.karaoke:
+    if not isinstance(cue, KaraokeCue) or not config.animation.word.karaoke:
         return None
     _validate_karaoke_cue(cue)
     visible_fragments = cue.fragments if fragments is None else fragments
@@ -931,14 +933,14 @@ def serialize_karaoke_preview_cue(
         raise ArtifactError("Karaoke preview fragments must use the typed contract")
     if palette is None:
         _, palette = resolve_subtitle_palettes(config)
-    if config.effects.mode is KaraokeMode.PROGRESSIVE:
+    if config.animation.word.mode is KaraokeMode.PROGRESSIVE:
         highlighted_words = (len(cue.durations) + 1) // 2
         return _serialize_progressive_state(
             visible_fragments,
             palette,
             highlighted_words,
         )
-    if config.effects.mode is KaraokeMode.ACTIVE_WORD:
+    if config.animation.word.mode is KaraokeMode.ACTIVE_WORD:
         return _serialize_active_word_fragments(visible_fragments, palette, 0)
     return None
 
@@ -976,7 +978,7 @@ def serialize_active_word_events(
     palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Split one cue into stable full-text intervals with one active word."""
-    if config.effects.mode is not KaraokeMode.ACTIVE_WORD:
+    if config.animation.word.mode is not KaraokeMode.ACTIVE_WORD:
         raise ArtifactError("Active-word events require active-word karaoke mode")
     _validate_karaoke_cue(cue)
     if cue_end < cue_start:
@@ -1033,7 +1035,7 @@ def serialize_progressive_line_events(
     line-height rendering uses stable intervals instead, changing each line's
     color state at the original cue-global word boundaries.
     """
-    if config.effects.mode is not KaraokeMode.PROGRESSIVE:
+    if config.animation.word.mode is not KaraokeMode.PROGRESSIVE:
         raise ArtifactError("Progressive line events require progressive karaoke mode")
     _validate_karaoke_cue(cue)
     if cue_end < cue_start:
@@ -1139,7 +1141,7 @@ def serialize_active_word_line_events(
     palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Serialize active-word intervals for one visual line of a cue."""
-    if config.effects.mode is not KaraokeMode.ACTIVE_WORD:
+    if config.animation.word.mode is not KaraokeMode.ACTIVE_WORD:
         raise ArtifactError("Active-word events require active-word karaoke mode")
     _validate_karaoke_cue(cue)
     if cue_end < cue_start or len(cue.active_intervals) != len(cue.durations):

@@ -67,11 +67,11 @@ def test_karaoke_config_resolves_default_and_custom_highlight_colors():
         },
     )
 
-    assert default.effects.karaoke is True
-    assert default.effects.highlight_color == DEFAULT_KARAOKE_HIGHLIGHT_COLOR
-    assert default.effects.mode is KaraokeMode.PROGRESSIVE
-    assert custom.effects.mode is KaraokeMode.ACTIVE_WORD
-    assert custom.effects.highlight_color == "#ABCDEF80"
+    assert default.animation.word.karaoke is True
+    assert default.style.typography.highlight_color == DEFAULT_KARAOKE_HIGHLIGHT_COLOR
+    assert default.animation.word.mode is KaraokeMode.PROGRESSIVE
+    assert custom.animation.word.mode is KaraokeMode.ACTIVE_WORD
+    assert custom.style.typography.highlight_color == "#ABCDEF80"
 
 
 @pytest.mark.parametrize(
@@ -106,9 +106,9 @@ def test_karaoke_cli_request_is_typed_and_translation_is_rejected(tmp_path: Path
 
     request = cli._build_request(args, parser)
 
-    assert request.subtitle_config.effects.karaoke is True
-    assert request.subtitle_config.effects.mode is KaraokeMode.ACTIVE_WORD
-    assert request.subtitle_config.effects.highlight_color == "#ABCDEF80"
+    assert request.subtitle_config.animation.word.karaoke is True
+    assert request.subtitle_config.animation.word.mode is KaraokeMode.ACTIVE_WORD
+    assert request.subtitle_config.style.typography.highlight_color == "#ABCDEF80"
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
@@ -163,7 +163,7 @@ def test_karaoke_cli_accepts_transcription_free_preview(tmp_path: Path):
     )
 
     assert isinstance(request, PreviewRequest)
-    assert request.subtitle_config.effects.karaoke is True
+    assert request.subtitle_config.animation.word.karaoke is True
 
 
 def test_karaoke_duration_allocation_conserves_quantized_cue_duration():

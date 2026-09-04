@@ -9,6 +9,10 @@ class ValidationError(MultisubsError):
     """Raised when user input cannot satisfy the project contract."""
 
 
+class TemplateError(MultisubsError):
+    """Raised when packaged subtitle template resources are invalid."""
+
+
 class DependencyError(MultisubsError):
     """Raised when a required executable or Python package is unavailable."""
 

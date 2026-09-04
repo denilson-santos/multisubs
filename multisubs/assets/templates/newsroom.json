@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "newsroom",
+  "description": "Compact left-aligned treatment for reports and factual updates.",
+  "style": {
+    "typography": {
+      "font_family": "Oswald",
+      "font_weight": "semi-bold",
+      "font_size": "4.2%",
+      "italic": false,
+      "letter_spacing": "1%",
+      "line_height": "auto",
+      "text_case": "uppercase",
+      "color": "#FFFFFF",
+      "highlight_color": null
+    },
+    "backdrop": {"type": "box", "color": "#0B1F3ACC", "size": "8%"},
+    "shadow": {"size": "0px"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-left",
+    "margins": {"left": "5%", "right": "35%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "16%"
+  },
+  "animation": {
+    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
+    "word": {"type": "none", "mode": null}
+  }
+}

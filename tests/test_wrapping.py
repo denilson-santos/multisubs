@@ -42,12 +42,12 @@ def _metrics(*, letter_spacing: str = "0px", max_height: str = "100px"):
         appearance_values={"backdrop": "none"},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
-    assert isinstance(resolved.appearance.font_size, int)
-    assert isinstance(resolved.appearance.letter_spacing, int)
+    assert isinstance(resolved.style.typography.font_size, int)
+    assert isinstance(resolved.style.typography.letter_spacing, int)
     measurer = build_unicode_text_measurer(
-        resolved.appearance.font,
-        resolved.appearance.font_size,
-        letter_spacing=resolved.appearance.letter_spacing,
+        resolved.style.typography.font,
+        resolved.style.typography.font_size,
+        letter_spacing=resolved.style.typography.letter_spacing,
     )
     return resolve_wrapping_metrics(resolved, GEOMETRY, text_measurer=measurer)
 
