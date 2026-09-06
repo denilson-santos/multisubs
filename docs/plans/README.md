@@ -13,6 +13,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Delivery automation | Done | 1/1 | Complete | [Open dashboard](delivery-automation/README.md) |
 | Subtitle typography | Done | 5/5 | Complete | [Open dashboard](subtitle-typography/README.md) |
 | Subtitle templates | Done | 4/4 | Complete | [Open dashboard](subtitle-templates/README.md) |
+| Subtitle backdrops | In review | 0/1 | Plan 0 — Unified vector box | [Open dashboard](subtitle-backdrops/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 
