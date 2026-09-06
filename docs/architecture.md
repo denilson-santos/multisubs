@@ -122,15 +122,18 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   without word timestamps is wrapped lexically without inventing new timings.
 - With explicit `--line-height`, the wrapped display fragments are partitioned
   into immutable visual lines. ASS receives one synchronized event per line,
-  positioned around the native margin anchor or explicit PlayRes coordinate;
-  `backdrop=box` receives one lower-layer vector drawing for the measured block.
-  `auto` keeps the historical single dialogue event for one-line cues; a
-  multi-line box uses positioned text lines and one shared vector rectangle.
+  positioned around the native margin anchor or explicit PlayRes coordinate.
+  Every nonempty `backdrop=box` cue follows that measured path, including a
+  one-line cue, and receives one lower-layer vector drawing for its complete
+  text block. `auto` retains the native single dialogue event only for
+  one-line cues without a cue box; a box always uses one shared vector
+  rectangle regardless of line count.
 - Preview models one frame of that sequence: it keeps only the first lexical
   group that fits the resolved width and line capacity, omits the groups that
   would appear in later cues, and prevents libass from wrapping that first
-  group again. Its guide and retained JSON report `positioned-lines` only when
-  the final display text actually contains multiple visual lines.
+  group again. Its guide and retained JSON report the same `positioned-lines`
+  strategy that ASS uses for a nonempty box, positioned word behavior, or
+  multiple visual lines.
 - A long indivisible display token remains intact and may overflow the
   approximate width budget; original transcript content is never removed or
   replaced by its display transformation.
@@ -175,7 +178,7 @@ The JSON artifact has this high-level shape:
       "placement_mode": "native-style",
       "requested_position": "bottom-center",
       "resolved_position": "bottom-center",
-      "render_strategy": "single-event",
+      "render_strategy": "positioned-lines",
       "margins": {
         "applied": true,
         "left": 194,
@@ -189,8 +192,8 @@ The JSON artifact has this high-level shape:
         "font_size": "4%",
         "letter_spacing": "0px",
         "line_height": "auto",
-        "backdrop_size": "10px",
-        "word_backdrop_size": "10px",
+        "backdrop_size": "25%",
+        "word_backdrop_size": "25%",
         "shadow_size": "0px",
         "margins": {
           "left": "18%",
@@ -207,8 +210,8 @@ The JSON artifact has this high-level shape:
         "font_size": 77,
         "letter_spacing": 0,
         "line_height": 76.0,
-        "backdrop_size": 10,
-        "word_backdrop_size": 10,
+        "backdrop_size": 19,
+        "word_backdrop_size": 19,
         "shadow_size": 0,
         "margins": {
           "left": 194,
@@ -235,7 +238,7 @@ The JSON artifact has this high-level shape:
         "line_capacity": 2,
         "font_size": 77,
         "letter_spacing": 0,
-        "backdrop_size": 10,
+        "backdrop_size": 11,
         "shadow_size": 0
       },
       "percentage_bases": {
@@ -393,24 +396,28 @@ base ASS Bold style field
 remains neutral because older libass style parsers coerce every positive value
 to boolean bold. Each subtitle event instead receives an exact `\\b100` through
 `\\b900` override, which keeps preview, ordinary cues, and both timed-word modes on
-the same OpenType rank across supported libass versions. The `box` backdrop
-uses the standard ASS opaque-box `BorderStyle=3`; `outline` uses
-`BorderStyle=1` with the configured weight, while `none` disables both. The
+the same OpenType rank across supported libass versions. The semantic `box`
+backdrop retains the standard ASS opaque-box `BorderStyle=3` in the Default
+style contract; nonempty box cue events use a temporary neutral Positioned
+style so libass does not draw a native box behind the measured vector surface.
+`outline` uses `BorderStyle=1` with the configured weight, while `none` disables both. The
 required ASS `SecondaryColour` field follows the semantic text color
 for ordinary cues; timed highlight events override the normal and active
 colors explicitly. `OutlineColour` and
 `BackColour` both follow the one semantic backdrop color. Underline and
 strikeout remain disabled; base style scale stays at 100%, angle stays at zero,
 and the resolved semantic letter spacing is written to ASS `Spacing`. `auto`
-line height does not add a custom baseline distance. A multi-line box or an
+line height does not add a custom baseline distance. A nonempty box cue or an
 explicit line height on a multi-line ordinary cue emits one event per visual
 line with trusted `\\an`/`\\pos` coordinates; the line positions use the natural
 first-line box and the requested baseline advance so the selected anchor
 remains fixed. Progressive word text may use
 synchronized interval events per visual line so word activation remains
 cue-relative. For `backdrop=box`, the text style is temporarily neutralized and
-one lower-layer `\\p1` rectangle uses the full measured block bounds, padding,
-configured color, and shadow allowance. Encoding remains
+one lower-layer `\\p1` rectangle uses the measured text bounds plus padding.
+The outer layout envelope reserves the configured shadow allowance, and the
+vector applies that shadow exactly once; it is never duplicated by the text
+style. Encoding remains
 1 because that ASS internal is outside the public appearance model. Timed word
 text is partitioned at validated aligned-word boundaries and uses trusted
 normal/highlight color overrides around independently escaped display

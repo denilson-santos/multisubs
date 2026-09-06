@@ -696,7 +696,7 @@ def test_preview_guides_report_text_case():
     assert any("Text case: lowercase" in event.text for event in events)
 
 
-def test_preview_guides_report_single_event_for_one_visual_line():
+def test_preview_guides_report_positioned_lines_for_one_line_box():
     config = validate_subtitle_config(
         None,
         relative_values={"line_height": "125%"},
@@ -713,7 +713,29 @@ def test_preview_guides_report_single_event_for_one_visual_line():
         requested_config=config,
     )
 
-    assert any("Render strategy: single-event" in event.text for event in events)
+    assert any("Render strategy: positioned-lines" in event.text for event in events)
+
+
+def test_preview_one_line_box_uses_one_shared_surface(tmp_path: Path):
+    path = tmp_path / "preview-box.ass"
+
+    build_preview_ass(
+        path,
+        _request(tmp_path, preview_text="one visual line"),
+        GEOMETRY,
+        0.0,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert (
+        sum(line.startswith("Dialogue: 0,") and r"\p1" in line for line in dialogue)
+        == 1
+    )
+    assert sum(line.startswith("Dialogue: 2,") for line in dialogue) == 1
 
 
 def test_preview_run_branches_before_whisper_runtime_import(

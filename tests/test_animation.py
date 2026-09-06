@@ -646,7 +646,9 @@ def test_ass_compiles_bounded_motion_scale_and_fade_events(tmp_path: Path):
     assert any(r"\fscx76\fscy76" in line for line in dialogue)
     assert any(r"\fscx112\fscy112" in line for line in dialogue)
     assert any(r"\fade(" in line for line in dialogue)
-    assert all(r"Safe \{text\}" in line for line in dialogue)
+    text_events = [line for line in dialogue if r"\p1" not in line]
+    assert text_events
+    assert all(r"Safe \{text\}" in line for line in text_events)
 
 
 def test_animation_alpha_stays_separate_from_component_opacity(tmp_path: Path):
@@ -1222,7 +1224,8 @@ def test_slide_animation_uses_each_resolved_native_anchor_once(
     expected_alignment = 7 - 3 * (position_index // 3) + position_index % 3
     assert dialogue
     assert all(line.count(r"\move(") + line.count(r"\pos(") == 1 for line in dialogue)
-    assert all(rf"\an{expected_alignment}" in line for line in dialogue)
+    text_events = [line for line in dialogue if r"\p1" not in line]
+    assert all(rf"\an{expected_alignment}" in line for line in text_events)
 
 
 def test_shared_box_and_visual_lines_use_the_same_pop_state(tmp_path: Path):
@@ -1269,7 +1272,7 @@ def test_shared_box_and_visual_lines_use_the_same_pop_state(tmp_path: Path):
         )
         == 1
     )
-    assert sum(line.startswith("Dialogue: 1,") for line in first_interval) == 2
+    assert sum(line.startswith("Dialogue: 2,") for line in first_interval) == 2
     assert all(r"\fscx76\fscy76" in line for line in first_interval)
     assert all(r"\fscx112\fscy112" in line for line in first_interval)
     backdrop = next(line for line in first_interval if line.startswith("Dialogue: 0,"))

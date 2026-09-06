@@ -581,7 +581,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         "placement_mode": "native-style",
         "requested_position": "bottom-center",
         "resolved_position": "bottom-center",
-        "render_strategy": "single-event",
+        "render_strategy": "positioned-lines",
         "margins": {
             "applied": True,
             "left": 346,
@@ -595,8 +595,8 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_size": "4%",
             "letter_spacing": "0px",
             "line_height": "auto",
-            "backdrop_size": "10px",
-            "word_backdrop_size": "10px",
+            "backdrop_size": "25%",
+            "word_backdrop_size": "25%",
             "shadow_size": "0px",
             "margins": {
                 "left": "18%",
@@ -613,8 +613,8 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_size": 43,
             "letter_spacing": 0,
             "line_height": 51.6,
-            "backdrop_size": 10,
-            "word_backdrop_size": 10,
+            "backdrop_size": 11,
+            "word_backdrop_size": 11,
             "shadow_size": 0,
             "margins": {
                 "left": 346,
@@ -631,17 +631,17 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "available_height": 1048,
             "max_width": 1228,
             "max_height": 105,
-            "width_budget": 1208,
+            "width_budget": 1206,
             "line_height": 51.6,
             "natural_line_height": 51.6,
             "resolved_line_height": 51.6,
             "ascent": 43.0,
             "descent": 8.6,
-            "vertical_decoration": 20,
+            "vertical_decoration": 22,
             "line_capacity": 1,
             "font_size": 43,
             "letter_spacing": 0,
-            "backdrop_size": 10,
+            "backdrop_size": 11,
             "shadow_size": 0,
         },
         "percentage_bases": {
@@ -807,7 +807,9 @@ def test_auto_line_height_reports_positioned_lines_for_a_shared_box():
     assert strategy == "positioned-lines"
 
 
-def test_explicit_line_height_reports_single_event_for_one_line(tmp_path: Path):
+def test_explicit_line_height_box_reports_positioned_event_for_one_line(
+    tmp_path: Path,
+):
     source_path = tmp_path / "input.mp4"
     source_path.write_bytes(b"input")
     document = TranscriptDocument(
@@ -851,9 +853,11 @@ def test_explicit_line_height_reports_single_event_for_one_line(tmp_path: Path):
         for line in Path(ass_path).read_text(encoding="utf-8").splitlines()
         if line.startswith("Dialogue:")
     ]
-    assert rendering["render_strategy"] == "single-event"
-    assert len(dialogue) == 1
-    assert r"\pos(" not in dialogue[0]
+    assert rendering["render_strategy"] == "positioned-lines"
+    assert len(dialogue) == 2
+    assert dialogue[0].startswith("Dialogue: 0,")
+    assert dialogue[1].startswith("Dialogue: 2,")
+    assert r"\pos(" in dialogue[1]
 
 
 def test_opacity_json_records_base_and_effective_component_colors(tmp_path: Path):

@@ -365,6 +365,7 @@ class PositionedVisualLine:
     position_x: int
     position_y: int
     block_bounds: tuple[int, int, int, int]
+    backdrop_bounds: tuple[int, int, int, int]
     block_placement: CuePlacement
     fragment_placements: tuple[CuePlacement, ...]
 
@@ -375,6 +376,8 @@ def position_visual_lines(
     geometry: VideoGeometry,
     metrics: WrappingMetrics,
     placement: CuePlacement | None,
+    *,
+    allow_single_line_overflow: bool = False,
 ) -> tuple[PositionedVisualLine, ...]:
     """Resolve stable visual-line and measured fragment anchors."""
     layout = config.layout
@@ -389,22 +392,40 @@ def position_visual_lines(
     content_width = max((line.width for line in visual_lines), default=0.0)
     padding = metrics.backdrop_size
     shadow = metrics.shadow_size
-    block_width = _round_playres(content_width + 2 * padding + shadow)
-    block_height = _round_playres(
+    backdrop_width = _round_playres(content_width + 2 * padding)
+    backdrop_height = _round_playres(
         metrics.natural_line_height
         + (len(visual_lines) - 1) * metrics.resolved_line_height
         + 2 * padding
-        + shadow
     )
-    if block_width > metrics.max_width:
+    block_width = backdrop_width + shadow
+    block_height = backdrop_height + shadow
+    overflowing_lines = [
+        line
+        for line in visual_lines
+        if line.width + metrics.decoration_width > metrics.max_width
+    ]
+    if overflowing_lines and any(
+        any(not character.isspace() for character in line.text)
+        and any(character.isspace() for character in line.text)
+        for line in overflowing_lines
+    ):
         raise ValidationError(
             "Measured subtitle lines exceed the configured max-width envelope"
         )
-    if block_height > metrics.max_height:
+    if block_height > metrics.max_height and not (
+        allow_single_line_overflow and len(visual_lines) == 1
+    ):
         raise ValidationError(
             "Measured subtitle lines exceed the configured max-height envelope"
         )
     bounds = _anchor_bounds(anchor_x, anchor_y, block_width, block_height, anchor)
+    backdrop_bounds = (
+        bounds[0],
+        bounds[1],
+        bounds[2] - shadow,
+        bounds[3] - shadow,
+    )
     block_placement = CuePlacement(anchor, anchor_x, anchor_y)
     content_top = bounds[1] + padding
     result: list[PositionedVisualLine] = []
@@ -439,6 +460,7 @@ def position_visual_lines(
                 position_x=anchor_x,
                 position_y=line_y,
                 block_bounds=bounds,
+                backdrop_bounds=backdrop_bounds,
                 block_placement=block_placement,
                 fragment_placements=fragment_placements,
             )
@@ -536,6 +558,7 @@ def resolve_wrapping_metrics(
     language: str | None = None,
     text_measurer: TextMeasurer | None = None,
     bundled_fonts_dir: Path | None = None,
+    allow_single_line_overflow: bool = False,
 ) -> WrappingMetrics:
     """Resolve the geometry-aware inputs used by adaptive cue wrapping."""
     resolved = resolve_subtitle_config(
@@ -550,6 +573,7 @@ def resolve_wrapping_metrics(
         language=language,
         text_measurer=text_measurer,
         bundled_fonts_dir=bundled_fonts_dir,
+        allow_single_line_overflow=allow_single_line_overflow,
     )
 
 
@@ -560,6 +584,7 @@ def _build_wrapping_metrics(
     language: str | None,
     text_measurer: TextMeasurer | None,
     bundled_fonts_dir: Path | None,
+    allow_single_line_overflow: bool,
 ) -> WrappingMetrics:
     layout = config.layout
     max_width = _require_resolved_layout_int(layout.max_width, "max-width")
@@ -591,16 +616,20 @@ def _build_wrapping_metrics(
         )
     natural_line_height = measurer.natural_line_height
     resolved_line_height = _require_line_height(config.style.typography.line_height)
-    if content_height < natural_line_height:
+    if content_height < natural_line_height and not allow_single_line_overflow:
         required = math.ceil(natural_line_height + vertical_decoration)
         raise ValidationError(
             "max-height resolves to "
             f"{max_height}px, but at least {required}px is required for one "
             "subtitle line with the configured font and decorations"
         )
-    line_capacity = max(
-        1,
-        1 + int((content_height - natural_line_height) // resolved_line_height),
+    line_capacity = (
+        1
+        if content_height < natural_line_height
+        else max(
+            1,
+            1 + int((content_height - natural_line_height) // resolved_line_height),
+        )
     )
     placement = _validated_explicit_placement(config, geometry)
     if layout.placement_mode is SubtitlePlacementMode.NATIVE_STYLE:

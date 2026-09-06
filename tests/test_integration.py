@@ -407,7 +407,7 @@ def test_multiline_box_backdrop_renders_as_one_translucent_surface(tmp_path: Pat
     assert style_fields[16] == "0"
     content = subtitle_path.read_text(encoding="utf-8")
     assert content.count(r"\p1") == 1
-    assert content.count("Dialogue: 1,") == 2
+    assert content.count("Dialogue: 2,") == 2
 
     resolved = resolve_subtitle_config(config, geometry)
     metrics = resolve_wrapping_metrics(resolved, geometry)
@@ -450,6 +450,119 @@ def test_multiline_box_backdrop_renders_as_one_translucent_surface(tmp_path: Pat
     assert len(frame) == width * height
     shared_box_pixel = frame[sample_y * width + sample_x]
     assert 80 <= shared_box_pixel <= 140
+
+
+@pytest.mark.integration
+def test_single_line_box_backdrop_uses_measured_surface_and_shadow_once(
+    tmp_path: Path,
+):
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    width, height = 640, 360
+    input_path = tmp_path / "single-box-input.mp4"
+    subtitle_path = tmp_path / "single-box.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=white:s={width}x{height}:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        position="center",
+        appearance_values={
+            "font": "DejaVu Sans",
+            "backdrop": "box",
+            "backdrop_color": "#00000080",
+            "text_color": "#FFFFFFFF",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "10px",
+            "shadow_weight": "4px",
+            "max_height": "140px",
+        },
+    )
+    text = "Measured box"
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.3, "text": text}],
+        config,
+        geometry,
+    )
+
+    content = subtitle_path.read_text(encoding="utf-8")
+    backdrop = next(
+        line for line in content.splitlines() if line.startswith("Dialogue: 0,")
+    )
+    text_event = next(
+        line for line in content.splitlines() if line.startswith("Dialogue: 2,")
+    )
+    assert content.count(r"\p1") == 1
+    assert r"\shad4" in backdrop
+    assert r"\4a&HFF&" not in backdrop
+    assert r"\p1" not in text_event
+    assert ",Positioned,," in text_event
+
+    resolved = resolve_subtitle_config(config, geometry)
+    metrics = resolve_wrapping_metrics(resolved, geometry)
+    positioned = position_visual_lines(
+        build_visual_lines(text, None, metrics),
+        resolved,
+        geometry,
+        metrics,
+        None,
+    )[0]
+    left, top, right, bottom = positioned.backdrop_bounds
+    sample_x = left + 3
+    sample_y = top + 3
+    assert right - left > 2 * metrics.backdrop_size
+    assert bottom - top > 2 * metrics.backdrop_size
+
+    frame = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "0.1",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"ass={subtitle_path}",
+            "-frames:v",
+            "1",
+            "-pix_fmt",
+            "gray",
+            "-f",
+            "rawvideo",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+
+    assert 80 <= frame[sample_y * width + sample_x] <= 180
 
 
 @pytest.mark.integration

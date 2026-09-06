@@ -6,7 +6,12 @@ import math
 import re
 from pathlib import Path
 
-from .ass import escape_ass_text, rgba_to_ass_color, write_ass
+from .ass import (
+    _render_strategy_for_segments,
+    escape_ass_text,
+    rgba_to_ass_color,
+    write_ass,
+)
 from .errors import ValidationError
 from .layout import (
     NativeLayoutRegion,
@@ -29,7 +34,6 @@ from .models import (
 from .wrapping import (
     build_display_fragments,
     fit_first_text_segment,
-    has_multiple_visual_lines,
     normalise_display_text,
     transform_display_text,
 )
@@ -249,10 +253,18 @@ def build_preview_guide_events(
         if requested_config is not None
         else f"{int(metrics.resolved_line_height)}px"
     )
-    render_strategy = (
-        "positioned-lines"
-        if _line_height_is_explicit(config) and has_multiple_visual_lines(display_text)
-        else "single-event"
+    preview_segment: dict[str, object] = {"text": display_text}
+    if (
+        config.animation.word.text.enabled
+        or config.style.word_backdrop.kind.value != "none"
+    ):
+        preview_cue = _build_preview_word_cue(display_text)
+        if preview_cue is not None:
+            preview_segment["_karaoke_preview_cue"] = preview_cue
+    render_strategy = _render_strategy_for_segments(
+        config,
+        [preview_segment],
+        suppress_animation=True,
     )
     label = (
         f"{{\\an7\\pos(12,12)\\fs{_GUIDE_FONT_SIZE}\\bord2\\shad0"
@@ -280,15 +292,6 @@ def _format_preview_length(value: int | float | RelativeLength | str) -> str:
     if isinstance(value, RelativeLength):
         return value.original
     return f"{value}px"
-
-
-def _line_height_is_explicit(config: SubtitleConfig) -> bool:
-    value = (
-        config.style.typography.line_height_requested
-        if config.style.typography.line_height_requested is not None
-        else config.style.typography.line_height
-    )
-    return not (isinstance(value, str) and value.casefold() == "auto")
 
 
 def _native_anchor_point(

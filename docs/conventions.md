@@ -252,10 +252,10 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
 - Must keep generated ASS overrides (placement, colors, and aligned-word timing) on a trusted compiler path separate from independently escaped transcript fragments. Never parse or re-escape a completed generated override string as ordinary user text.
-- When a multi-line box or explicit line height expands an ordinary cue into
-  per-line events, each event must use the same cue timing and stable anchor
-  while `backdrop=box` is one lower-layer vector drawing for the complete
-  measured block. Karaoke
+- When a box, multi-line layout, or explicit line height expands an ordinary
+  cue into positioned visual-line events, each event must use the same cue
+  timing and stable anchor while `backdrop=box` is one lower-layer vector
+  drawing for the complete measured block. Karaoke
   may instead use adjacent cue-relative intervals at validated word boundaries.
   Text events must not duplicate the box for every visual line; generated
   drawing coordinates remain separate from escaped transcript fragments.
@@ -292,8 +292,9 @@ Update a higher-level document when a proposed change intentionally modifies the
   preview and final rendering must retain the same event topology at the stable
   state.
 - Must preserve ordinary static ASS event structure when all twelve resolved
-  phases are `none`, no timed word decoration is active, and a multi-line box
-  does not require one shared vector backdrop. A PNG preview
+  phases are `none`, no timed word decoration is active, and the cue does not
+  use a box backdrop. Every nonempty box cue intentionally uses the measured
+  vector structure, including one-line cues. A PNG preview
   suppresses all motion at the stable final state while retaining the documented
   representative state for each word track.
 - Must compose global opacity in conventional alpha space (`00` transparent,
@@ -343,10 +344,10 @@ Update a higher-level document when a proposed change intentionally modifies the
   not valid substitutes.
 - Must expose natural ascent/descent metrics to the layout boundary and derive
   multi-line capacity from the first natural line plus the resolved baseline
-  advance. `auto` preserves the existing single-event ASS path for a one-line
-  cue, while a multi-line box uses positioned lines around one shared vector
-  backdrop. Explicit line height cannot be below the natural metric and must
-  use one deterministic PlayRes rounding policy.
+  advance. `auto` preserves the existing single-event ASS path for one-line
+  cues without a box, while every nonempty box uses positioned lines around
+  one shared vector backdrop. Explicit line height cannot be below the natural
+  metric and must use one deterministic PlayRes rounding policy.
 - Must keep the visual-line model shared by preview, ordinary cues, progressive
   word behavior, and active-word behavior. Synchronized per-line events may overlap in
   time only across distinct visual lines; they must never duplicate a line's
