@@ -94,9 +94,9 @@ def test_adaptive_wrapping_uses_resolved_width_and_preserves_timed_words():
 
     display, metrics = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
 
-    assert metrics.width_budget == 1226
-    assert len(display) == 2
-    assert all("\n" not in cue["text"] for cue in display)
+    assert metrics.width_budget == 1228
+    assert len(display) == 1
+    assert display[0]["text"].count("\n") == 1
     assert "".join(cue["semantic_text"] for cue in display).replace(" ", "") == "".join(
         word["word"] for word in words
     ).replace(" ", "")
@@ -146,13 +146,15 @@ def test_adaptive_wrapping_metrics_change_with_portrait_geometry_and_font_size()
         semantic, portrait_config, portrait_geometry
     )
 
-    assert landscape_metrics.width_budget == 1226
-    assert portrait_metrics.width_budget == 686
+    assert landscape_metrics.width_budget == 1228
+    assert portrait_metrics.width_budget == 692
     assert landscape_metrics.font_size == 43
     assert portrait_metrics.font_size == 154
-    assert landscape_metrics.line_capacity == 1
-    assert portrait_metrics.line_capacity == 1
-    assert landscape_display[0]["text"] == portrait_display[0]["text"]
+    assert landscape_metrics.line_capacity == 2
+    assert portrait_metrics.line_capacity == 2
+    assert landscape_display[0]["text"] == semantic[0]["text"]
+    assert "\n" in portrait_display[0]["text"]
+    assert portrait_display[0]["text"].replace("\n", " ") == semantic[0]["text"]
 
 
 @pytest.mark.parametrize(
@@ -338,7 +340,7 @@ def test_font_metrics_prevent_the_reported_premature_portuguese_break():
         text_measurer=measurer,
     )
 
-    assert metrics.width_budget == 1918
+    assert metrics.width_budget == 1920
     assert display[0]["text"] == text
 
 
@@ -593,9 +595,9 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_size": "4%",
             "letter_spacing": "0px",
             "line_height": "auto",
-            "backdrop_size": "20px",
-            "word_backdrop_size": "20px",
-            "shadow_size": "4%",
+            "backdrop_size": "10px",
+            "word_backdrop_size": "10px",
+            "shadow_size": "0px",
             "margins": {
                 "left": "18%",
                 "right": "18%",
@@ -611,9 +613,9 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_size": 43,
             "letter_spacing": 0,
             "line_height": 51.6,
-            "backdrop_size": 20,
-            "word_backdrop_size": 20,
-            "shadow_size": 2,
+            "backdrop_size": 10,
+            "word_backdrop_size": 10,
+            "shadow_size": 0,
             "margins": {
                 "left": 346,
                 "right": 346,
@@ -629,18 +631,18 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "available_height": 1048,
             "max_width": 1228,
             "max_height": 105,
-            "width_budget": 1186,
+            "width_budget": 1208,
             "line_height": 51.6,
             "natural_line_height": 51.6,
             "resolved_line_height": 51.6,
             "ascent": 43.0,
             "descent": 8.6,
-            "vertical_decoration": 42,
+            "vertical_decoration": 20,
             "line_capacity": 1,
             "font_size": 43,
             "letter_spacing": 0,
-            "backdrop_size": 20,
-            "shadow_size": 2,
+            "backdrop_size": 10,
+            "shadow_size": 0,
         },
         "percentage_bases": {
             "font_size": "render-height",
@@ -792,6 +794,17 @@ def test_line_height_json_and_ass_strategy_are_explicit(tmp_path: Path):
         >= 2
     )
     assert Path(srt_path).read_text(encoding="utf-8").count("\n\n") == 1
+
+
+def test_auto_line_height_reports_positioned_lines_for_a_shared_box():
+    config = validate_subtitle_config(None)
+
+    strategy = transcriber._line_height_render_strategy(
+        config,
+        [{"text": "one line\nsecond line"}],
+    )
+
+    assert strategy == "positioned-lines"
 
 
 def test_explicit_line_height_reports_single_event_for_one_line(tmp_path: Path):

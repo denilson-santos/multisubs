@@ -9,7 +9,11 @@ import pytest
 
 from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
-from multisubs.layout import resolve_subtitle_config
+from multisubs.layout import (
+    position_visual_lines,
+    resolve_subtitle_config,
+    resolve_wrapping_metrics,
+)
 from multisubs.models import SubtitlePosition
 from multisubs.subtitler import (
     embed_subtitles,
@@ -17,6 +21,7 @@ from multisubs.subtitler import (
     validate_ffmpeg_support,
 )
 from multisubs.transcriber import layout_subtitle_cues
+from multisubs.wrapping import build_visual_lines
 
 
 @pytest.mark.integration
@@ -331,7 +336,7 @@ def test_ffmpeg_libass_render_round_trip(tmp_path: Path):
 
 
 @pytest.mark.integration
-def test_box_backdrop_renders_as_a_filled_opaque_box(tmp_path: Path):
+def test_multiline_box_backdrop_renders_as_one_translucent_surface(tmp_path: Path):
     if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
         pytest.skip("FFmpeg and fontconfig are required")
     try:
@@ -376,20 +381,21 @@ def test_box_backdrop_renders_as_a_filled_opaque_box(tmp_path: Path):
         appearance_values={
             "font": "DejaVu Sans",
             "backdrop": "box",
-            "backdrop_color": "#000000FF",
             "text_color": "#FFFFFFFF",
         },
         relative_values={
             "font_size": "40px",
             "outline_weight": "12px",
-            "shadow_weight": "0px",
+            "max_height": "120px",
         },
     )
+    text = "I          I\nI"
     write_ass(
         subtitle_path,
-        [{"start": 0.0, "end": 0.3, "text": "I          I"}],
+        [{"start": 0.0, "end": 0.3, "text": text}],
         config,
         geometry,
+        preserve_line_breaks=True,
     )
 
     style_fields = (
@@ -398,6 +404,25 @@ def test_box_backdrop_renders_as_a_filled_opaque_box(tmp_path: Path):
         .split(",")
     )
     assert style_fields[14] == "3"
+    assert style_fields[16] == "0"
+    content = subtitle_path.read_text(encoding="utf-8")
+    assert content.count(r"\p1") == 1
+    assert content.count("Dialogue: 1,") == 2
+
+    resolved = resolve_subtitle_config(config, geometry)
+    metrics = resolve_wrapping_metrics(resolved, geometry)
+    visual_lines = build_visual_lines(text, None, metrics)
+    positioned = position_visual_lines(
+        visual_lines,
+        resolved,
+        geometry,
+        metrics,
+        None,
+    )
+    assert len(positioned) == 2
+    _, _, right, _ = positioned[0].block_bounds
+    sample_x = right - metrics.backdrop_size // 2
+    sample_y = round(positioned[1].position_y - metrics.natural_line_height / 2)
     frame = subprocess.run(
         [
             "ffmpeg",
@@ -423,7 +448,8 @@ def test_box_backdrop_renders_as_a_filled_opaque_box(tmp_path: Path):
     ).stdout
 
     assert len(frame) == width * height
-    assert frame[(height // 2) * width + width // 2] < 32
+    shared_box_pixel = frame[sample_y * width + sample_x]
+    assert 80 <= shared_box_pixel <= 140
 
 
 @pytest.mark.integration

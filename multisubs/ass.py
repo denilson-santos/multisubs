@@ -174,6 +174,10 @@ def write_ass(
             or (animate_words and isinstance(karaoke_cue, KaraokeCue))
             or preview_word_behavior
             or (
+                config.style.backdrop.kind is SubtitleBackdrop.BOX
+                and "\n" in str(segment.get("text", ""))
+            )
+            or (
                 animate_cues and config.style.backdrop.kind is not SubtitleBackdrop.NONE
             )
         )
@@ -208,6 +212,10 @@ def write_ass(
             (explicit_line_height and len(visual_lines) > 1)
             or (animate_words and isinstance(karaoke_cue, KaraokeCue))
             or preview_word_behavior
+            or (
+                config.style.backdrop.kind is SubtitleBackdrop.BOX
+                and len(visual_lines) > 1
+            )
         ):
             line_layout = position_visual_lines(
                 visual_lines,

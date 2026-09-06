@@ -14,9 +14,9 @@
       "color": "#FFFFFF",
       "highlight_color": null
     },
-    "backdrop": {"type": "box", "color": "#00000099", "size": "20px"},
-    "word_backdrop": {"type": "none", "color": "#111827E6", "size": "20px"},
-    "shadow": {"size": "4%"},
+    "backdrop": {"type": "box", "color": "#00000099", "size": "10px"},
+    "word_backdrop": {"type": "none", "color": "#111827E6", "size": "10px"},
+    "shadow": {"size": "0px"},
     "opacity": "100%"
   },
   "layout": {

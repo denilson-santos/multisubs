@@ -124,7 +124,8 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   into immutable visual lines. ASS receives one synchronized event per line,
   positioned around the native margin anchor or explicit PlayRes coordinate;
   `backdrop=box` receives one lower-layer vector drawing for the measured block.
-  `auto` keeps the historical single dialogue event and native style box.
+  `auto` keeps the historical single dialogue event for one-line cues; a
+  multi-line box uses positioned text lines and one shared vector rectangle.
 - Preview models one frame of that sequence: it keeps only the first lexical
   group that fits the resolved width and line capacity, omits the groups that
   would appear in later cues, and prevents libass from wrapping that first
@@ -188,9 +189,9 @@ The JSON artifact has this high-level shape:
         "font_size": "4%",
         "letter_spacing": "0px",
         "line_height": "auto",
-        "backdrop_size": "20px",
-        "word_backdrop_size": "20px",
-        "shadow_size": "4%",
+        "backdrop_size": "10px",
+        "word_backdrop_size": "10px",
+        "shadow_size": "0px",
         "margins": {
           "left": "18%",
           "right": "18%",
@@ -206,9 +207,9 @@ The JSON artifact has this high-level shape:
         "font_size": 77,
         "letter_spacing": 0,
         "line_height": 76.0,
-        "backdrop_size": 20,
-        "word_backdrop_size": 20,
-        "shadow_size": 3,
+        "backdrop_size": 10,
+        "word_backdrop_size": 10,
+        "shadow_size": 0,
         "margins": {
           "left": 194,
           "right": 194,
@@ -217,25 +218,25 @@ The JSON artifact has this high-level shape:
         },
         "max_width": 692,
         "max_height": 186,
-        "line_capacity": 1
+        "line_capacity": 2
       },
       "wrapping": {
         "available_width": 692,
         "available_height": 1862,
         "max_width": 692,
         "max_height": 186,
-        "width_budget": 649,
+        "width_budget": 672,
         "line_height": 76.0,
         "natural_line_height": 76.0,
         "resolved_line_height": 76.0,
         "ascent": 60.0,
         "descent": 16.0,
-        "vertical_decoration": 43,
-        "line_capacity": 1,
+        "vertical_decoration": 20,
+        "line_capacity": 2,
         "font_size": 77,
         "letter_spacing": 0,
-        "backdrop_size": 20,
-        "shadow_size": 3
+        "backdrop_size": 10,
+        "shadow_size": 0
       },
       "percentage_bases": {
         "font_size": "render-height",
@@ -400,11 +401,12 @@ for ordinary cues; timed highlight events override the normal and active
 colors explicitly. `OutlineColour` and
 `BackColour` both follow the one semantic backdrop color. Underline and
 strikeout remain disabled; base style scale stays at 100%, angle stays at zero,
-and the resolved semantic letter spacing is written to ASS `Spacing`. `auto` line height
-does not add generated tags. An explicit line height on a multi-line ordinary
-cue emits one event per visual line with trusted `\\an`/`\\pos` coordinates; the
-line positions use the natural first-line box and the requested baseline
-advance so the selected anchor remains fixed. Progressive word text may use
+and the resolved semantic letter spacing is written to ASS `Spacing`. `auto`
+line height does not add a custom baseline distance. A multi-line box or an
+explicit line height on a multi-line ordinary cue emits one event per visual
+line with trusted `\\an`/`\\pos` coordinates; the line positions use the natural
+first-line box and the requested baseline advance so the selected anchor
+remains fixed. Progressive word text may use
 synchronized interval events per visual line so word activation remains
 cue-relative. For `backdrop=box`, the text style is temporarily neutralized and
 one lower-layer `\\p1` rectangle uses the full measured block bounds, padding,

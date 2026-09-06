@@ -54,8 +54,8 @@ EXPECTED_TEMPLATES = {
         TextCase.ORIGINAL,
         SubtitleBackdrop.BOX,
         "#00000099",
-        "20px",
-        "4%",
+        "10px",
+        "0px",
         "0px",
         SubtitlePosition.BOTTOM_CENTER,
         "18%",
@@ -624,7 +624,7 @@ def test_template_has_exact_documented_baseline_and_bundled_face(name: str):
         else (
             "none",
             "#111827E6",
-            "20px" if name == "default" else "12%",
+            "10px" if name == "default" else "12%",
         )
     )
     assert (

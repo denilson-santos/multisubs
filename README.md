@@ -136,7 +136,7 @@ The exact template baselines are:
 
 | Template | Size and text | Backdrop | Native layout | Animation |
 | --- | --- | --- | --- | --- |
-| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `20px`, shadow `4%` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
+| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `10px`, shadow `0px` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
 | `clean-outline` | `4%`, `#FFFFFF`, original, `100%` | outline `#000000CC`, `5%`, shadow `0px` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`14%` | none |
 | `social-bold` | `5%`, `#FFFFFF`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `3%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | none |
 | `classic-yellow` | `4.2%`, `#FFD54F`, original, `100%` | outline `#000000E6`, `6%`, shadow `3%` | bottom-center; L/R `12%`, B `3%`, W/H `100%`/`16%` | none |
@@ -397,12 +397,15 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | `--text-case MODE` | `original` | `original`, `uppercase`, or `lowercase`. |
 | `--backdrop KIND` | `box` | `none`, `outline`, or `box`. |
 | `--backdrop-color COLOR` | `#00000099` | Outline, box, and shadow color. |
-| `--backdrop-size LENGTH` | `20px` | Outline thickness or box padding. |
+| `--backdrop-size LENGTH` | `10px` | Outline thickness or box padding. |
 | `--word-backdrop KIND` | `none` | Timed word decoration: `none`, `outline`, or `box`. |
 | `--word-backdrop-color COLOR` | `#111827E6` | Timed word-decoration color. |
-| `--word-backdrop-size LENGTH` | `20px` | Outline thickness or padding for each timed word decoration. |
-| `--shadow-size LENGTH` | `4%` | Shadow size relative to the resolved font size or in pixels. |
+| `--word-backdrop-size LENGTH` | `10px` | Outline thickness or padding for each timed word decoration. |
+| `--shadow-size LENGTH` | `0px` | Shadow size relative to the resolved font size or in pixels. |
 | `--fonts-dir DIR` | — | Additional `.ttf`, `.otf`, or `.ttc` fonts for this run. |
+
+With `--backdrop box`, a multi-line cue uses one continuous box around the
+complete text block instead of drawing a separate box for each line.
 
 Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
 `semi-bold`, `bold`, `extra-bold`, and `black`. Their numeric equivalents are

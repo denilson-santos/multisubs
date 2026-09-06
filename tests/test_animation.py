@@ -1049,6 +1049,7 @@ def test_positioned_words_follow_the_cue_global_scale_origin(tmp_path: Path):
 def test_animated_ass_keeps_transcript_content_escaped(tmp_path: Path, text: str):
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         animation_values={"cue_text_entrance": "pop", "cue_text_exit": "fade"},
     )
     path = tmp_path / "escaped.ass"
