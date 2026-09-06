@@ -280,16 +280,23 @@ def test_fragmented_words_preserve_unfragmented_libass_spacing(tmp_path: Path):
     def yellow_geometry(path: Path) -> tuple[int, int, int]:
         with Image.open(path) as image:
             rgb = image.convert("RGB")
+
+            def is_yellow(x: int, y: int) -> bool:
+                pixel = rgb.getpixel((x, y))
+                return (
+                    isinstance(pixel, tuple)
+                    and len(pixel) >= 3
+                    and pixel[0] > 150
+                    and pixel[1] > 100
+                    and pixel[2] < 100
+                )
+
             columns = sorted(
                 {
                     x
                     for y in range(rgb.height)
                     for x in range(rgb.width)
-                    if (
-                        (pixel := rgb.getpixel((x, y)))[0] > 150
-                        and pixel[1] > 100
-                        and pixel[2] < 100
-                    )
+                    if is_yellow(x, y)
                 }
             )
         assert columns
