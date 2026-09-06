@@ -1,6 +1,6 @@
-# Cue animations and animated templates
+# Independent subtitle element animations
 
-Status: Planned
+Status: In review
 
 Depends on:
 
@@ -9,470 +9,441 @@ Depends on:
 
 ## Objective
 
-Add a bounded subtitle-animation system with independently selectable cue
-entrance, cue exit, and word animation; migrate karaoke into that unified
-model; and add five useful templates that exercise motion without making it
-mandatory.
+Give cue text, cue backdrop, word text, and word backdrop independent entrance,
+emphasis, and exit effects. Separate decoration activation, word timing mode,
+and effect speed so users can enable a word box with one style option and
+customize each element without affecting another.
 
-This increment intentionally breaks the karaoke-specific CLI and retained
-rendering-metadata contract. Consistency takes priority over aliases: the old
-karaoke options are removed, and the next release after this plan must be a
-major SemVer release.
+This revision incorporates the accepted element, mode, and duration decisions
+into the existing implementation on `feat/subtitle-animations`. The earlier
+six-phase implementation is a tested foundation, not completion of this
+revised contract. The implementation and verification are complete; authorized
+Git delivery now moves the completed branch through review.
 
 ## Scope
 
 Included:
 
-- Add cue entrance types `none`, `fade`, `slide-up`, `slide-down`,
-  `slide-left`, `slide-right`, `pop`, and `zoom`.
-- Add cue exit types `none`, `fade`, `slide-up`, `slide-down`, `slide-left`,
-  `slide-right`, and `zoom`.
-- Represent karaoke as word animation type `karaoke`, alongside `none`.
-- Expose separate semantic flags for cue entrance, cue exit, word animation,
-  word mode, and word highlight color.
-- Remove `--karaoke`, `--no-karaoke`, `--karaoke-mode`, and
-  `--karaoke-highlight-color` without compatibility aliases.
-- Let every animation be selected manually without requiring a template.
-- Compile cue-relative fade, motion, and scale through trusted ASS tags while
-  preserving escaped transcript text.
-- Keep animation continuous across word intervals, explicit line-height
-  events, multiple visual lines, and shared vector backdrops.
-- Keep preview as one static PNG: cue animation at its stable final state and
-  word animation in its documented representative state.
-- Add `cinematic-fade`, `impact-yellow`, `lower-third-slide`, `soft-zoom`, and
-  `word-focus` using only bundled fonts.
-- Replace retained rendering metadata with a versioned unified `animation`
-  branch.
+- Four independently configured tracks: `cue.text`, `cue.backdrop`,
+  `word.text`, and `word.backdrop`, each with three phases.
+- `style.word_backdrop.type` with `none`, `box`, and `outline`; default
+  `none`. Appearance enables a decoration and chooses its shape.
+- Separate `mode` in each word track: `active-word` or `progressive`.
+  The word backdrop defaults to active-word, even with emphasis none.
+- Optional per-phase `duration_ms` in internal templates and public
+  unit-bearing duration overrides.
+- Text `highlight` emphasis, replacing karaoke-specific effect naming;
+  backdrop timing does not require highlight emphasis.
+- Word `float` and smooth `breathe` emphasis, alongside pulse and bounce.
+- Independent cue and word decoration layers, static PNG preview,
+  lossless aligned-word fallback, and reproducible rendering metadata.
+- Migrate all thirteen built-in templates and the current public CLI to the
+  element hierarchy, preserving the no-option default presentation.
 
 Excluded:
 
-- User-authored template JSON or animation files.
-- Raw ASS tags, arbitrary expressions, custom easing curves, animation chains,
-  per-frame rendering, or executable hooks.
-- Public duration, distance, scale, overshoot, or easing tuning in the first
-  release.
-- Per-line, per-glyph, bounce, shake, typewriter, rotation, blur, color-cycle,
-  or backdrop-only animation.
-- Audio-reactive or model-generated motion.
-- Video/GIF preview or simulated timing inside the PNG preview.
-- A compatibility period for removed karaoke flags or retained-JSON aliases.
+- `visibility`, `target`, `both`, aggregate presets, `highlight-word`,
+  `highlight-progressive`, and `box` as an animation type.
+- Lists of simultaneous emphasis effects on a single element.
+- User-authored template files, raw ASS input, arbitrary easing, public travel
+  distance or scale controls, rotations, blur, or frame-by-frame event output.
+- Video/GIF previews, model-generated effects, or translated word animation.
+- New font downloads or unrelated pipeline/output-lifecycle changes.
 
-## Decisions and constraints
+## Current implementation and remaining work
 
-### Canonical animation model
+Already present in the local branch:
 
-Templates and the resolved runtime use the same semantic hierarchy:
+- Typed cue/word entrance, emphasis, exit, and timing normalization.
+- Measured word placement and native ASS vector word boxes.
+- Active-word/progressive boxes, a static representative preview, and
+  thirteen templates with packaged fonts.
+- The cue-backdrop top-left vector anchor correction.
+- Baseline verification: 683 hermetic tests and 49 integration tests passed,
+  along with Ruff, Pyright, compileall, a clean build, and package checks.
+
+Those results apply to the previous contract. The branch still uses shared
+cue/word phases, `box` emphasis, and fixed public durations. The tasks below
+must be completed and verified for the new contract; do not report the
+baseline counts as verification of element independence or duration overrides.
+
+## Canonical internal template
+
+Use internal resource schema version 4. This version is independent of the
+retained transcription JSON version. Every template explicitly declares all
+four tracks and every phase; only applicable phase durations may be omitted
+to inherit the effect defaults.
 
 ~~~json
 {
+  "schema_version": 4,
+  "name": "word-focus",
+  "description": "Active yellow word decoration with independent text and backdrop effects.",
+  "style": {
+    "typography": {
+      "font_family": "Atkinson Hyperlegible Next",
+      "font_weight": "bold",
+      "font_size": "4.5%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#FFFFFF",
+      "highlight_color": "#111827"
+    },
+    "backdrop": {
+      "type": "box",
+      "color": "#111827D9",
+      "size": "8%"
+    },
+    "word_backdrop": {
+      "type": "box",
+      "color": "#FFD54F",
+      "size": "12%"
+    },
+    "shadow": {
+      "size": "0px"
+    },
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "top": "0%",
+      "bottom": "3%"
+    },
+    "max_width": "100%",
+    "max_height": "18%"
+  },
   "animation": {
     "cue": {
-      "entrance": {
-        "type": "pop",
-        "duration_ms": 220
+      "text": {
+        "entrance": {"type": "fade", "duration_ms": 160},
+        "emphasis": {"type": "none"},
+        "exit": {"type": "fade", "duration_ms": 120}
       },
-      "exit": {
-        "type": "fade",
-        "duration_ms": 100
+      "backdrop": {
+        "entrance": {"type": "fade", "duration_ms": 160},
+        "emphasis": {"type": "none"},
+        "exit": {"type": "fade", "duration_ms": 120}
       }
     },
     "word": {
-      "type": "karaoke",
-      "mode": "active-word"
-    }
-  }
-}
-~~~
-
-There is no `cue.preset`. Entrance and exit are independent phases, and word
-animation follows the same `type` convention. A `none` phase contains only its
-type. Type-specific values such as duration, distance, scale, and overshoot are
-validated only for the types that use them.
-
-Karaoke normal and highlight colors remain style values under
-`style.typography.color` and `style.typography.highlight_color`. The animation
-branch identifies behavior and mode; it does not duplicate palette ownership.
-Shadow remains a sibling of typography and backdrop under `style`.
-
-### Public animation contract
-
-Expose these exact options:
-
-~~~text
---animation-entrance {none,fade,slide-up,slide-down,slide-left,slide-right,pop,zoom}
---animation-exit {none,fade,slide-up,slide-down,slide-left,slide-right,zoom}
---animation-word {none,karaoke}
---animation-word-mode {progressive,active-word}
---animation-word-highlight-color COLOR
-~~~
-
-Configuration composition is leaf-oriented:
-
-1. Resolve the selected template, or `default` when omitted.
-2. Apply each explicitly supplied animation flag only to its corresponding
-   phase or field.
-3. Expand selected public types into their fixed typed defaults.
-4. Validate the complete style, layout, and animation configuration once.
-
-Omitted flags inherit the template. Explicit `none` disables only its scope:
-entrance, exit, or word animation. For example, disabling the word animation
-on `word-focus` retains its cue fade; disabling its entrance and exit retains
-active-word highlighting.
-
-`--animation-word-mode` and `--animation-word-highlight-color` are valid only
-when the final word animation type is `karaoke`. The highlight option updates
-`style.typography.highlight_color` through the normal color validator. Karaoke
-translation restrictions apply to the final composed word animation. Cue
-animation remains valid with transcription or translation.
-
-The four removed karaoke options must fail as unknown arguments. README shows
-only the new interface. Release notes or a changelog record this migration:
-
-| Removed option | Replacement |
-| --- | --- |
-| `--karaoke` | `--animation-word karaoke` |
-| `--no-karaoke` | `--animation-word none` |
-| `--karaoke-mode MODE` | `--animation-word-mode MODE` |
-| `--karaoke-highlight-color COLOR` | `--animation-word-highlight-color COLOR` |
-
-### Fixed animation type defaults
-
-Public flags select semantic types, not renderer syntax or tuning knobs. Each
-type expands once at the configuration boundary into an immutable definition.
-
-Entrance defaults:
-
-| Type | Duration | Fixed behavior |
-| --- | ---: | --- |
-| `none` | 0 ms | Existing stable state. |
-| `fade` | 160 ms | Opacity transitions to the resolved stable value. |
-| `slide-up` | 220 ms | Starts `75%` of resolved font size below the anchor and moves upward. |
-| `slide-down` | 220 ms | Starts `75%` above the anchor and moves downward. |
-| `slide-left` | 220 ms | Starts `75%` to the right and moves left. |
-| `slide-right` | 220 ms | Starts `75%` to the left and moves right. |
-| `pop` | 220 ms | Scales from `76%` to `112%` by 130 ms, then settles at `100%`. |
-| `zoom` | 220 ms | Scales from `88%` to `100%`. |
-
-Exit defaults:
-
-| Type | Duration | Fixed behavior |
-| --- | ---: | --- |
-| `none` | 0 ms | Remains in the stable state through cue end. |
-| `fade` | 120 ms | Opacity transitions from the stable value to transparent. |
-| `slide-up` | 180 ms | Moves `75%` of resolved font size upward. |
-| `slide-down` | 180 ms | Moves `75%` downward. |
-| `slide-left` | 180 ms | Moves `75%` left. |
-| `slide-right` | 180 ms | Moves `75%` right. |
-| `zoom` | 160 ms | Scales from `100%` to `88%` while fading out. |
-
-Slide names describe visible travel direction. Slide motion is linear because
-ASS `\move` is constant-speed. Pop and zoom transform scale around the resolved
-anchor rather than changing font size and causing reflow. Pop is entrance-only;
-an exit pop is excluded until it has a distinct, useful semantic definition.
-
-Phase time is relative to the logical cue after ASS timestamp quantization. If
-entrance plus exit exceeds a short cue, reduce both nonzero durations
-proportionally with deterministic integer rounding. Never extend, shift, or
-overlap cue timestamps. A zero-length quantized cue renders the stable final
-state.
-
-Maximum width and height validate the stable final layout. Temporary entrance
-offsets, exit offsets, and pop overshoot may clip at a canvas edge but must not
-move, clamp, resize, or rewrap the stable caption.
-
-### Internal event and ASS model
-
-Keep typed phase expansion and cue-relative state calculation in a focused
-module such as `multisubs/animation.py`. It performs no transcript escaping,
-file I/O, package loading, FFmpeg execution, or model imports. `ass.py` remains
-the sole boundary that emits trusted override tags.
-
-Refactor direct string emission through a private typed dialogue-event model.
-Each derived event retains:
-
-- logical cue start and end;
-- its own event start and end;
-- final anchor and PlayRes position;
-- visual-line and backdrop-layer identity;
-- independently escaped text or trusted vector drawing content;
-- word-animation state, when active.
-
-Animation state is sampled from the logical cue timeline, never restarted at a
-derived event boundary. This applies to active-word intervals, progressive
-karaoke intervals, explicit-line-height lines, and shared box backdrops.
-Adjacent slices must not flicker, jump, overlap glyphs, or reset the backdrop.
-
-Generated tags must obey these constraints:
-
-- emit at most one `\pos` or `\move` positioning tag per line;
-- use `\move` for directional motion and the resolved anchor as the stable
-  destination or origin;
-- use `\fscx` and `\fscy` only inside trusted `\t` transforms for pop/zoom;
-- compose fade alpha with typography, highlight, backdrop, shadow, and global
-  opacity exactly once;
-- apply the same cue-relative movement, scale, and opacity state to every
-  visual line and its shared vector box;
-- escape transcript fragments before assembling trusted overrides.
-
-Event expansion remains bounded by existing word intervals, visual-line count,
-and a constant number of phase boundaries. Do not generate frame-by-frame ASS
-Dialogue events. Verify behavior against the supported FFmpeg/libass boundary
-and the documented [ASS animation tags](https://aegisub.org/docs/latest/ass_tags/).
-
-### Static preview contract
-
-`--preview-layout` continues to create one collision-safe PNG without
-transcription. It suppresses entrance and exit motion and renders the stable
-final opacity, scale, position, wrapping, and backdrop. Guides describe only
-the final layout envelope and anchor.
-
-Word animation keeps the existing representative image behavior:
-
-- progressive karaoke highlights the first half of the displayed cue,
-  rounding up;
-- active-word karaoke highlights the first displayed word;
-- `none` shows no highlighted word.
-
-The command output or preview metadata should identify the selected entrance,
-exit, and word animation so users can verify template composition. The PNG is
-not evidence of animation timing.
-
-### Template catalog extension
-
-The eight existing templates preserve their current resolved visuals. Their
-cue entrance and exit remain `none`; `neon-karaoke` keeps progressive word
-animation through the new internal path. Add these exact baselines with bundled
-fonts:
-
-| Template | Style | Layout | Animation |
-| --- | --- | --- | --- |
-| `cinematic-fade` | Lora SemiBold italic, `4.2%`, `#FFF4E6`, `95%`; outline `#111111D9` at `4%`, shadow `2%` | bottom-center; L/R `15%`, T `0%`, B `3%`, W/H `100%`/`16%` | entrance fade 220 ms; exit fade 180 ms; word none |
-| `impact-yellow` | Montserrat Black uppercase, `5.2%`, `#FFD60A`, `100%`; outline `#000000E6` at `8%`, shadow `4%` | bottom-center; L/R `8%`, T `0%`, B `3%`, W/H `100%`/`22%` | entrance pop 220 ms; exit fade 100 ms; word none |
-| `lower-third-slide` | Oswald SemiBold uppercase, `4.1%`, `#FFFFFF`, `100%`; box `#0B1F3AE6` at `7%`, shadow `0px` | bottom-left; L `5%`, R `38%`, T `0%`, B `3%`, W/H `100%`/`16%` | entrance slide-right 220 ms at `75%`; exit fade 100 ms; word none |
-| `soft-zoom` | Inter Medium, `4.3%`, `#F8FAFC`, `100%`; outline `#111827CC` at `4%`, shadow `2%` | bottom-center; L/R `14%`, T `0%`, B `3%`, W/H `100%`/`16%` | entrance zoom 220 ms from `88%`; exit fade 120 ms; word none |
-| `word-focus` | Atkinson Hyperlegible Next Bold, `4.5%`, `#FFFFFF`, highlight `#FFD54F`, `100%`; box `#111827D9` at `8%`, shadow `0px` | bottom-center; L/R `10%`, T `0%`, B `3%`, W/H `100%`/`18%` | entrance fade 160 ms; exit fade 120 ms; active-word karaoke |
-
-Unlisted typography uses `0px` letter spacing, `auto` line height, upright text
-unless stated italic, and original case unless stated uppercase. Descriptions
-must identify intended use, animation behavior, and whether aligned-word timing
-is required. `word-focus` inherits the existing karaoke fallback and
-translation restrictions.
-
-## Public interface and contracts
-
-Examples:
-
-~~~text
-multisubs -i video.mp4 --animation-entrance slide-up
-multisubs -i video.mp4 --animation-exit fade
-multisubs -i video.mp4 --animation-word karaoke --animation-word-mode active-word
-multisubs -i video.mp4 --template cinematic-fade
-multisubs -i video.mp4 --template impact-yellow --animation-entrance none --animation-exit none
-multisubs -i video.mp4 --template word-focus --animation-word none
-~~~
-
-`--template` expands from eight to thirteen stable names. Omitted template and
-explicit `default` stay visually static. Existing names retain their resolved
-visual behavior, but scripts using removed karaoke flags must adopt the new
-animation names.
-
-SRT text and timing are unchanged and contain no generated animation markup.
-ASS remains the authoritative animated artifact. Output paths, collision-safe
-naming, artifact retention/cleanup, source transcript text, aligned words, cue
-IDs and times, model selection, and FFmpeg video/audio policy are unchanged.
-
-Retained transcription JSON advances from schema version 2 to 3. Replace
-`metadata.rendering.effects.karaoke` with one resolved structure:
-
-~~~json
-{
-  "schema_version": 3,
-  "metadata": {
-    "rendering": {
-      "animation": {
-        "cue": {
-          "entrance": {
-            "type": "fade",
-            "duration_ms": 160
-          },
-          "exit": {
-            "type": "fade",
-            "duration_ms": 120
-          },
-          "shortened_cues": 0
-        },
-        "word": {
-          "type": "karaoke",
-          "mode": "active-word",
-          "normal_color": "#FFFFFF",
-          "highlight_color": "#FFD54F",
-          "fallback_cues": 0
-        }
+      "text": {
+        "mode": "active-word",
+        "entrance": {"type": "pop", "duration_ms": 160},
+        "emphasis": {"type": "highlight"},
+        "exit": {"type": "none"}
+      },
+      "backdrop": {
+        "mode": "active-word",
+        "entrance": {"type": "fade", "duration_ms": 100},
+        "emphasis": {"type": "none"},
+        "exit": {"type": "fade", "duration_ms": 100}
       }
     }
   }
 }
 ~~~
 
-For type `none`, omit fields that do not apply rather than inventing null
-values. Diagnostics contain resolved semantic values and counts, never raw ASS
-tags or internal template mappings. Do not retain `effects.karaoke` or another
-compatibility alias.
+The paths identify the elements. No separate target selector is needed.
+Typography retains normal and highlight text colors. Word backdrop retains
+decoration color and size, where size means box padding or glyph-outline
+thickness, resolved from font size for percentages.
 
-## Implementation
+The cue backdrop follows the cue interval and needs no mode. The word backdrop
+is disabled only by its style type. Setting that type to box or outline
+activates the selected word timing policy, even when all its phases are none.
+Without any overrides, that policy is active-word. Never display all word
+decorations merely because emphasis is none.
 
-- Extend Plan 2 models with typed entrance, exit, and word-animation variants;
-  remove any remaining generic effect or cue-preset ownership.
-- Add fixed type expansion, phase validation, short-cue normalization, and
-  cue-relative sampling in `multisubs/animation.py`.
-- Replace the four karaoke flags with the five animation flags in
-  `multisubs/cli.py`, preserving explicit-presence tracking and early errors.
-- Keep `multisubs/config.py` authoritative for semantic defaults and final
-  cross-field validation; never accept raw ASS syntax.
-- Refactor `multisubs/ass.py` through the typed event representation and compile
-  cue-global fade, motion, scale, and word state around escaped fragments.
-- Synchronize phase state across ordinary cues, word-animation intervals,
-  explicit line height, multiple lines, and shared vector boxes.
-- Suppress cue motion in preview while retaining stable style/layout and the
-  representative word highlight.
-- Add the five resources to the deterministic catalog index and package audits.
-- Migrate retained rendering metadata to schema version 3 with no legacy
-  karaoke alias.
+Inactive backdrop tracks may retain valid effects, modes, and durations.
+Their configuration is validated but they generate no events and do not by
+themselves require alignment or block translation.
+
+## Timing and phase semantics
+
+### Word intervals
+
+Clip aligned starts/ends to the logical cue and retain centisecond
+quantization. Cap overlapping active-word ends at the next aligned start;
+do not invent nonzero durations for empty aligned intervals.
+
+For word backdrop:
+
+| Mode | Entrance starts | Exit ends | With all phases none |
+| --- | --- | --- | --- |
+| active-word | Effective word start | Effective word end | Decoration appears only during that word; pauses remain undecorated. |
+| progressive | Effective word start | Cue end | Decorations accumulate and disappear at cue end. |
+
+A word from 500 to 1000 ms in a cue ending at 3000 ms, with 100 ms entrance
+and exit fades, uses 500–600/900–1000 ms in active-word and
+500–600/2900–3000 ms in progressive. A fade entrance does not automatically
+supply an exit fade; exit none removes the decoration immediately at its
+mode-defined end.
+
+Text mode controls highlight persistence and the interval for word-local
+motion. Preserve the readable baseline: entrance none leaves future words
+visible normally; emphasis none does not recolor them; exit none leaves text
+visible after its active interval. A selected entrance hides text until word
+start and a selected exit removes it at the selected interval end. This
+distinguishes always-readable text from the explicitly enabled timed decoration.
+
+Use active-word as the default on both word tracks. `neon-karaoke` explicitly
+selects progressive on word.text. Modes are independently overridable.
+
+### Effect types
+
+| Scope/element | Entrance | Emphasis | Exit |
+| --- | --- | --- | --- |
+| cue.text and cue.backdrop | none, fade, slide-up/down/left/right, pop, zoom | none, pulse, bounce, float, shake, flash, breathe | none, fade, slide-up/down/left/right, zoom |
+| word.text | none, fade, slide-up/down, pop, zoom | none, highlight, pulse, bounce, float, breathe | none, fade, slide-up/down, zoom |
+| word.backdrop | none, fade, slide-up/down, pop, zoom | none, pulse, bounce, float, breathe | none, fade, slide-up/down, zoom |
+
+Highlight changes text color according to word.text.mode. It is not a motion
+cycle and does not accept duration. Word-backdrop visibility is already owned
+by its style activation and mode, so it needs no highlight effect.
+
+Fade is an entrance/exit transition; breathe is a repeating smooth opacity
+change during emphasis. Pop remains entrance-only. Reject unsupported
+phase/type combinations with actionable validation errors.
+
+Retain current effect geometry in config.py: cue slides 75% of font size,
+word slides 35%, pop 76% → 112% → 100%, zoom 88% → 100% on entrance,
+pulse peak 106% for cues and 108% for words, bounce distance 20%, float 12%.
+Scale pop peak timing by its normalized duration, rather than retaining an
+absolute peak timestamp when the user changes speed.
+
+### Durations and precedence
+
+- CLI accepts explicit positive durations such as `150ms` or `0.15s`.
+  Normalize to integer milliseconds with Decimal; require whole-millisecond
+  precision and a 10–5000 ms range. Reject bare numbers, zero, negatives,
+  non-finite values, booleans, and unsupported units.
+- Templates accept optional integer `duration_ms` in the same range.
+- None and highlight accept no explicit duration. Resolved internal none
+  phases may store 0 ms, but resource JSON must omit that field.
+- Precedence is explicit CLI duration, then applicable template duration,
+  then the selected effect's config.py default.
+- A duration-only CLI override customizes the inherited effect.
+- Changing an effect type uses that type's default duration unless CLI also
+  supplies one. A template duration belongs to the template's selected effect,
+  not an unrelated replacement effect.
+- Explicit none discards an inherited duration; explicit none plus an explicit
+  duration is an error. Unsupported duration values are still errors on a
+  disabled decoration track.
+
+Entrance/exit duration is the total transition time. Entrance and exit take
+priority; shorten both proportionally when their sum exceeds the available
+interval. Never extend cue/word timestamps. Preview does not simulate these
+transitions.
+
+For repeating emphasis such as pulse, float, and breathe, duration is one
+cycle. Repeat complete cycles within the remaining interval and normalize a
+last partial cycle to finish at the stable state before exit. Bounce, shake,
+and flash also use deterministic cycles. If no stable interval remains, omit
+emphasis motion. Highlight follows word timing and has no cycle duration.
+
+Existing defaults remain the baseline: cue entrance fade 160 ms and
+slide/pop/zoom 220 ms; cue exit fade 120 ms, slides 180 ms, zoom 160 ms;
+word entrance fade 100 ms, slides/zoom 140 ms, pop 160 ms; word exit fade/zoom
+100 ms and slides 120 ms. Cue emphasis uses pulse/bounce 600 ms, float
+900 ms, shake 400 ms, flash 500 ms. Word pulse/bounce use 240 ms.
+New suggested defaults: word float 600 ms, cue breathe 1200 ms, word breathe
+600 ms, with breathe reducing opacity to 65% and smoothly returning.
+These new numeric choices are implementation defaults, not externally sourced
+product requirements; validate their representative renders.
+
+Cycle event count depends on interval length and configured cycle duration.
+Replace the previous constant-cycle assertion with a tested bound proportional
+to words, visual lines, and quantized cycle boundaries. Never emit per-frame
+events. The 10 ms lower bound and cue-duration limits bound normal expansion;
+reject pathological external inputs with an actionable event-budget error
+rather than silently dropping effects.
+
+## CLI contract
+
+Expose the following pattern for each of the four tracks:
+
+~~~text
+--animation-cue-text-entrance TYPE
+--animation-cue-text-entrance-duration DURATION
+--animation-cue-text-emphasis TYPE
+--animation-cue-text-emphasis-duration DURATION
+--animation-cue-text-exit TYPE
+--animation-cue-text-exit-duration DURATION
+~~~
+
+Replace `cue-text` with `cue-backdrop`, `word-text`, and `word-backdrop`
+for their independently validated phase options. Also expose:
+
+~~~text
+--animation-word-text-mode {active-word,progressive}
+--animation-word-backdrop-mode {active-word,progressive}
+--animation-word-text-highlight-color COLOR
+--word-backdrop {none,outline,box}
+--word-backdrop-color COLOR
+--word-backdrop-size LENGTH
+~~~
+
+Keep cue `--backdrop`, color, and size as style controls. Word-backdrop
+defaults are none, #111827E6, and 12%. Explicit mode or phase settings do not
+implicitly enable a decoration.
+
+Examples:
+
+~~~bash
+multisubs -i video.mp4 --word-backdrop box
+multisubs -i video.mp4 --word-backdrop box --animation-word-backdrop-mode progressive
+multisubs -i video.mp4 --word-backdrop box --animation-word-text-entrance pop --animation-word-backdrop-entrance fade --animation-word-backdrop-entrance-duration 150ms
+multisubs -i video.mp4 --word-backdrop box --animation-word-backdrop-emphasis pulse --animation-word-backdrop-emphasis-duration 0.4s
+multisubs -i video.mp4 --template neon-karaoke --animation-word-text-emphasis none
+~~~
+
+Reject removed karaoke options and intermediate shared-track animation options
+without aliases or argparse prefix abbreviations. Put their exact replacement
+mapping in PR/release notes; README documents only the final supported options.
+
+## Rendering and module ownership
+
+- models.py: immutable four-track configuration, typed phases, independent
+  word modes, word backdrop kind, and effective-enabled predicates.
+- config.py: scalar defaults, duration parsing, type expansion, exact override
+  precedence, and cross-field validation. No renderer code in CLI/templates.
+- templates.py: strict schema-4 decoding, optional applicable duration fields,
+  exact catalog validation, and semantic compilation through config.py.
+- animation.py: mode-defined intervals, cycle boundaries, phase fitting, and
+  sampling from logical timelines. No I/O or transcript parsing.
+- layout.py and text_measurement.py: shared measured fragment positions and
+  decoration bounds; account for enabled word decorations in envelope checks.
+- ass.py: independent event track identity, safe tags, palette composition,
+  vector boxes, glyph outlines, and correct layer ownership.
+- preview.py: independently selected representative word.text/word.backdrop
+  states, suppressing all movement and transitions.
+- transcriber.py: effective alignment requirements and resolved diagnostics.
+- cli.py: explicit flag presence and user-facing errors before probing/loading.
+
+Cue text state composes with word text state. Cue backdrop has its own cue
+timeline, and word backdrop has its own selected word interval. Do not
+implicitly apply text movement or opacity to either decoration. Independent
+effects may intentionally separate elements while moving; their stable
+geometry must remain aligned. Migrate formerly shared cue effects onto both
+cue tracks where the template previously moved both elements.
+
+Use layer 0 for cue decoration, layer 1 for word decoration, and layer 2 for
+visible text. Vector boxes use local top-left drawing coordinates. Outline
+means the glyph contour, not the border of a rectangular box. Render outline
+layers with transparent glyph interiors so text is drawn only once.
+
+When cue and word outlines coexist, the active word outline replaces the cue
+outline for that word; restore it when the word decoration becomes inactive.
+Test this with alpha and different animations to avoid doubled outlines or
+glyph ghosts. Shadow keeps its existing cue-decoration ownership.
+
+Every event contains at most one position/move tag, retains the source logical
+timeline, and samples the appropriate track without restarting at word, line,
+or cycle boundaries. Maintain stable wrapping and exact escaping.
+
+## Preview, fallback, and retained output
+
+Preview remains one PNG. Suppress all track motion and transitions, using
+stable geometry and effective opacity. Select the first displayed word for
+active-word, or the first half rounded up for progressive, independently for
+text highlight and enabled word decoration. Disabled decoration never appears.
+
+Any enabled word decoration requires alignment even when all of its phases
+are none. Disabled decoration with stored effects requires none. Mode alone
+on otherwise static word text does not require alignment. Reject translation
+only when an effective word behavior requires timestamps.
+
+Incomplete or lossy word mappings suppress word-local behavior for the cue and
+render its normal text/cue decoration with cue animations. Keep one aggregate
+warning without transcript contents and accurate fallback counts.
+
+Keep the retained transcription schema at 3 for this unreleased Plan 3:
+version 3 is already the planned public replacement for released schema 2.
+Record the four resolved tracks under metadata.rendering.animation, with
+word modes, configured phase durations, effective activation, and per-track
+shortening diagnostics. Record canonical highlight and decoration colors in
+rendering style/palette diagnostics. No raw ASS strings, local font paths,
+template internals, or legacy effects.karaoke aliases.
+
+Internal template version 4 does not imply retained JSON version 4. Re-evaluate
+only if repository evidence shows the intermediate retained schema 3 has
+already been published before delivery.
+
+## Template migration
+
+Keep all thirteen names and current font/layout baselines.
+
+- default and the other static templates: all phases none, word backdrop none,
+  word modes active-word.
+- neon-karaoke: word.text highlight with progressive mode, word backdrop none.
+- cinematic-fade: preserve its 220/180 ms fades on cue text and cue backdrop.
+- impact-yellow: preserve cue pop/fade and word.text bounce.
+- lower-third-slide: preserve cue slide-right/fade on both cue tracks.
+- soft-zoom: preserve cue zoom/float/fade with the new documented cycle semantics.
+- word-focus: use the canonical example above: active word box, text pop,
+  independent text highlight and word-box fades.
+
+Test exact default equivalence against config.py and all resource inventory
+rules. Retain previous static reference renders; capture new references only
+for intentionally revised animated behavior.
 
 ## Implementation tasks
 
-- [ ] Add typed cue entrance, cue exit, and word-animation variants.
-- [ ] Add fixed per-type defaults, semantic validation, and deterministic
-  short-cue normalization.
-- [ ] Add the five new animation flags and remove all four karaoke flags.
-- [ ] Preserve template inheritance and field-level explicit overrides,
-  including independent `none` values.
-- [ ] Introduce the private typed ASS dialogue-event representation.
-- [ ] Compile fade, four slide directions, pop, and zoom through trusted tags.
-- [ ] Keep cue state continuous across word/line slices and vector backdrops.
-- [ ] Preserve static ASS output when all resolved animation types are `none`.
-- [ ] Keep preview as a final-state PNG with representative word highlighting.
-- [ ] Add five exact animated template resources and stable CLI choices.
-- [ ] Migrate retained JSON to schema version 3 and remove legacy effect keys.
-- [ ] Add unit, regression, property-oriented, integration, and visual tests.
-- [ ] Update README.md, docs/prd.md, docs/architecture.md, applicable
-  conventions, release notes, and plan lifecycle status.
+The earlier implementation remains preserved as the foundation. The unchecked
+items below refer specifically to this revision:
 
-## Unit tests
+- [x] Add four-track models, typed word-backdrop kind, and mode ownership.
+- [x] Parse and validate public durations and per-effect inheritance.
+- [x] Replace shared CLI options with independent track options.
+- [x] Migrate the strict catalog and all thirteen resources to schema 4.
+- [x] Normalize independent mode intervals, proportional transitions, scaled
+  pop peaks, and bounded repeating emphasis cycles.
+- [x] Add word float and cue/word breathe.
+- [x] Render independent cue/text/word-decoration layers, including outlines.
+- [x] Preserve word-focus vector alignment and add regressions for distinct
+  text/backdrop effects, alpha, and outline replacement.
+- [x] Update preview for independent modes and disabled decorations.
+- [x] Update alignment/translation checks and per-track retained diagnostics.
+- [x] Update README, PRD, architecture, and conventions to the delivered contract.
+- [x] Run focused, hermetic, integration, and clean package verification.
+- [ ] During authorized Git delivery, prepare release notes, move the plan and
+  package to In review, and push before opening the draft PR.
 
-### Configuration and CLI
+## Verification and acceptance criteria
 
-- Omission inherits each template phase; explicit `none` disables only the
-  selected entrance, exit, or word branch.
-- Every accepted type expands to its exact immutable definition; unknown names
-  fail through argparse before probing or model imports.
-- The removed karaoke flags fail as unknown arguments and no hidden aliases
-  remain in help, parsing, config, or tests.
-- Word mode and highlight color reject a final word type other than `karaoke`.
-- Existing templates preserve exact style/layout/animation values; the five new
-  resources resolve their documented values and bundled font faces.
-- `word-focus --animation-word none` retains both fades and static values;
-  disabling both cue phases retains active-word karaoke.
-- Cue animation remains valid during translation when word animation is
-  `none`; karaoke keeps its early translation diagnostic.
+Configuration and CLI tests must prove independent overrides on all twelve
+phases, correct mode/default ownership, invalid duration/type errors,
+template/default precedence, and absence of legacy flag abbreviations.
 
-### Timing and state
+Timing tests must cover both modes, pauses, overlaps, zero-length words,
+one-centisecond intervals, short entrance/exit fitting, repeated cycles, and
+custom pop peak placement. Assert the 500–1000/3000 ms example numerically.
+Emphasis none must never disable an enabled word decoration.
 
-- Cover long, exact-boundary, shorter-than-entrance, shorter-than-exit,
-  shorter-than-total, one-centisecond, and zero-length quantized cues.
-- Normalized phases remain ordered, non-negative, deterministic, and inside the
-  cue without changing timestamps.
-- Slide coordinates are correct for four directions, nine anchors,
-  native/explicit positions, percentage/pixel layouts, and both orientations.
-- Pop reaches `112%` and settles to `100%`; zoom reaches its stable scale
-  without changing measured font size, wrapping, or final bounds.
-- Global opacity and RGBA component alpha compose exactly once in entrance,
-  stable, and exit states.
+ASS/libass tests must compare independent text pop/backdrop fade, independent
+cue effects, box and glyph-outline decoration, outline replacement, alpha,
+two-line cues, native and explicit anchors, 16:9 and 9:16, and mixed text and
+backdrop modes. Compare frames before/during/after aligned words and at cue end.
+No duplicate glyphs, restarted motion, invalid placements, or invented timing.
 
-### Serialization and retained data
+Preview tests must prove first-word/half-cue selection independently for the
+two word tracks without generating transition tags or importing model runtime.
 
-- Static output remains byte-for-byte equal for ordinary, explicit placement,
-  line-height, karaoke, and box cases when all cue phases are `none`.
-- Generated lines contain at most one positioning/movement tag and only trusted
-  transform fields.
-- Braces, backslashes, ASS-looking text, commas, newlines, Unicode, RTL,
-  combining marks, emoji, and CJK remain escaped data.
-- Word intervals do not restart cue phases or duplicate same-line glyphs.
-- Shared vector backdrops use the same cue-global phase and lower layer.
-- Event count has a tested bound based on visual lines, word intervals, and a
-  constant number of phase boundaries, never frames or cue duration.
-- SRT and JSON contain no generated ASS overrides.
-- JSON schema version 3 records exact resolved phase and word-animation data,
-  diagnostic counts, and no `effects.karaoke` key.
+Preserve SRT text/timestamps, JSON original transcription, artifact retention,
+collision behavior, font providers, and ffmpeg media selection. Verify
+configured durations remain reproducible while shortened intervals are
+diagnosed rather than silently changing the request.
 
-## Integration and manual verification
-
-- Render every entrance and exit type on controlled 1920x1080 and 1080x1920
-  fixtures; extract frames at cue start, entrance midpoint, stable state, exit
-  midpoint, and cue end.
-- Verify nine anchors, explicit coordinates, two-line explicit line height,
-  outline, shared vector box, no backdrop, opacity below 100%, and a short cue.
-- Combine pop/fade with progressive and active-word karaoke, including word
-  boundaries during both cue phases, and confirm motion/opacity never restart.
-- Preview all thirteen templates in 16:9 and 9:16; verify stable position,
-  scale, opacity, wrapping, font, backdrop, guides, and both representative
-  karaoke states.
-- Compare all eight existing templates with pre-feature visual references.
-- Attach representative frame sequences or short media to the pull request
-  without committing generated assets, transcripts, or source videos.
-
-## Documentation
-
-- Update README highlights, template gallery, exact baseline table, animation
-  recipes, command reference, preview explanation, generated-JSON summary, and
-  limitations with only the new interface.
-- Record the removed-to-new flag mapping and JSON schema change in release
-  notes or the project changelog, not as historical migration material in
-  README.
-- Update docs/prd.md requirements, exclusions, acceptance criteria, constraints,
-  and template inventory.
-- Update docs/architecture.md configuration composition, event model,
-  cue-global timeline, tag safety, preview state, and schema version 3.
-- Update docs/conventions.md with reusable animation composition,
-  cue-relative-timing, event-bound, and render-verification rules.
-- Do not document internal template JSON as a supported customization feature.
-
-## Commit and pull-request plan
-
-Suggested branch:
+Run focused tests as the implementation progresses, then:
 
 ~~~text
-feat/subtitle-animations
-~~~
-
-Suggested commits:
-
-1. `refactor: model subtitle dialogue events before serialization`
-   - Add the typed event model and preserve static ASS behavior.
-2. `feat: compile cue-relative subtitle animations`
-   - Add typed phases, fixed defaults, timing normalization, trusted ASS
-     compilation, and composition tests.
-3. `feat!: unify subtitle animation controls`
-   - Add the five animation flags, remove karaoke-specific flags, validate
-     composition, and migrate retained metadata to schema version 3.
-4. `feat: add animated subtitle templates`
-   - Add five resources, package inventory, exact snapshots, and preview/render
-     coverage.
-5. `docs: document unified subtitle animations`
-   - Update README, PRD, architecture, conventions, release notes, and roadmap.
-
-Suggested pull request:
-
-~~~text
-Title: feat!: unify subtitle animations and add animated templates
-Base: main
-~~~
-
-Before opening the pull request:
-
-~~~text
-python -m pytest tests/test_templates.py tests/test_config.py tests/test_cli.py tests/test_ass.py tests/test_preview.py tests/test_transcriber.py
 python -m pytest
+python -m pytest -m integration
 python -m compileall multisubs
 multisubs --help
 python -m ruff format --check .
@@ -482,65 +453,54 @@ rm -rf dist
 python -m build
 python -m twine check dist/*
 git diff --check
-git status --short
 ~~~
 
-Run the complete opt-in FFmpeg/libass matrix separately and record commands,
-tool versions, fixture geometry, font providers, and results in the pull-request
-description. Audit clean wheel/sdist contents and preview every new template
-from the installed wheel.
+Completed local verification:
 
-The pull request must link Plans 2 and 3, state the breaking CLI and JSON
-contracts, list actual verification, identify documentation changes, include
-migration notes, attach representative motion evidence, and disclose renderer
-risks.
+- Ruff formatting/checks and Pyright passed.
+- Hermetic suite: 695 passed, 49 deselected.
+- FFmpeg/libass integration suite: 49 passed, 695 deselected.
+- Compile and CLI-help smoke checks passed.
+- A clean build produced the sdist and wheel; both passed Twine checks.
+- The wheel installed outside the checkout, exposed all thirteen templates,
+  and rendered a `word-focus` preview through FFmpeg/libass.
 
-In the final pre-PR documentation commit, move Plan 3 and the package to
-`In review`, record `feat/subtitle-animations` as the delivery reference, and
-push the complete branch before opening the PR. Do not add a post-open commit
-solely to record its number or URL.
+Before each build remove only the validated project dist directory. Audit
+wheel/sdist inventory and verify the installed wheel from outside the checkout,
+including previews for the new element configuration. Do not run routine full
+WhisperX transcription or commit generated media.
 
-After merge, mark Plan 3 and the package `Done`, replace its branch reference
-with the merged pull-request link, recalculate package/catalog progress, and
-evaluate the accumulated breaking feature for release as `v4.0.0`.
+## Documentation and delivery
 
-## Release and rollback
+README must contain only supported features, exact defaults, duration units,
+phase/type choices, independent mode recipes, preview behavior, and relevant
+limitations. Update PRD activation and timing requirements, architecture data
+contracts and layer composition, and conventions for duration/cycle bounds.
+Do not create CHANGELOG.md.
 
-This plan requires a major release because it removes four public flags and
-changes retained transcription JSON from schema version 2 to 3. Do not tag
-automatically after merge. Verify the accumulated diff, clean distributions,
-installed-wheel behavior, migration notes, and controlled FFmpeg/libass output
-before the normal production release workflow.
+Use the existing task branch `feat/subtitle-animations`, preserving all local
+foundation changes. Plan 2 remains completed history and is not retroactively
+rewritten to the new schema.
 
-Before release, Plan 3 can be reverted without reverting Plan 2's internal
-schema. After publication, recover through a normal revert or fix pull request
-and a new SemVer release; never move or reuse `v4.0.0`.
+Suggested focused commits after explicit delivery authorization:
 
-## Acceptance criteria
+1. `refactor: separate subtitle animation tracks by element`
+2. `feat: add configurable animation durations and word modes`
+3. `feat: render independent subtitle decorations and effects`
+4. `feat!: expose element animation controls and migrate templates`
+5. `docs: document independent subtitle animations`
 
-- Users can independently select every documented entrance, exit, and word
-  animation without a template; omission and explicit overrides compose as
-  documented.
-- The CLI exposes only the unified animation hierarchy; all removed karaoke
-  flags are rejected and release notes contain the exact replacement mapping.
-- Existing template names and no-option default preserve resolved visual
-  behavior; five new templates provide distinct fade, slide, pop, zoom, yellow,
-  and active-word presentations with bundled fonts.
-- Explicit `none` disables only its entrance, exit, or word-animation scope.
-- Cue-global state stays continuous across ordinary, word-animation,
-  explicit-line-height, multi-line, native/explicit-position, and shared-box
-  event strategies without flicker, jumps, or duplicate glyphs.
-- Short cues receive deterministic bounded phases without timestamp changes;
-  stable wrapping and placement remain authoritative.
-- Preview remains one collision-safe PNG, performs no transcription/model
-  imports, shows final cue state, and uses the representative word highlight.
-- ASS contains only trusted generated animation tags around escaped text; SRT
-  and JSON contain no generated tags.
-- Retained JSON uses schema version 3 and one `metadata.rendering.animation`
-  branch with no legacy karaoke effect path.
-- Translation, model selection, cue construction, artifact cleanup, collision
-  handling, FFmpeg media policy, and font precedence remain unchanged except
-  for the documented animation interface.
-- Hermetic tests, static regressions, bounded-event tests, landscape/portrait
-  renders, all-template previews, clean builds, archive audits, clean-wheel
-  smokes, Ruff, Pyright, compileall, CLI help, and documentation checks pass.
+Draft PR against main:
+`feat!: add independent subtitle element animations and timing controls`.
+
+The PR must link Plans 2 and 3, describe breaking CLI/schema changes, document
+actual verification and renderer limits, and include representative visual
+evidence without committing generated files. This final pre-PR documentation
+commit moves the plan and package to In review while retaining the task branch
+as the delivery reference.
+
+Only after an authoritative merge signal mark the plan/package Done and
+replace the branch reference with the merged PR link. The accumulated breaking
+changes require a major release, expected v4.0.0. Version bump, tag, merge, and
+release publication require their own user authorization and delivery checks.
+Recover published changes through a new fix/revert release; never move a tag.

@@ -3,7 +3,7 @@
 Status: In review
 
 This package adds reproducible bundled fonts, named subtitle templates, and a
-planned declarative animation layer on top of the completed
+declarative animation layer on top of the completed
 subtitle-positioning, karaoke, and typography contracts. It does not restore
 the removed `--layout` preset system: a subtitle template is an explicit
 semantic configuration baseline, may include documented style, placement, and
@@ -17,9 +17,10 @@ final static appearance before transcription, and then override individual
 style, animation, or placement fields. Templates may activate an animation
 when that behavior is intrinsic to their name and purpose;
 `neon-karaoke` therefore enables progressive karaoke and can be neutralized
-with `--animation-word none`. Planned cue-animation templates add fades,
-directional slides, pop, and zoom while retaining static professional and
-accessibility-oriented choices. The package ships every static weight and
+with `--animation-word-text-emphasis none`; `word-focus` uses a measured
+active-word box. Animated templates provide independent text/backdrop tracks
+for cues and words, configurable durations, and separate word modes while retaining static
+professional and accessibility-oriented choices. The package ships every static weight and
 italic face that the current CLI can select for each chosen family, so
 built-in templates do not depend on host fonts and users can reuse those families directly with
 `--font`, `--font-weight`, and `--italic`.
@@ -32,13 +33,6 @@ selection.
 
 ## Shared public contract
 
-Until Plan 3, the delivered template and karaoke options remain:
-
-~~~
---template {default,clean-outline,social-bold,classic-yellow,newsroom,editorial,high-contrast,neon-karaoke}
---karaoke | --no-karaoke
-~~~
-
 `default` is the resolved template when the option is omitted. Configuration
 precedence is:
 
@@ -48,31 +42,28 @@ precedence is:
 
 An explicit option always wins for its own field. Invalid final combinations
 still fail at the existing validation boundary; templates do not suppress or
-silently rewrite errors. `neon-karaoke` enables progressive word highlighting
-as part of its baseline. Explicit `--no-karaoke` disables that effect while
-retaining the template's font, palette, backdrop, and placement. Karaoke
-translation restrictions remain enforced against the final composed
-configuration. Preview represents progressive mode by highlighting the first
-half of the displayed cue and active-word mode by highlighting its first word,
-without inventing timing.
+silently rewrite errors. Plan 3 defines four tracks: cue.text, cue.backdrop,
+word.text, and word.backdrop. Each has independent entrance, emphasis, exit,
+and optional per-phase duration overrides.
 
-Plan 3 intentionally replaces the animation CLI with one consistent hierarchy:
+The CLI follows `--animation-<cue|word>-<text|backdrop>-<phase>` and
+`--animation-<cue|word>-<text|backdrop>-<phase>-duration`. Duration values
+include units such as `150ms` or `0.15s`. Word tracks additionally expose
+independent active-word/progressive modes. Refer to
+[Plan 3's complete contract](03-cue-animations-and-animated-templates.md#cli-contract)
+for choices, defaults, precedence, and validation.
 
-~~~
---template {default,clean-outline,social-bold,classic-yellow,newsroom,editorial,high-contrast,neon-karaoke,cinematic-fade,impact-yellow,lower-third-slide,soft-zoom,word-focus}
---animation-entrance {none,fade,slide-up,slide-down,slide-left,slide-right,pop,zoom}
---animation-exit {none,fade,slide-up,slide-down,slide-left,slide-right,zoom}
---animation-word {none,karaoke}
---animation-word-mode {progressive,active-word}
---animation-word-highlight-color COLOR
-~~~
+`--word-backdrop {none,outline,box}` enables the decoration and chooses its
+shape; none is the default. An enabled decoration follows its word mode
+(default active-word) even with emphasis none. Text highlighting is a separate
+word.text emphasis. Disabled decoration tracks generate no rendering or
+alignment requirements.
 
-Omitting a flag inherits that branch or field from the template. Explicit
-`none` disables only the selected entrance, exit, or word-animation scope.
-Plan 3 removes `--karaoke`, `--no-karaoke`, `--karaoke-mode`, and
-`--karaoke-highlight-color` instead of retaining compatibility aliases. The
-internal template JSON resources are packaged implementation data, not a user
-extension surface.
+Preview remains one image, suppressing motion and representing each word
+track's selected mode independently. Internal schema-4 template resources
+remain packaged implementation data rather than a user extension surface.
+The revised four-track contract is implemented and locally verified on the
+current task branch; Git delivery remains pending.
 
 ## Bundled font families
 
@@ -87,13 +78,13 @@ reliably render variable-font instances.
 | Family | Bundled static faces | Count | Used by |
 | --- | --- | ---: | --- |
 | Roboto | Weights 100-900; upright and italic; normal width | 18 | `default`, `classic-yellow` |
-| Inter | Weights 100-900, upright and italic, at the default optical size | 18 | `clean-outline` |
-| Montserrat | Weights 100-900, upright and italic | 18 | `social-bold`, `neon-karaoke` |
-| Oswald | Upright weights 200-700 | 6 | `newsroom` |
-| Lora | Weights 400-700, upright and italic | 8 | `editorial` |
-| Atkinson Hyperlegible Next | Weights 200-800, upright and italic | 14 | `high-contrast` |
+| Inter | Weights 100-900, upright and italic, at the default optical size | 18 | `clean-outline`, `soft-zoom` |
+| Montserrat | Weights 100-900, upright and italic | 18 | `social-bold`, `neon-karaoke`, `impact-yellow` |
+| Oswald | Upright weights 200-700 | 6 | `newsroom`, `lower-third-slide` |
+| Lora | Weights 400-700, upright and italic | 8 | `editorial`, `cinematic-fade` |
+| Atkinson Hyperlegible Next | Weights 200-800, upright and italic | 14 | `high-contrast`, `word-focus` |
 
-Total planned inventory: 82 unmodified font binaries. Each family keeps its
+Total inventory: 82 unmodified font binaries. Each family keeps its
 original `OFL.txt`; the project does not need a `THIRD_PARTY_NOTICES.md` file.
 The root `LICENSE` continues to cover multisubs source code under MIT, while the
 font files remain under SIL Open Font License 1.1.
@@ -107,11 +98,11 @@ This table is the source of truth for the package. Status values follow the
 | --- | --- | --- | --- | --- |
 | 0 | [Bundled OFL font catalog](00-bundled-ofl-font-catalog.md) | Done | Completed positioning and typography packages | [#60](https://github.com/denilson-santos/multisubs/pull/60) |
 | 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | Done | 0 and completed karaoke package | [#61](https://github.com/denilson-santos/multisubs/pull/61) |
-| 2 | [Declarative template schema](02-declarative-template-schema.md) | In review | 1 | `refactor/declarative-template-schema` |
-| 3 | [Cue animations and animated templates](03-cue-animations-and-animated-templates.md) | Planned | 2 and completed karaoke/preview contracts | — |
+| 2 | [Declarative template schema](02-declarative-template-schema.md) | Done | 1 | [#64](https://github.com/denilson-santos/multisubs/pull/64) |
+| 3 | [Independent subtitle element animations](03-cue-animations-and-animated-templates.md) | In review | 2 and completed karaoke/preview contracts | `feat/subtitle-animations` |
 
-Package progress: 2 of 4 plans done. Plan 2 is in review on
-`refactor/declarative-template-schema`.
+Package progress: 3 of 4 plans done. Plan 3 is complete locally on
+`feat/subtitle-animations` and is ready for review.
 
 ## Dependencies and delivery order
 
@@ -122,7 +113,7 @@ selection, measurement, wrapping, preview, and ASS compilation. The completed
 [karaoke package](../karaoke-subtitles/README.md) supplies the timing,
 highlighting, validation, and fallback behavior reused by `animation.word`.
 Plan 3 supersedes that package's public flag names and retained-JSON path
-without changing its timed rendering algorithm.
+while reusing its lossless mapping and fallback rules.
 
 Recommended delivery order:
 
@@ -132,9 +123,9 @@ Recommended delivery order:
 3. Move the eight built-in definitions into strictly validated internal JSON
    resources organized as `style`, `layout`, and `animation`, without changing
    their resolved configuration or output.
-4. Add the bounded cue-animation compiler, replace the karaoke-specific CLI
-   with the unified animation hierarchy, and add five templates while
-   preserving static preview semantics.
+4. Add the bounded cue/word animation compiler, replace the karaoke-specific
+   CLI with independent text/backdrop controls, word modes, and configurable
+   durations, and migrate the thirteen templates while preserving static preview.
 
 Keep these plans in separate pull requests. Plan 1 must consume the packaged
 font catalog rather than introduce a second asset-resolution path. Plan 3 must
@@ -200,7 +191,8 @@ SemVer release; never move an existing tag.
 - Every template previews and renders with the same font, values, wrapping,
   placement, and ASS compilation. `neon-karaoke` renders with its timed word
   animation in transcription and with the documented representative static
-  highlight in preview; `--animation-word none` removes only that animation.
+  highlight in preview; `--animation-word-text-emphasis none` removes only that
+  emphasis.
 - The packaged template catalog has one deterministic index and one strictly
   validated JSON resource per built-in template. Runtime configuration remains
   immutable, unknown fields fail clearly, and a clean wheel contains the same
@@ -210,8 +202,8 @@ SemVer release; never move an existing tag.
   new hierarchy; removed karaoke flags are rejected rather than aliased. Cue
   timing stays relative across word-animation intervals, explicit line-height
   events, native/explicit placement, and shared vector backdrops.
-- Static preview omits cue motion and displays its stable final state. Karaoke
-  retains its existing representative half-cue or first-word state.
+- Static preview omits every cue/word motion phase and displays the stable
+  state. Karaoke retains its representative half-cue or first-word state.
 - Hermetic tests, controlled FFmpeg/libass integration checks, package builds,
   clean-wheel smoke checks, Ruff, Pyright, and documentation checks pass.
 - README.md, docs/prd.md, docs/architecture.md, and applicable conventions
