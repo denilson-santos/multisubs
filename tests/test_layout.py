@@ -112,6 +112,56 @@ def test_positioned_visual_line_uses_measured_fragment_advances():
     )
 
 
+def test_positioned_visual_line_separates_filled_box_from_shadow_envelope():
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="basic",
+        metric_size=40,
+    )
+    measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
+    config = validate_subtitle_config(
+        None,
+        position="bottom-right",
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "8px",
+            "shadow_weight": "4px",
+            "margin_bottom": "20px",
+            "max_width": "400px",
+            "max_height": "100px",
+        },
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY, text_measurer=measurer)
+    metrics = resolve_wrapping_metrics(
+        resolved,
+        GEOMETRY,
+        text_measurer=measurer,
+    )
+    line = SubtitleVisualLine(
+        text="sample",
+        fragments=(SubtitleDisplayFragment("sample"),),
+        width=100,
+        index=0,
+    )
+
+    positioned = position_visual_lines(
+        (line,),
+        resolved,
+        GEOMETRY,
+        metrics,
+        placement=None,
+    )[0]
+
+    assert positioned.block_bounds[2] - positioned.backdrop_bounds[2] == 4
+    assert positioned.block_bounds[3] - positioned.backdrop_bounds[3] == 4
+    assert positioned.backdrop_bounds[2] - positioned.backdrop_bounds[0] == 116
+    assert positioned.backdrop_bounds[3] - positioned.backdrop_bounds[1] == 56
+
+
 @pytest.mark.parametrize(
     ("position", "expected"),
     [

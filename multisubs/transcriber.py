@@ -17,6 +17,7 @@ from typing import Any, cast
 
 from .animation import normalize_cue_animation, normalize_word_animation
 from .ass import (
+    _render_strategy_for_segments,
     allocate_active_word_intervals,
     allocate_karaoke_durations,
     quantize_ass_centiseconds,
@@ -39,7 +40,6 @@ from .models import (
     KaraokeCue,
     RelativeLength,
     SubtitleAnimationPhase,
-    SubtitleBackdrop,
     SubtitleConfig,
     SubtitleDisplayFragment,
     SubtitleElementAnimation,
@@ -70,9 +70,6 @@ from .wrapping import (
 )
 from .wrapping import (
     grapheme_clusters as _wrapping_grapheme_clusters,
-)
-from .wrapping import (
-    has_multiple_visual_lines as _wrapping_has_multiple_visual_lines,
 )
 from .wrapping import (
     has_significant_pause as _wrapping_has_significant_pause,
@@ -1333,18 +1330,7 @@ def _line_height_render_strategy(
     config: SubtitleConfig,
     segments: Sequence[Mapping[str, Any]],
 ) -> str:
-    requested = config.style.typography.line_height_requested
-    if requested is None:
-        requested = config.style.typography.line_height
-    explicit = not (isinstance(requested, str) and requested.casefold() == "auto")
-    multiple_lines = any(
-        _wrapping_has_multiple_visual_lines(str(segment.get("text", "")))
-        for segment in segments
-    )
-    positioned = multiple_lines and (
-        explicit or config.style.backdrop.kind is SubtitleBackdrop.BOX
-    )
-    return "positioned-lines" if positioned else "single-event"
+    return _render_strategy_for_segments(config, segments)
 
 
 def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:

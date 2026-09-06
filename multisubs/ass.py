@@ -49,7 +49,7 @@ from .models import (
     WordAnimationMode,
 )
 from .utils import atomic_write_text
-from .wrapping import build_visual_lines
+from .wrapping import build_visual_lines, has_multiple_visual_lines
 
 ASS_STYLE_FIELDS = (
     "font",
@@ -147,8 +147,19 @@ def write_ass(
     )
     explicit_line_height = _uses_explicit_line_height(config)
     metrics = wrapping_metrics
+    allow_single_line_overflow = (
+        config.style.backdrop.kind is SubtitleBackdrop.BOX
+        and all(
+            not has_multiple_visual_lines(str(segment.get("text", "")))
+            for segment in segments
+        )
+    )
     if explicit_line_height and metrics is None:
-        metrics = resolve_wrapping_metrics(config, geometry)
+        metrics = resolve_wrapping_metrics(
+            config,
+            geometry,
+            allow_single_line_overflow=allow_single_line_overflow,
+        )
     _, effective_palette = resolve_subtitle_palettes(config)
     animate_cues = not suppress_animation and _has_cue_animation(config)
     animate_words = not suppress_animation and _has_positioned_word_animation(config)
@@ -169,24 +180,20 @@ def write_ass(
                 or config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
             )
         )
-        needs_positioned_lines = (
-            explicit_line_height
-            or (animate_words and isinstance(karaoke_cue, KaraokeCue))
-            or preview_word_behavior
-            or (
-                config.style.backdrop.kind is SubtitleBackdrop.BOX
-                and "\n" in str(segment.get("text", ""))
-            )
-            or (
-                animate_cues and config.style.backdrop.kind is not SubtitleBackdrop.NONE
-            )
-        )
-        if not needs_positioned_lines:
+        if not _segment_uses_positioned_lines(
+            config,
+            segment,
+            suppress_animation=suppress_animation,
+        ):
             backdrop_bounds.append(None)
             positioned_lines.append(())
             continue
         if metrics is None:
-            metrics = resolve_wrapping_metrics(config, geometry)
+            metrics = resolve_wrapping_metrics(
+                config,
+                geometry,
+                allow_single_line_overflow=allow_single_line_overflow,
+            )
         fragments = (
             karaoke_cue.fragments
             if isinstance(karaoke_cue, KaraokeCue)
@@ -208,27 +215,16 @@ def write_ass(
             if placements is not None
             else default_placement
         )
-        if (
-            (explicit_line_height and len(visual_lines) > 1)
-            or (animate_words and isinstance(karaoke_cue, KaraokeCue))
-            or preview_word_behavior
-            or (
-                config.style.backdrop.kind is SubtitleBackdrop.BOX
-                and len(visual_lines) > 1
-            )
-        ):
-            line_layout = position_visual_lines(
-                visual_lines,
-                config,
-                geometry,
-                metrics,
-                placement,
-            )
-            backdrop_bounds.append(line_layout[0].block_bounds if line_layout else None)
-            positioned_lines.append(line_layout)
-        else:
-            backdrop_bounds.append(None)
-            positioned_lines.append(())
+        line_layout = position_visual_lines(
+            visual_lines,
+            config,
+            geometry,
+            metrics,
+            placement,
+            allow_single_line_overflow=allow_single_line_overflow,
+        )
+        backdrop_bounds.append(line_layout[0].backdrop_bounds if line_layout else None)
+        positioned_lines.append(line_layout)
     needs_separate_backdrop = any(positioned_lines) and (
         config.style.backdrop.kind is not SubtitleBackdrop.NONE
     )
@@ -411,6 +407,7 @@ def write_ass(
                 )
                 for item in visual_line_events
             ]
+            positioned_text_layer = 2 if needs_shared_backdrop else 1
             if animate_words and isinstance(karaoke_cue, KaraokeCue):
                 _append_word_animation_events(
                     append_event,
@@ -488,7 +485,7 @@ def write_ass(
                             event_text,
                             event_placement=line_placement,
                             animation_origin=item.block_placement,
-                            layer=1,
+                            layer=positioned_text_layer,
                             style_name=positioned_style_name,
                         )
                 continue
@@ -518,7 +515,7 @@ def write_ass(
                             event_text,
                             event_placement=line_placement,
                             animation_origin=item.block_placement,
-                            layer=1,
+                            layer=positioned_text_layer,
                             style_name=positioned_style_name,
                         )
                 continue
@@ -532,7 +529,7 @@ def write_ass(
                     escape_ass_text(item.line.text),
                     event_placement=line_placement,
                     animation_origin=item.block_placement,
-                    layer=1,
+                    layer=positioned_text_layer,
                     style_name=positioned_style_name,
                 )
             continue
@@ -1299,6 +1296,55 @@ def _has_positioned_word_animation(config: SubtitleConfig) -> bool:
     )
 
 
+def _segment_uses_positioned_lines(
+    config: SubtitleConfig,
+    segment: Mapping[str, Any],
+    *,
+    suppress_animation: bool,
+) -> bool:
+    """Return whether one segment needs measured visual-line placement."""
+    text = str(segment.get("text", ""))
+    karaoke_cue = segment.get("_karaoke_cue")
+    karaoke_preview_cue = segment.get("_karaoke_preview_cue")
+    preview_word_behavior = (
+        suppress_animation
+        and isinstance(karaoke_preview_cue, KaraokeCue)
+        and (
+            config.animation.word.text.enabled
+            or config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+        )
+    )
+    return (
+        (config.style.backdrop.kind is SubtitleBackdrop.BOX and bool(text))
+        or (_uses_explicit_line_height(config) and has_multiple_visual_lines(text))
+        or (
+            not suppress_animation
+            and _has_positioned_word_animation(config)
+            and isinstance(karaoke_cue, KaraokeCue)
+        )
+        or preview_word_behavior
+    )
+
+
+def _render_strategy_for_segments(
+    config: SubtitleConfig,
+    segments: Sequence[Mapping[str, Any]],
+    *,
+    suppress_animation: bool = False,
+) -> str:
+    """Report the ASS placement strategy used by the supplied segments."""
+    if any(
+        _segment_uses_positioned_lines(
+            config,
+            segment,
+            suppress_animation=suppress_animation,
+        )
+        for segment in segments
+    ):
+        return "positioned-lines"
+    return "single-event"
+
+
 def _track_has_motion(animation: SubtitleElementAnimation) -> bool:
     slide_types = {
         CueAnimationType.SLIDE_UP,
@@ -1379,7 +1425,7 @@ def _append_shared_backdrop_event(
     )
     text = (
         f"{{\\an7\\pos(0,0)\\p1\\1c&H{bgr}&\\1a&H{alpha}&"
-        f"\\3a&HFF&\\4a&HFF&\\bord0\\shad{shadow_size}}}{path}{{\\p0}}"
+        f"\\3a&HFF&\\bord0\\shad{shadow_size}}}{path}{{\\p0}}"
     )
     if not animate:
         lines.append(
@@ -1394,7 +1440,7 @@ def _append_shared_backdrop_event(
     local_path = f"m 0 0 l {width} 0 l {width} {height} l 0 {height} l 0 0"
     animated_text = (
         f"{{\\p1\\1c&H{bgr}&\\1a&H{alpha}&"
-        f"\\3a&HFF&\\4a&HFF&\\bord0\\shad{shadow_size}}}{local_path}{{\\p0}}"
+        f"\\3a&HFF&\\bord0\\shad{shadow_size}}}{local_path}{{\\p0}}"
     )
     top_left = CuePlacement(SubtitlePosition.TOP_LEFT, left, top)
     _append_dialogue_event(

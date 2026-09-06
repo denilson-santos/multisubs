@@ -64,12 +64,13 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     ) in content
     assert (
         "Style: Default,Roboto,77,&H00FFFFFF,&H00FFFFFF,&H66000000,"
-        "&H66000000,0,0,0,0,100,100,0,0,3,10,0,2,194,194,58,1"
+        "&H66000000,0,0,0,0,100,100,0,0,3,19,0,2,194,194,58,1"
     ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
-    assert r"{\pos" not in content
+    assert r"{\an7\pos(0,0)" in content
     assert "0:00:00.00,0:01:01.24" in content
-    assert r"{\b400}Olá" in content
+    assert r"{\b400}{\an2\pos(" in content
+    assert r"Olá \{mundo\}\\ 字幕" in content
     assert "\\{mundo\\}" in content
     assert "字幕" in content
 
@@ -197,7 +198,7 @@ def test_letter_spacing_compiles_to_ass_style_spacing_without_event_tag(
     assert style["spacing"] == 2
     content = path.read_text(encoding="utf-8")
     assert r"{\fsp" not in content
-    assert r"{\b400}sample" in content
+    assert r"{\b400}{\an2\pos(" in content
 
 
 @pytest.mark.parametrize("font_weight", list(FontWeight))
@@ -219,7 +220,7 @@ def test_all_font_weights_compile_to_exact_event_override(
     )
 
     assert style["bold"] == 0
-    assert rf"{{\b{font_weight.rank}}}sample" in path.read_text(encoding="utf-8")
+    assert rf"{{\b{font_weight.rank}}}{{\an2\pos(" in path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("value", [-1, float("nan"), float("inf"), True, "1"])
@@ -297,7 +298,7 @@ def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
     )
 
     content = path.read_text(encoding="utf-8")
-    assert content.count(r"{\an2\pos(540,1651)}") == 2
+    assert content.count(r"{\an2\pos(540,1632)}") == 2
     assert r"{\an9}" not in content
     assert r"Text, \{\\an9\}\\\\value" in content
 
@@ -365,10 +366,10 @@ def test_explicit_line_height_positions_lines_and_shares_box_backdrop(
     positioned_style = next(
         line for line in content.splitlines() if line.startswith("Style: Positioned,")
     ).split(",")
-    assert default_style[15:17] == ["3", "10"]
+    assert default_style[15:17] == ["3", "11"]
     assert positioned_style[15:17] == ["1", "0"]
     assert dialogue[0].startswith("Dialogue: 0,")
-    assert all(line.startswith("Dialogue: 1,") for line in dialogue[1:])
+    assert all(line.startswith("Dialogue: 2,") for line in dialogue[1:])
     assert all(",Positioned,," in line for line in dialogue)
     assert dialogue[1].count(r"\pos(540,") == 1
     assert dialogue[2].count(r"\pos(540,") == 1
@@ -401,7 +402,7 @@ def test_auto_line_height_shares_one_box_across_multiple_lines(tmp_path: Path):
         if line.startswith("Dialogue:")
     ]
     backdrop_events = [line for line in dialogue if line.startswith("Dialogue: 0,")]
-    text_events = [line for line in dialogue if line.startswith("Dialogue: 1,")]
+    text_events = [line for line in dialogue if line.startswith("Dialogue: 2,")]
 
     assert len(backdrop_events) == 1
     assert r"\p1" in backdrop_events[0]
@@ -410,7 +411,7 @@ def test_auto_line_height_shares_one_box_across_multiple_lines(tmp_path: Path):
     assert "long first line\\Nshort" not in "\n".join(text_events)
 
 
-def test_explicit_line_height_keeps_single_line_on_traditional_ass_path(
+def test_single_line_box_uses_one_measured_shared_backdrop(
     tmp_path: Path,
 ):
     path = tmp_path / "single-line-height.ass"
@@ -433,14 +434,121 @@ def test_explicit_line_height_keeps_single_line_on_traditional_ass_path(
 
     content = path.read_text(encoding="utf-8")
     dialogue = [line for line in content.splitlines() if line.startswith("Dialogue:")]
-    assert len(dialogue) == 1
-    assert ",Default,," in dialogue[0]
-    assert r"\pos(" not in dialogue[0]
-    assert "Style: Positioned," not in content
+    assert len(dialogue) == 2
+    assert dialogue[0].startswith("Dialogue: 0,")
+    assert r"\p1" in dialogue[0]
+    assert dialogue[1].startswith("Dialogue: 2,")
+    assert ",Positioned,," in dialogue[1]
+    assert r"\an2\pos(" in dialogue[1]
+    assert "Style: Positioned," in content
     default_style = next(
         line for line in content.splitlines() if line.startswith("Style: Default,")
     ).split(",")
     assert default_style[15] == "3"
+
+
+def test_one_line_box_keeps_one_cue_surface_with_timed_word_decoration(
+    tmp_path: Path,
+):
+    path = tmp_path / "word-box.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "font": "DejaVu Sans",
+            "word_backdrop": "box",
+            "word_backdrop_color": "#FF0000",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "8px",
+            "word_backdrop_size": "6px",
+        },
+        animation_values={"word_backdrop_mode": "active-word"},
+    )
+    cue = KaraokeCue(
+        fragments=(SubtitleDisplayFragment("sample", 0),),
+        durations=(100,),
+        active_intervals=((0, 100),),
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "sample", "_karaoke_cue": cue}],
+        config,
+        GEOMETRY,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert (
+        sum(line.startswith("Dialogue: 0,") and r"\p1" in line for line in dialogue)
+        == 1
+    )
+    assert (
+        sum(line.startswith("Dialogue: 1,") and r"\p1" in line for line in dialogue)
+        == 1
+    )
+    assert sum(line.startswith("Dialogue: 2,") for line in dialogue) >= 1
+
+
+def test_one_line_box_fallback_without_word_timestamps_uses_shared_surface(
+    tmp_path: Path,
+):
+    path = tmp_path / "fallback-box.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"word_backdrop": "box"},
+        animation_values={"word_backdrop_mode": "progressive"},
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "fallback cue"}],
+        config,
+        GEOMETRY,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert (
+        sum(line.startswith("Dialogue: 0,") and r"\p1" in line for line in dialogue)
+        == 1
+    )
+    assert (
+        sum(line.startswith("Dialogue: 1,") and r"\p1" in line for line in dialogue)
+        == 0
+    )
+    assert sum(line.startswith("Dialogue: 2,") for line in dialogue) == 1
+
+
+def test_one_line_box_shadow_is_outside_filled_vector_once(tmp_path: Path):
+    path = tmp_path / "shadow-box.ass"
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font": "DejaVu Sans"},
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "8px",
+            "shadow_weight": "4px",
+        },
+    )
+
+    write_ass(path, [{"start": 0.0, "end": 1.0, "text": "sample"}], config, GEOMETRY)
+
+    content = path.read_text(encoding="utf-8")
+    backdrop = next(
+        line for line in content.splitlines() if line.startswith("Dialogue: 0,")
+    )
+    assert r"\shad4" in backdrop
+    assert r"\4a&HFF&" not in backdrop
+    assert r"\p1" in backdrop
+    assert content.count(r"\p1") == 1
 
 
 def test_write_ass_reuses_supplied_wrapping_metrics(tmp_path: Path, monkeypatch):
