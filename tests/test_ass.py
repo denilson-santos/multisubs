@@ -64,7 +64,7 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     ) in content
     assert (
         "Style: Default,Roboto,77,&H00FFFFFF,&H00FFFFFF,&H66000000,"
-        "&H66000000,0,0,0,0,100,100,0,0,4,0,3,2,194,194,58,1"
+        "&H66000000,0,0,0,0,100,100,0,0,3,20,3,2,194,194,58,1"
     ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert r"{\pos" not in content
@@ -159,7 +159,7 @@ def test_explicit_full_opacity_preserves_default_ass_bytes(tmp_path: Path):
 
 @pytest.mark.parametrize(
     ("backdrop", "border_style", "outline_weight"),
-    [("none", 1, 0), ("outline", 1, 5), ("box", 4, 5)],
+    [("none", 1, 0), ("outline", 1, 5), ("box", 3, 5)],
 )
 def test_semantic_backdrops_compile_to_private_ass_fields(
     backdrop, border_style, outline_weight
@@ -362,7 +362,7 @@ def test_explicit_line_height_positions_lines_and_shares_box_backdrop(
     positioned_style = next(
         line for line in content.splitlines() if line.startswith("Style: Positioned,")
     ).split(",")
-    assert default_style[15:17] == ["4", "0"]
+    assert default_style[15:17] == ["3", "20"]
     assert positioned_style[15:17] == ["1", "0"]
     assert dialogue[0].startswith("Dialogue: 0,")
     assert all(line.startswith("Dialogue: 1,") for line in dialogue[1:])
@@ -403,7 +403,7 @@ def test_explicit_line_height_keeps_single_line_on_traditional_ass_path(
     default_style = next(
         line for line in content.splitlines() if line.startswith("Style: Default,")
     ).split(",")
-    assert default_style[15] == "4"
+    assert default_style[15] == "3"
 
 
 def test_write_ass_reuses_supplied_wrapping_metrics(tmp_path: Path, monkeypatch):
@@ -443,8 +443,10 @@ def test_auto_line_height_skips_wrapping_metrics_in_ass_writer(
     path = tmp_path / "auto-line-height.ass"
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "font_size": "18px",
+            "outline_weight": "0px",
             "max_height": "9px",
         },
     )

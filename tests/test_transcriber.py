@@ -87,7 +87,10 @@ def test_adaptive_wrapping_uses_resolved_width_and_preserves_timed_words():
         )
     ]
     semantic = transcriber._build_subtitle_segments([{"words": words}])
-    resolved = resolve_subtitle_config(validate_subtitle_config(None), GEOMETRY)
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(None, appearance_values={"backdrop": "none"}),
+        GEOMETRY,
+    )
 
     display, metrics = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
 
@@ -123,10 +126,14 @@ def test_adaptive_wrapping_metrics_change_with_portrait_geometry_and_font_size()
             "words": [],
         }
     ]
-    landscape_config = resolve_subtitle_config(validate_subtitle_config(None), GEOMETRY)
+    landscape_config = resolve_subtitle_config(
+        validate_subtitle_config(None, appearance_values={"backdrop": "none"}),
+        GEOMETRY,
+    )
     portrait_config = resolve_subtitle_config(
         validate_subtitle_config(
             None,
+            appearance_values={"backdrop": "none"},
             relative_values={"font_size": "8%", "max_height": "20%"},
         ),
         portrait_geometry,
@@ -158,6 +165,7 @@ def test_adaptive_wrapping_honors_height_derived_line_capacity(
     text = "one two three four five six seven eight nine ten eleven twelve"
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_width": "40%", "max_height": max_height},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
@@ -177,6 +185,7 @@ def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
     semantic = transcriber._build_subtitle_segments([{"words": words}])
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_width": "30%", "max_height": "54px"},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
@@ -251,6 +260,7 @@ def test_text_case_expansion_is_measured_before_timed_cue_splitting():
 def test_adaptive_wrapping_keeps_long_unbroken_tokens_intact():
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_width": "3px"},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
@@ -272,6 +282,7 @@ def test_adaptive_wrapping_keeps_long_unbroken_tokens_intact():
 def test_adaptive_wrapping_handles_cjk_without_inventing_spaces():
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_width": "20px"},
     )
     resolved = resolve_subtitle_config(config, GEOMETRY)
@@ -298,6 +309,7 @@ def test_font_metrics_prevent_the_reported_premature_portuguese_break():
     )
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "margin_left": "0%",
             "margin_right": "0%",
@@ -340,6 +352,7 @@ def test_global_partition_avoids_an_avoidable_one_word_final_line():
     resolved = resolve_subtitle_config(
         validate_subtitle_config(
             None,
+            appearance_values={"backdrop": "none"},
             relative_values={"max_width": "800px"},
         ),
         GEOMETRY,
@@ -580,7 +593,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_size": "4%",
             "letter_spacing": "0px",
             "line_height": "auto",
-            "backdrop_size": "0px",
+            "backdrop_size": "20px",
             "word_backdrop_size": "20px",
             "shadow_size": "4%",
             "margins": {
@@ -598,7 +611,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "font_size": 43,
             "letter_spacing": 0,
             "line_height": 51.6,
-            "backdrop_size": 0,
+            "backdrop_size": 20,
             "word_backdrop_size": 20,
             "shadow_size": 2,
             "margins": {
@@ -616,17 +629,17 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "available_height": 1048,
             "max_width": 1228,
             "max_height": 105,
-            "width_budget": 1226,
+            "width_budget": 1186,
             "line_height": 51.6,
             "natural_line_height": 51.6,
             "resolved_line_height": 51.6,
             "ascent": 43.0,
             "descent": 8.6,
-            "vertical_decoration": 2,
+            "vertical_decoration": 42,
             "line_capacity": 1,
             "font_size": 43,
             "letter_spacing": 0,
-            "backdrop_size": 0,
+            "backdrop_size": 20,
             "shadow_size": 2,
         },
         "percentage_bases": {
@@ -744,6 +757,7 @@ def test_line_height_json_and_ass_strategy_are_explicit(tmp_path: Path):
     )
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "font_size": "40px",
             "line_height": "125%",

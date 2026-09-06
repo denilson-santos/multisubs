@@ -6,8 +6,9 @@ import pytest
 from PIL import Image
 
 from multisubs import cli
+from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
-from multisubs.models import PreviewRequest
+from multisubs.models import KaraokeCue, PreviewRequest, SubtitleDisplayFragment
 from multisubs.preview import build_preview_ass
 from multisubs.subtitler import (
     probe_video_geometry,
@@ -21,13 +22,24 @@ from multisubs.templates import TEMPLATE_CHOICES
 @pytest.mark.parametrize(
     ("config", "text", "guides"),
     [
-        (validate_subtitle_config(None, position="top-right"), "One line", False),
         (
             validate_subtitle_config(
                 None,
+                position="top-right",
+                appearance_values={"backdrop": "none"},
+                relative_values={"outline_weight": "0px"},
+            ),
+            "One line",
+            False,
+        ),
+        (
+            validate_subtitle_config(
+                None,
+                appearance_values={"backdrop": "none"},
                 relative_values={
                     "position_x": "50%",
                     "position_y": "80%",
+                    "outline_weight": "0px",
                     "max_width": "60%",
                     "max_height": "30%",
                 },
@@ -97,6 +109,203 @@ def test_preview_png_matches_probe_geometry_for_named_and_custom_layouts(
         assert image.size == (geometry.render_width, geometry.render_height)
         assert image.format == "PNG"
     assert not list(output_dir.glob(".*.png"))
+
+
+@pytest.mark.integration
+def test_preview_and_timed_render_share_fragmented_outline_geometry(tmp_path: Path):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("FFmpeg and ffprobe are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    input_path = tmp_path / "outline-input.mp4"
+    preview_ass = tmp_path / "preview-outline.ass"
+    timed_ass = tmp_path / "timed-outline.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=#303030:s=640x360:d=1",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        position="center",
+        appearance_values={
+            "font": "DejaVu Sans",
+            "backdrop": "outline",
+            "backdrop_color": "#050505",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "4px",
+            "shadow_weight": "0px",
+            "margin_left": "0px",
+            "margin_right": "0px",
+            "max_width": "400px",
+            "max_height": "100px",
+        },
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "progressive",
+            "word_text_highlight_color": "#00F5D4",
+        },
+    )
+    request = PreviewRequest(
+        input_path=input_path,
+        output_dir=tmp_path / "preview",
+        subtitle_config=config,
+        preview_at=0.45,
+        preview_text="Ele tem...",
+        guides=False,
+    )
+    build_preview_ass(preview_ass, request, geometry, 0.45)
+    cue = KaraokeCue(
+        fragments=(
+            SubtitleDisplayFragment("Ele", 0),
+            SubtitleDisplayFragment(" "),
+            SubtitleDisplayFragment("tem...", 1),
+        ),
+        durations=(50, 50),
+        active_intervals=((0, 40), (50, 80)),
+    )
+    write_ass(
+        timed_ass,
+        [{"start": 0.0, "end": 1.0, "text": "Ele tem...", "_karaoke_cue": cue}],
+        config,
+        geometry,
+    )
+
+    preview_path = Path(
+        render_subtitle_preview(
+            input_path,
+            preview_ass,
+            request.output_dir,
+            timestamp=0.45,
+            geometry=geometry,
+        )
+    )
+    timed_path = Path(
+        render_subtitle_preview(
+            input_path,
+            timed_ass,
+            tmp_path / "timed",
+            timestamp=0.45,
+            geometry=geometry,
+        )
+    )
+
+    with (
+        Image.open(preview_path) as preview_image,
+        Image.open(timed_path) as timed_image,
+    ):
+        assert (
+            preview_image.convert("RGB").tobytes()
+            == timed_image.convert("RGB").tobytes()
+        )
+
+
+@pytest.mark.integration
+def test_fragmented_words_preserve_unfragmented_libass_spacing(tmp_path: Path):
+    """Word positioning must not turn font-metric scale into visual tracking."""
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("FFmpeg and ffprobe are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    input_path = tmp_path / "word-spacing-input.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=#203040:s=640x360:d=1",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    parser = cli.build_parser()
+    common = [
+        "-i",
+        str(input_path),
+        "--preview-layout",
+        "--preview-at",
+        "00:00:00.100",
+        "--preview-text",
+        "Example subtitle",
+        "--template",
+        "impact-yellow",
+    ]
+    fragmented_request = cli._build_request(
+        parser.parse_args([*common, "-o", str(tmp_path / "fragmented")]), parser
+    )
+    baseline_request = cli._build_request(
+        parser.parse_args(
+            [
+                *common,
+                "-o",
+                str(tmp_path / "baseline"),
+                "--animation-word-text-emphasis",
+                "none",
+            ]
+        ),
+        parser,
+    )
+
+    fragmented_path = cli._run_request(fragmented_request, lambda _message: None)
+    baseline_path = cli._run_request(baseline_request, lambda _message: None)
+
+    def yellow_geometry(path: Path) -> tuple[int, int, int]:
+        with Image.open(path) as image:
+            rgb = image.convert("RGB")
+            columns = sorted(
+                {
+                    x
+                    for y in range(rgb.height)
+                    for x in range(rgb.width)
+                    if (
+                        (pixel := rgb.getpixel((x, y)))[0] > 150
+                        and pixel[1] > 100
+                        and pixel[2] < 100
+                    )
+                }
+            )
+        assert columns
+        gaps = [
+            following - current - 1
+            for current, following in zip(columns, columns[1:], strict=False)
+            if following - current > 1
+        ]
+        return min(columns), max(columns), max(gaps, default=0)
+
+    fragmented_left, fragmented_right, fragmented_gap = yellow_geometry(fragmented_path)
+    baseline_left, baseline_right, baseline_gap = yellow_geometry(baseline_path)
+
+    assert abs(fragmented_left - baseline_left) <= 1
+    assert abs(fragmented_right - baseline_right) <= 1
+    assert fragmented_gap == baseline_gap
 
 
 @pytest.mark.integration

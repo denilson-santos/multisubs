@@ -798,6 +798,7 @@ def test_active_word_outline_replaces_cue_outline_for_that_fragment(tmp_path: Pa
         None,
         appearance_values={
             "font": "DejaVu Sans",
+            "font_weight": "black",
             "backdrop": "outline",
             "backdrop_color": "#000000",
             "word_backdrop": "outline",
@@ -852,6 +853,138 @@ def test_active_word_outline_replaces_cue_outline_for_that_fragment(tmp_path: Pa
     assert any(",0:00:00.40,0:00:01.00," in line for line in cue_outlines_for_one)
     assert len(word_outlines_for_one) == 1
     assert ",0:00:00.10,0:00:00.40," in word_outlines_for_one[0]
+    assert all(r"{\b900\1a&HFF&" in line for line in cue_outlines_for_one)
+    assert r"{\b900\1a&HFF&" in word_outlines_for_one[0]
+
+
+def test_cue_outline_reuses_word_fragment_positions(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "font": "DejaVu Sans",
+            "font_weight": "black",
+            "backdrop": "outline",
+            "backdrop_color": "#000000",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "4px",
+            "shadow_weight": "0px",
+        },
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "progressive",
+        },
+    )
+    cue = KaraokeCue(
+        fragments=(
+            SubtitleDisplayFragment("Ele", 0),
+            SubtitleDisplayFragment(" "),
+            SubtitleDisplayFragment("tem...", 1),
+        ),
+        durations=(50, 50),
+        active_intervals=((10, 40), (50, 80)),
+    )
+    path = tmp_path / "fragmented-cue-outline.ass"
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "Ele tem...", "_karaoke_cue": cue}],
+        config,
+        GEOMETRY,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert not any(
+        line.startswith("Dialogue: 0,") and line.endswith("Ele tem...")
+        for line in dialogue
+    )
+    for word in ("Ele", "tem..."):
+        outline = next(
+            line
+            for line in dialogue
+            if line.startswith("Dialogue: 0,") and line.endswith(word)
+        )
+        text_events = [
+            line
+            for line in dialogue
+            if line.startswith("Dialogue: 2,") and line.endswith(word)
+        ]
+        outline_position = re.search(r"\\pos\((\d+),(\d+)\)", outline)
+        assert outline_position is not None
+        assert r"{\b900\1a&HFF&" in outline
+        assert text_events
+        for event in text_events:
+            text_position = re.search(r"\\pos\((\d+),(\d+)\)", event)
+            assert text_position is not None
+            assert text_position.groups() == outline_position.groups()
+
+
+def test_cue_outline_follows_cue_and_word_text_motion(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "font": "DejaVu Sans",
+            "font_weight": "bold",
+            "backdrop": "outline",
+            "backdrop_color": "#000000",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "4px",
+            "shadow_weight": "0px",
+        },
+        animation_values={
+            "cue_text_entrance": "pop",
+            "cue_backdrop_entrance": "slide-right",
+            "word_text_emphasis": "bounce",
+        },
+    )
+    cue = KaraokeCue(
+        fragments=(SubtitleDisplayFragment("Example", 0),),
+        durations=(100,),
+        active_intervals=((0, 100),),
+    )
+    path = tmp_path / "animated-outline.ass"
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "Example", "_karaoke_cue": cue}],
+        config,
+        GEOMETRY,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    outline_events = [line for line in dialogue if line.startswith("Dialogue: 0,")]
+    text_events = [line for line in dialogue if line.startswith("Dialogue: 2,")]
+
+    def timing(line: str) -> tuple[str, str]:
+        fields = line.split(",", 3)
+        return fields[1], fields[2]
+
+    def motion(line: str) -> tuple[str, ...]:
+        return tuple(
+            re.findall(
+                r"\\(?:an\d|pos\([^)]*\)|move\([^)]*\)|fsc[xy]\d+|"
+                r"t\([^}]*\)|fade\([^)]*\))",
+                line,
+            )
+        )
+
+    assert outline_events
+    assert text_events
+    outlines_by_timing = {timing(line): motion(line) for line in outline_events}
+    for event in text_events:
+        assert timing(event) in outlines_by_timing
+        assert motion(event) == outlines_by_timing[timing(event)]
 
 
 def test_positioned_words_follow_the_cue_global_scale_origin(tmp_path: Path):
@@ -1463,6 +1596,7 @@ def test_ffmpeg_libass_renders_every_cue_animation_in_both_orientations(
             },
             relative_values={
                 "font_size": "28px",
+                "outline_weight": "8%",
                 "shadow_weight": "0px",
                 "margin_left": "5px",
                 "margin_right": "5px",

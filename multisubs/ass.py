@@ -161,15 +161,18 @@ def write_ass(
     for segment in segments:
         karaoke_cue = segment.get("_karaoke_cue")
         karaoke_preview_cue = segment.get("_karaoke_preview_cue")
-        preview_word_box = (
+        preview_word_behavior = (
             suppress_animation
-            and config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
             and isinstance(karaoke_preview_cue, KaraokeCue)
+            and (
+                config.animation.word.text.enabled
+                or config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+            )
         )
         needs_positioned_lines = (
             explicit_line_height
             or (animate_words and isinstance(karaoke_cue, KaraokeCue))
-            or preview_word_box
+            or preview_word_behavior
             or (
                 animate_cues and config.style.backdrop.kind is not SubtitleBackdrop.NONE
             )
@@ -204,7 +207,7 @@ def write_ass(
         if (
             (explicit_line_height and len(visual_lines) > 1)
             or (animate_words and isinstance(karaoke_cue, KaraokeCue))
-            or preview_word_box
+            or preview_word_behavior
         ):
             line_layout = position_visual_lines(
                 visual_lines,
@@ -227,7 +230,7 @@ def write_ass(
     positioned_style_name = "Default"
     positioned_style: dict[str, str | int] | None = None
     if needs_separate_backdrop:
-        # BorderStyle 4 would draw one box per generated line. Keep Default
+        # BorderStyle 3 would draw one box per generated line. Keep Default
         # unchanged for single-line cues and neutralize only the generated
         # per-line text style; the vector event owns their complete box.
         positioned_style_name = "Positioned"
@@ -364,6 +367,21 @@ def write_ass(
                         preview=True,
                         style_name=positioned_style_name,
                     )
+                elif (
+                    animate_words and isinstance(karaoke_cue, KaraokeCue)
+                ) or preview_word_behavior:
+                    _append_fragmented_cue_outline_events(
+                        append_event,
+                        visual_line_events,
+                        config,
+                        cue_start,
+                        cue_end,
+                        effective_palette.backdrop_color,
+                        cue=(
+                            karaoke_cue if isinstance(karaoke_cue, KaraokeCue) else None
+                        ),
+                        style_name=positioned_style_name,
+                    )
                 else:
                     for item in visual_line_events:
                         _append_cue_outline_event(
@@ -399,11 +417,8 @@ def write_ass(
                     style_name=positioned_style_name,
                 )
                 continue
-            if (
-                config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
-                and isinstance(karaoke_preview_cue, KaraokeCue)
-            ):
-                _append_word_box_preview_events(
+            if preview_word_behavior and isinstance(karaoke_preview_cue, KaraokeCue):
+                _append_word_preview_events(
                     append_event,
                     karaoke_preview_cue,
                     visual_line_events,
@@ -710,12 +725,16 @@ def _append_cue_outline_event(
     config: SubtitleConfig,
     *,
     style_name: str,
+    word_timing: WordAnimationTiming | None = None,
+    word_animation: SubtitleWordElementAnimation | None = None,
 ) -> None:
     """Render a cue glyph outline independently below the text layer."""
     ass_color = rgba_to_ass_color(color)
     outline_size = _resolved_style_int(config.style.backdrop.size, "backdrop-size")
+    font_weight = config.style.typography.font_weight.rank
     outline = (
-        f"{{\\1a&HFF&\\3c&H{ass_color[4:10]}&\\3a&H{ass_color[2:4]}&"
+        f"{{\\b{font_weight}\\1a&HFF&\\3c&H{ass_color[4:10]}&"
+        f"\\3a&H{ass_color[2:4]}&"
         f"\\bord{outline_size}\\shad0}}{escape_ass_text(text)}"
     )
     append_event(
@@ -727,8 +746,77 @@ def _append_cue_outline_event(
         animation_origin=animation_origin,
         layer=0,
         style_name=style_name,
-        cue_animation=config.animation.cue.backdrop,
+        cue_animation=config.animation.cue.text,
+        word_timing=word_timing,
+        word_animation=word_animation,
     )
+
+
+def _append_fragmented_cue_outline_events(
+    append_event: Callable[..., None],
+    visual_lines: Sequence[PositionedVisualLine],
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+    color: str,
+    *,
+    cue: KaraokeCue | None = None,
+    style_name: str,
+) -> None:
+    """Render cue outlines with the exact placement and motion of word text."""
+    if cue is not None:
+        _validate_karaoke_cue(cue)
+    for positioned in visual_lines:
+        for fragment, placement in zip(
+            positioned.line.fragments,
+            positioned.fragment_placements,
+            strict=True,
+        ):
+            if not fragment.text or fragment.text.isspace():
+                continue
+            start = cue_start
+            end = cue_end
+            word_timing: WordAnimationTiming | None = None
+            word_animation: SubtitleWordElementAnimation | None = None
+            word_index = fragment.word_index
+            if cue is not None and word_index is not None:
+                if word_index < 0 or word_index >= len(cue.active_intervals):
+                    raise ArtifactError("Word outline fragment index is invalid")
+                word_start, word_end = cue.active_intervals[word_index]
+                text_end = (
+                    cue_end
+                    if config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE
+                    else word_end
+                )
+                word_animation = config.animation.word.text
+                word_timing = normalize_word_animation(
+                    word_start, text_end, word_animation
+                )
+                start = (
+                    word_start
+                    if word_animation.entrance.type is not CueAnimationType.NONE
+                    else cue_start
+                )
+                end = (
+                    text_end
+                    if word_animation.exit.type is not CueAnimationType.NONE
+                    else cue_end
+                )
+                if end <= start:
+                    continue
+            _append_cue_outline_event(
+                append_event,
+                fragment.text,
+                placement,
+                positioned.block_placement,
+                start,
+                end,
+                color,
+                config,
+                style_name=style_name,
+                word_timing=word_timing,
+                word_animation=word_animation,
+            )
 
 
 def _append_cue_outline_around_word_decoration(
@@ -793,7 +881,7 @@ def _append_cue_outline_around_word_decoration(
                 )
 
 
-def _append_word_box_preview_events(
+def _append_word_preview_events(
     append_event: Callable[..., None],
     cue: KaraokeCue,
     visual_lines: Sequence[PositionedVisualLine],
@@ -806,7 +894,7 @@ def _append_word_box_preview_events(
     generated_override: str,
     style_name: str,
 ) -> None:
-    """Render the documented static representative state for word boxes."""
+    """Render the documented static representative state for word tracks."""
     _validate_karaoke_cue(cue)
     backdrop_indexes = (
         set(range((len(cue.durations) + 1) // 2))
@@ -831,7 +919,10 @@ def _append_word_box_preview_events(
                 continue
             backdrop_active = fragment.word_index in backdrop_indexes
             highlighted = fragment.word_index in text_indexes
-            if backdrop_active:
+            if (
+                backdrop_active
+                and config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+            ):
                 _append_word_backdrop_event(
                     append_event,
                     fragment.text,
@@ -895,7 +986,8 @@ def _append_word_backdrop_event(
     bgr = ass_color[4:10]
     if config.style.word_backdrop.kind is SubtitleBackdrop.OUTLINE:
         drawing = (
-            f"{{\\1a&HFF&\\3c&H{bgr}&\\3a&H{alpha}&\\bord{padding}\\shad0}}"
+            f"{{\\b{config.style.typography.font_weight.rank}\\1a&HFF&"
+            f"\\3c&H{bgr}&\\3a&H{alpha}&\\bord{padding}\\shad0}}"
             + escape_ass_text(text)
         )
         backdrop_placement = placement
@@ -1394,10 +1486,11 @@ def _compile_style(
         "scale_y": 100,
         "spacing": _resolved_style_int(appearance.letter_spacing, "letter-spacing"),
         "angle": 0,
-        # libass BorderStyle 4 creates one box for the whole cue, matching the
-        # backdrop used by multisubs before the semantic CLI cutover.
+        # BorderStyle 3 is the standard ASS opaque box. libass treats the
+        # unsupported value 4 like an outline, which makes non-zero padding
+        # follow glyph contours instead of filling the backdrop.
         "border_style": (
-            4 if config.style.backdrop.kind is SubtitleBackdrop.BOX else 1
+            3 if config.style.backdrop.kind is SubtitleBackdrop.BOX else 1
         ),
         "outline_weight": (
             0 if config.style.backdrop.kind is SubtitleBackdrop.NONE else backdrop_size

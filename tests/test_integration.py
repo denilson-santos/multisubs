@@ -331,6 +331,102 @@ def test_ffmpeg_libass_render_round_trip(tmp_path: Path):
 
 
 @pytest.mark.integration
+def test_box_backdrop_renders_as_a_filled_opaque_box(tmp_path: Path):
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+    font_match = subprocess.run(
+        ["fc-match", "-f", "%{family}", "DejaVu Sans"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if "DejaVu Sans" not in font_match:
+        pytest.skip("The controlled DejaVu Sans font is not available")
+
+    width, height = 640, 360
+    input_path = tmp_path / "box-input.mp4"
+    subtitle_path = tmp_path / "box.ass"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=white:s={width}x{height}:d=0.3",
+            "-t",
+            "0.3",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = validate_subtitle_config(
+        None,
+        position="center",
+        appearance_values={
+            "font": "DejaVu Sans",
+            "backdrop": "box",
+            "backdrop_color": "#000000FF",
+            "text_color": "#FFFFFFFF",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "12px",
+            "shadow_weight": "0px",
+        },
+    )
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.3, "text": "I          I"}],
+        config,
+        geometry,
+    )
+
+    style_fields = (
+        subtitle_path.read_text(encoding="utf-8")
+        .split("Style: Default,", 1)[1]
+        .split(",")
+    )
+    assert style_fields[14] == "3"
+    frame = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "0.1",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"ass={subtitle_path}",
+            "-frames:v",
+            "1",
+            "-pix_fmt",
+            "gray",
+            "-f",
+            "rawvideo",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+
+    assert len(frame) == width * height
+    assert frame[(height // 2) * width + width // 2] < 32
+
+
+@pytest.mark.integration
 def test_subtitle_opacity_changes_intensity_without_moving_libass_bounds(
     tmp_path: Path,
 ):
@@ -557,7 +653,12 @@ def test_adaptive_wrapping_renders_the_resolved_display_cue(tmp_path: Path):
     geometry = probe_video_geometry(input_path)
     config = validate_subtitle_config(
         None,
-        relative_values={"max_width": "40%", "font_size": "8px"},
+        appearance_values={"backdrop": "none"},
+        relative_values={
+            "max_width": "40%",
+            "font_size": "8px",
+            "outline_weight": "0px",
+        },
     )
     resolved = resolve_subtitle_config(config, geometry)
     semantic = [
@@ -834,7 +935,11 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
     )
 
     geometry = probe_video_geometry(input_path)
-    config = validate_subtitle_config(None)
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"backdrop": "none"},
+        relative_values={"outline_weight": "0px"},
+    )
     config = replace(
         config,
         style=replace(
@@ -1136,7 +1241,12 @@ def test_default_and_historical_layout_values_render_inside_expected_regions(
     )
 
     geometry = probe_video_geometry(input_path)
-    config = validate_subtitle_config(None, position=position, relative_values=values)
+    config = validate_subtitle_config(
+        None,
+        position=position,
+        appearance_values={"backdrop": "none"},
+        relative_values={**values, "outline_weight": "0px"},
+    )
     resolved = resolve_subtitle_config(config, geometry)
     assert (
         resolved.layout.margin_left,
@@ -1222,6 +1332,7 @@ def test_named_positions_render_inside_expected_frame_thirds(tmp_path: Path):
         geometry = probe_video_geometry(input_path)
         relative_values = {
             "font_size": "18px",
+            "outline_weight": "0px",
             "margin_left": "10px",
             "margin_right": "10px",
         }
@@ -1232,6 +1343,7 @@ def test_named_positions_render_inside_expected_frame_thirds(tmp_path: Path):
         config = validate_subtitle_config(
             None,
             position=position,
+            appearance_values={"backdrop": "none"},
             relative_values=relative_values,
         )
         write_ass(
@@ -1332,9 +1444,11 @@ def test_custom_coordinates_render_at_requested_anchor(
     geometry = probe_video_geometry(input_path)
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "position_x": position_x,
             "position_y": position_y,
+            "outline_weight": "0px",
             "max_width": "40%",
             "max_height": "20%",
         },

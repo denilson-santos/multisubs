@@ -507,6 +507,7 @@ def test_line_capacity_is_derived_from_max_height_and_vertical_metrics():
     measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_height": "82px", "shadow_weight": "2px"},
     )
 
@@ -584,6 +585,7 @@ def test_max_height_too_small_for_one_measured_line_is_rejected():
     measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_height": "41px", "shadow_weight": "2px"},
     )
 

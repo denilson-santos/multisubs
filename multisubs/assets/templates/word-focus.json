@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
   "name": "word-focus",
-  "description": "Accessible high-contrast captions with cue fades, word pop entrances, and an active-word highlight box; aligned word timing is required.",
+  "description": "Accessible high-contrast captions with cue fades and an active-word highlight box; aligned word timing is required.",
   "style": {
     "typography": {
       "font_family": "Atkinson Hyperlegible Next",
@@ -31,7 +31,7 @@
       "backdrop": {"entrance": {"type": "fade", "duration_ms": 160}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 120}}
     },
     "word": {
-      "text": {"mode": "active-word", "entrance": {"type": "pop", "duration_ms": 160}, "emphasis": {"type": "highlight"}, "exit": {"type": "none"}},
+      "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "highlight"}, "exit": {"type": "none"}},
       "backdrop": {"mode": "active-word", "entrance": {"type": "fade", "duration_ms": 100}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 100}}
     }
   }
