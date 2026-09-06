@@ -188,7 +188,7 @@ The JSON artifact has this high-level shape:
         "font_size": "4%",
         "letter_spacing": "0px",
         "line_height": "auto",
-        "backdrop_size": "0px",
+        "backdrop_size": "20px",
         "word_backdrop_size": "20px",
         "shadow_size": "4%",
         "margins": {
@@ -205,8 +205,8 @@ The JSON artifact has this high-level shape:
         "word_backdrop_type": "none",
         "font_size": 77,
         "letter_spacing": 0,
-        "line_height": 77.0,
-        "backdrop_size": 0,
+        "line_height": 76.0,
+        "backdrop_size": 20,
         "word_backdrop_size": 20,
         "shadow_size": 3,
         "margins": {
@@ -217,24 +217,24 @@ The JSON artifact has this high-level shape:
         },
         "max_width": 692,
         "max_height": 186,
-        "line_capacity": 2
+        "line_capacity": 1
       },
       "wrapping": {
         "available_width": 692,
         "available_height": 1862,
         "max_width": 692,
         "max_height": 186,
-        "width_budget": 689,
-        "line_height": 77.0,
-        "natural_line_height": 77.0,
-        "resolved_line_height": 77.0,
-        "ascent": 61.0,
+        "width_budget": 649,
+        "line_height": 76.0,
+        "natural_line_height": 76.0,
+        "resolved_line_height": 76.0,
+        "ascent": 60.0,
         "descent": 16.0,
-        "vertical_decoration": 3,
-        "line_capacity": 2,
+        "vertical_decoration": 43,
+        "line_capacity": 1,
         "font_size": 77,
         "letter_spacing": 0,
-        "backdrop_size": 0,
+        "backdrop_size": 20,
         "shadow_size": 3
       },
       "percentage_bases": {
@@ -253,7 +253,7 @@ The JSON artifact has this high-level shape:
         "resolved_style": "Regular",
         "font_source": "bundled",
         "shaping": "raqm",
-        "metric_size": 65,
+        "metric_size": 64,
         "requested_weight_name": "regular",
         "requested_weight": 400,
         "requested_weight_input": "regular",
@@ -393,8 +393,9 @@ remains neutral because older libass style parsers coerce every positive value
 to boolean bold. Each subtitle event instead receives an exact `\\b100` through
 `\\b900` override, which keeps preview, ordinary cues, and both timed-word modes on
 the same OpenType rank across supported libass versions. The `box` backdrop
-uses libass `BorderStyle=4`, which draws one background box for the complete
-cue. The required ASS `SecondaryColour` field follows the semantic text color
+uses the standard ASS opaque-box `BorderStyle=3`; `outline` uses
+`BorderStyle=1` with the configured weight, while `none` disables both. The
+required ASS `SecondaryColour` field follows the semantic text color
 for ordinary cues; timed highlight events override the normal and active
 colors explicitly. `OutlineColour` and
 `BackColour` both follow the one semantic backdrop color. Underline and
@@ -417,6 +418,14 @@ fragments. Word starts and ends are quantized with the existing ASS rule.
 normal, and omits zero-length intervals. Word outline and measured box
 decorations follow their own mode and animation track. Plain fallback cues use
 the same style, placement, timing, and text as the ordinary path.
+When aligned-word behavior positions text fragments independently, a cue glyph
+outline is partitioned into the same fragments and reuses their exact measured
+placements. Mixing a libass-shaped whole-line outline with positioned fragment
+text is forbidden because their shaping advances can differ. Because an outline
+is bound to the glyph rather than an independent rectangular surface, each
+fragmented outline also samples the corresponding cue-text and word-text timing,
+movement, and scale. Preview uses that same fragmented topology while
+suppressing only its temporal motion.
 
 Four animation tracks—cue text, cue backdrop, word text, and word backdrop—are
 calculated independently in animation.py after ASS timestamp quantization.
@@ -514,8 +523,10 @@ boundary. It loads a validated TrueType/OpenType face and returns advance widths
 in PlayRes pixels; the standard library and existing dependencies do not expose
 equivalent shaping-aware font metrics. Because libass asks FreeType for a
 real-dimension size while Pillow starts from an EM-oriented size, the measurer
-normalizes Pillow's ascent plus descent to the resolved ASS font size and records
-the resulting `metric_size`. The package uses the MIT-CMU license, is
+reads the selected SFNT face's OS/2 Windows ascent/descent and units-per-em to
+derive the equivalent pixel size. It falls back to Pillow's ascent plus descent
+when those tables are unavailable and records the resulting `metric_size`. The
+package uses the MIT-CMU license, is
 actively maintained, supports the project's Python 3.10-3.13 range, and
 publishes platform wheels. Typical wheels add several megabytes to an
 environment, but Pillow is already present transitively in common WhisperX

@@ -284,6 +284,12 @@ Update a higher-level document when a proposed change intentionally modifies the
   fragment and its measured word-decoration event also receive its word-local state.
   Cue backdrops use layer 0, timed word boxes layer 1, and text layer 2 whenever
   those elements coexist.
+- When word text uses measured fragment placement, a glyph-shaped cue outline
+  must use those same fragments and placements. Do not combine a whole-line
+  libass-shaped outline with independently positioned word text. A cue outline
+  must sample the same cue-text and word-text motion as its glyph fragment;
+  preview and final rendering must retain the same event topology at the stable
+  state.
 - Must preserve ordinary static ASS event structure when all twelve resolved
   phases are `none` and no timed word decoration is active. A PNG preview
   suppresses all motion at the stable final state while retaining the documented
@@ -324,6 +330,10 @@ Update a higher-level document when a proposed change intentionally modifies the
   to reconstruct aligned-word timing.
 - Must apply letter spacing in the shared measurement layer used by both
   concrete-font and Unicode-estimate modes before wrapping or cue splitting.
+- Concrete-font measurement must translate ASS real-dimension sizing from the
+  selected SFNT face's OS/2 Windows metrics, with Pillow ascent/descent as the
+  fallback. Fragment placement must not introduce synthetic tracking because
+  the renderer and measurer used different font-size conventions.
 - Must count one tracking gap between consecutive rendered grapheme clusters on
   each visual line. Combining marks and zero-width joiner sequences stay with
   their base cluster, while spaces and punctuation remain measurable clusters.

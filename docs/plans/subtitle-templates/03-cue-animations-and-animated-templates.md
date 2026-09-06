@@ -1,6 +1,6 @@
 # Independent subtitle element animations
 
-Status: In review
+Status: Done
 
 Depends on:
 
@@ -17,8 +17,8 @@ customize each element without affecting another.
 This revision incorporates the accepted element, mode, and duration decisions
 into the existing implementation on `feat/subtitle-animations`. The earlier
 six-phase implementation is a tested foundation, not completion of this
-revised contract. The implementation and verification are complete; authorized
-Git delivery now moves the completed branch through review.
+revised contract. The implementation and verification were delivered through
+[PR #65](https://github.com/denilson-santos/multisubs/pull/65).
 
 ## Scope
 
@@ -133,7 +133,7 @@ to inherit the effect defaults.
     "word": {
       "text": {
         "mode": "active-word",
-        "entrance": {"type": "pop", "duration_ms": 160},
+        "entrance": {"type": "none"},
         "emphasis": {"type": "highlight"},
         "exit": {"type": "none"}
       },
@@ -385,8 +385,8 @@ Keep all thirteen names and current font/layout baselines.
 - impact-yellow: preserve cue pop/fade and word.text bounce.
 - lower-third-slide: preserve cue slide-right/fade on both cue tracks.
 - soft-zoom: preserve cue zoom/float/fade with the new documented cycle semantics.
-- word-focus: use the canonical example above: active word box, text pop,
-  independent text highlight and word-box fades.
+- word-focus: use the canonical example above: always-visible text, active word
+  highlight and box, and independent word-box fades.
 
 Test exact default equivalence against config.py and all resource inventory
 rules. Retain previous static reference renders; capture new references only
@@ -411,7 +411,7 @@ items below refer specifically to this revision:
 - [x] Update alignment/translation checks and per-track retained diagnostics.
 - [x] Update README, PRD, architecture, and conventions to the delivered contract.
 - [x] Run focused, hermetic, integration, and clean package verification.
-- [ ] During authorized Git delivery, prepare release notes, move the plan and
+- [x] During authorized Git delivery, prepare release notes, move the plan and
   package to In review, and push before opening the draft PR.
 
 ## Verification and acceptance criteria
