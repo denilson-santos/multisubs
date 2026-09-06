@@ -77,7 +77,7 @@ class TextCase(str, Enum):
     LOWERCASE = "lowercase"
 
 
-class KaraokeMode(str, Enum):
+class WordAnimationMode(str, Enum):
     """Supported word-highlight timing policies."""
 
     PROGRESSIVE = "progressive"
@@ -117,6 +117,15 @@ class SubtitleBackdropStyle:
 
 
 @dataclass(frozen=True)
+class SubtitleWordBackdropStyle:
+    """Validated appearance for one timed aligned-word backdrop."""
+
+    kind: SubtitleBackdrop
+    color: str
+    size: int | RelativeLength
+
+
+@dataclass(frozen=True)
 class SubtitleShadow:
     """Validated semantic shadow values passed through the pipeline."""
 
@@ -129,6 +138,7 @@ class SubtitleStyle:
 
     typography: SubtitleTypography
     backdrop: SubtitleBackdropStyle
+    word_backdrop: SubtitleWordBackdropStyle
     shadow: SubtitleShadow
     opacity: SubtitleOpacity = field(
         default_factory=lambda: SubtitleOpacity(Decimal(100), "100%")
@@ -139,13 +149,20 @@ class CueAnimationType(str, Enum):
     """Supported cue animation phase types."""
 
     NONE = "none"
-
-
-class WordAnimationType(str, Enum):
-    """Supported word animation types."""
-
-    NONE = "none"
-    KARAOKE = "karaoke"
+    FADE = "fade"
+    SLIDE_UP = "slide-up"
+    SLIDE_DOWN = "slide-down"
+    SLIDE_LEFT = "slide-left"
+    SLIDE_RIGHT = "slide-right"
+    POP = "pop"
+    ZOOM = "zoom"
+    PULSE = "pulse"
+    BOUNCE = "bounce"
+    FLOAT = "float"
+    SHAKE = "shake"
+    FLASH = "flash"
+    BREATHE = "breathe"
+    HIGHLIGHT = "highlight"
 
 
 @dataclass(frozen=True)
@@ -153,32 +170,61 @@ class SubtitleAnimationPhase:
     """One validated cue animation phase."""
 
     type: CueAnimationType = CueAnimationType.NONE
+    duration_ms: int = 0
+
+
+@dataclass(frozen=True)
+class SubtitleElementAnimation:
+    """Entrance, emphasis, and exit phases for one visual element."""
+
+    entrance: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
+    emphasis: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
+    exit: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
+
+    @property
+    def enabled(self) -> bool:
+        """Return whether this element has any non-neutral phase."""
+        return any(
+            phase.type is not CueAnimationType.NONE
+            for phase in (self.entrance, self.emphasis, self.exit)
+        )
 
 
 @dataclass(frozen=True)
 class SubtitleCueAnimation:
-    """Validated entrance and exit phases for one logical cue."""
+    """Independent text and backdrop tracks for one logical cue."""
 
-    entrance: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
-    exit: SubtitleAnimationPhase = field(default_factory=SubtitleAnimationPhase)
+    text: SubtitleElementAnimation = field(default_factory=SubtitleElementAnimation)
+    backdrop: SubtitleElementAnimation = field(default_factory=SubtitleElementAnimation)
+
+
+@dataclass(frozen=True)
+class SubtitleWordElementAnimation(SubtitleElementAnimation):
+    """One visual word element plus its aligned timing policy."""
+
+    mode: WordAnimationMode = WordAnimationMode.ACTIVE_WORD
 
 
 @dataclass(frozen=True)
 class SubtitleWordAnimation:
-    """Validated optional word animation passed through the pipeline."""
+    """Independent text and backdrop tracks for aligned words."""
 
-    type: WordAnimationType = WordAnimationType.NONE
-    mode: KaraokeMode | None = None
+    text: SubtitleWordElementAnimation = field(
+        default_factory=lambda: SubtitleWordElementAnimation()
+    )
+    backdrop: SubtitleWordElementAnimation = field(
+        default_factory=lambda: SubtitleWordElementAnimation()
+    )
 
     @property
     def enabled(self) -> bool:
-        """Return whether the word-timed karaoke effect is enabled."""
-        return self.type is WordAnimationType.KARAOKE
+        """Return whether any aligned-word animation phase is enabled."""
+        return self.text.enabled or self.backdrop.enabled
 
     @property
-    def karaoke(self) -> bool:
-        """Return whether karaoke is enabled."""
-        return self.enabled
+    def uses_timed_highlight(self) -> bool:
+        """Return whether emphasis follows progressive or active-word timing."""
+        return self.text.emphasis.type is CueAnimationType.HIGHLIGHT
 
 
 @dataclass(frozen=True)

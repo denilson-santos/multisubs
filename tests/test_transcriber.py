@@ -550,7 +550,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
     assert load_calls["count"] == 2
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["metadata"]["language"] == "en"
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["metadata"]["created_at"].endswith("+00:00")
     assert payload["metadata"]["rendering"] == {
         "video_stream_index": 0,
@@ -575,10 +575,13 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "bottom": 32,
         },
         "requested": {
+            "backdrop_type": "box",
+            "word_backdrop_type": "none",
             "font_size": "4%",
             "letter_spacing": "0px",
             "line_height": "auto",
             "backdrop_size": "0px",
+            "word_backdrop_size": "20px",
             "shadow_size": "4%",
             "margins": {
                 "left": "18%",
@@ -590,10 +593,13 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "max_height": "10%",
         },
         "resolved": {
+            "backdrop_type": "box",
+            "word_backdrop_type": "none",
             "font_size": 43,
             "letter_spacing": 0,
             "line_height": 51.6,
             "backdrop_size": 0,
+            "word_backdrop_size": 20,
             "shadow_size": 2,
             "margins": {
                 "left": 346,
@@ -656,24 +662,54 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "base_colors": {
                 "text": "#FFFFFFFF",
                 "backdrop": "#00000099",
+                "word_backdrop": "#111827E6",
                 "shadow": "#00000099",
-                "karaoke_highlight": None,
+                "word_highlight": None,
             },
             "effective_colors": {
                 "text": "#FFFFFFFF",
                 "backdrop": "#00000099",
+                "word_backdrop": "#111827E6",
                 "shadow": "#00000099",
-                "karaoke_highlight": None,
+                "word_highlight": None,
             },
         },
-        "effects": {
-            "karaoke": {
-                "enabled": False,
-                "mode": None,
+        "animation": {
+            "cue": {
+                "text": {
+                    "active": True,
+                    "entrance": {"type": "none"},
+                    "emphasis": {"type": "none"},
+                    "exit": {"type": "none"},
+                },
+                "backdrop": {
+                    "active": True,
+                    "entrance": {"type": "none"},
+                    "emphasis": {"type": "none"},
+                    "exit": {"type": "none"},
+                },
+                "shortened_cues": {"text": 0, "backdrop": 0},
+            },
+            "word": {
+                "text": {
+                    "active": False,
+                    "mode": "active-word",
+                    "entrance": {"type": "none"},
+                    "emphasis": {"type": "none"},
+                    "exit": {"type": "none"},
+                },
+                "backdrop": {
+                    "active": False,
+                    "mode": "active-word",
+                    "entrance": {"type": "none"},
+                    "emphasis": {"type": "none"},
+                    "exit": {"type": "none"},
+                },
                 "normal_color": "#FFFFFF",
                 "highlight_color": None,
+                "shortened_words": {"text": 0, "backdrop": 0},
                 "fallback_cues": 0,
-            }
+            },
         },
         "native_region": {
             "left": 346,
@@ -819,9 +855,9 @@ def test_opacity_json_records_base_and_effective_component_colors(tmp_path: Path
             "backdrop_color": "#44556699",
             "opacity": "32.5%",
         },
-        effects_values={
-            "karaoke": True,
-            "highlight_color": "#778899C0",
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_highlight_color": "#778899C0",
         },
     )
 
@@ -842,14 +878,16 @@ def test_opacity_json_records_base_and_effective_component_colors(tmp_path: Path
         "base_colors": {
             "text": "#11223380",
             "backdrop": "#44556699",
+            "word_backdrop": "#111827E6",
             "shadow": "#44556699",
-            "karaoke_highlight": "#778899C0",
+            "word_highlight": "#778899C0",
         },
         "effective_colors": {
             "text": "#1122332A",
             "backdrop": "#44556632",
+            "word_backdrop": "#1118274B",
             "shadow": "#44556632",
-            "karaoke_highlight": "#7788993E",
+            "word_highlight": "#7788993E",
         },
     }
     ass = Path(ass_path).read_text(encoding="utf-8")

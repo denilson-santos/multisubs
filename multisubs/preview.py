@@ -150,8 +150,11 @@ def build_preview_ass(
         "end": end,
         "text": display_text,
     }
-    if resolved_config.animation.word.karaoke:
-        preview_cue = _build_preview_karaoke_cue(display_text)
+    if (
+        resolved_config.animation.word.text.enabled
+        or resolved_config.style.word_backdrop.kind.value != "none"
+    ):
+        preview_cue = _build_preview_word_cue(display_text)
         if preview_cue is not None:
             segment["_karaoke_preview_cue"] = preview_cue
     write_ass(
@@ -162,12 +165,13 @@ def build_preview_ass(
         guide_events=guide_events,
         preserve_line_breaks=True,
         wrapping_metrics=metrics,
+        suppress_animation=True,
     )
     return resolved_config, display_text
 
 
-def _build_preview_karaoke_cue(display_text: str) -> KaraokeCue | None:
-    """Map sample words for a static, representative karaoke snapshot."""
+def _build_preview_word_cue(display_text: str) -> KaraokeCue | None:
+    """Map sample words for a static, representative timed-emphasis snapshot."""
     words = [{"word": match.group()} for match in re.finditer(r"\S+", display_text)]
     fragments = build_display_fragments(display_text, words)
     if fragments is None:

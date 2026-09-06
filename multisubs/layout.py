@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -17,6 +18,7 @@ from .models import (
     SubtitleLayout,
     SubtitlePlacementMode,
     SubtitlePosition,
+    SubtitleVisualLine,
     VideoGeometry,
 )
 from .text_measurement import TextMeasurer, build_text_measurer
@@ -97,6 +99,11 @@ def resolve_subtitle_config(
         font_size,
         field="backdrop-size",
         maximum=font_size,
+    )
+    word_backdrop_size = resolve_relative_length(
+        validated.style.word_backdrop.size,
+        font_size,
+        field="word-backdrop-size",
     )
     shadow_weight = resolve_relative_length(
         validated.style.shadow.size,
@@ -223,6 +230,10 @@ def resolve_subtitle_config(
                 line_height_requested=requested_line_height,
             ),
             backdrop=replace(validated.style.backdrop, size=outline_weight),
+            word_backdrop=replace(
+                validated.style.word_backdrop,
+                size=word_backdrop_size,
+            ),
             shadow=replace(validated.style.shadow, size=shadow_weight),
         ),
         layout=resolved_layout,
@@ -343,6 +354,179 @@ class WrappingMetrics:
     def decoration_width(self) -> int:
         """Return the horizontal backdrop/shadow allowance in PlayRes pixels."""
         return 2 * self.backdrop_size + self.shadow_size
+
+
+@dataclass(frozen=True)
+class PositionedVisualLine:
+    """One measured line plus stable line and fragment placements."""
+
+    line: SubtitleVisualLine
+    anchor: SubtitlePosition
+    position_x: int
+    position_y: int
+    block_bounds: tuple[int, int, int, int]
+    block_placement: CuePlacement
+    fragment_placements: tuple[CuePlacement, ...]
+
+
+def position_visual_lines(
+    visual_lines: Sequence[SubtitleVisualLine],
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    metrics: WrappingMetrics,
+    placement: CuePlacement | None,
+) -> tuple[PositionedVisualLine, ...]:
+    """Resolve stable visual-line and measured fragment anchors."""
+    layout = config.layout
+    if placement is not None:
+        anchor = placement.anchor
+        anchor_x, anchor_y = placement.position_x, placement.position_y
+    else:
+        region = resolve_native_layout_region(geometry, layout)
+        anchor = layout.position
+        anchor_x, anchor_y = resolve_native_anchor_point(anchor, region)
+
+    content_width = max((line.width for line in visual_lines), default=0.0)
+    padding = metrics.backdrop_size
+    shadow = metrics.shadow_size
+    block_width = _round_playres(content_width + 2 * padding + shadow)
+    block_height = _round_playres(
+        metrics.natural_line_height
+        + (len(visual_lines) - 1) * metrics.resolved_line_height
+        + 2 * padding
+        + shadow
+    )
+    if block_width > metrics.max_width:
+        raise ValidationError(
+            "Measured subtitle lines exceed the configured max-width envelope"
+        )
+    if block_height > metrics.max_height:
+        raise ValidationError(
+            "Measured subtitle lines exceed the configured max-height envelope"
+        )
+    bounds = _anchor_bounds(anchor_x, anchor_y, block_width, block_height, anchor)
+    block_placement = CuePlacement(anchor, anchor_x, anchor_y)
+    content_top = bounds[1] + padding
+    result: list[PositionedVisualLine] = []
+    for line in visual_lines:
+        if anchor.value.startswith("top-"):
+            line_y = _round_playres(
+                content_top + line.index * metrics.resolved_line_height
+            )
+        elif anchor.value.startswith("bottom-"):
+            line_y = _round_playres(
+                content_top
+                + line.index * metrics.resolved_line_height
+                + metrics.natural_line_height
+            )
+        else:
+            line_y = _round_playres(
+                content_top
+                + line.index * metrics.resolved_line_height
+                + metrics.natural_line_height / 2
+            )
+        fragment_placements = _position_line_fragments(
+            line,
+            anchor=anchor,
+            line_x=anchor_x,
+            line_y=line_y,
+            metrics=metrics,
+        )
+        result.append(
+            PositionedVisualLine(
+                line=line,
+                anchor=anchor,
+                position_x=anchor_x,
+                position_y=line_y,
+                block_bounds=bounds,
+                block_placement=block_placement,
+                fragment_placements=fragment_placements,
+            )
+        )
+    return tuple(result)
+
+
+def resolve_native_anchor_point(
+    position: SubtitlePosition,
+    region: NativeLayoutRegion,
+) -> tuple[int, int]:
+    """Return the stable PlayRes anchor inside one native margin region."""
+    if position.value.endswith("left"):
+        x = region.left
+    elif position.value.endswith("right"):
+        x = region.right
+    else:
+        x = (region.left + region.right) // 2
+    if position.value.startswith("top-"):
+        y = region.top
+    elif position.value.startswith("bottom-"):
+        y = region.bottom
+    else:
+        y = (region.top + region.bottom) // 2
+    return x, y
+
+
+def _position_line_fragments(
+    line: SubtitleVisualLine,
+    *,
+    anchor: SubtitlePosition,
+    line_x: int,
+    line_y: int,
+    metrics: WrappingMetrics,
+) -> tuple[CuePlacement, ...]:
+    if anchor.value.endswith("left"):
+        line_left = float(line_x)
+    elif anchor.value.endswith("right"):
+        line_left = float(line_x) - line.width
+    else:
+        line_left = float(line_x) - line.width / 2
+    if anchor.value.startswith("top-"):
+        fragment_anchor = SubtitlePosition.TOP_CENTER
+    elif anchor.value.startswith("bottom-"):
+        fragment_anchor = SubtitlePosition.BOTTOM_CENTER
+    else:
+        fragment_anchor = SubtitlePosition.CENTER
+
+    prefix = ""
+    placements: list[CuePlacement] = []
+    for fragment in line.fragments:
+        combined_width = metrics.text_measurer.measure(prefix + fragment.text)
+        fragment_width = metrics.text_measurer.measure(fragment.text)
+        placements.append(
+            CuePlacement(
+                fragment_anchor,
+                _round_playres(line_left + combined_width - fragment_width / 2),
+                line_y,
+            )
+        )
+        prefix += fragment.text
+    return tuple(placements)
+
+
+def _round_playres(value: float) -> int:
+    return int(math.floor(float(value) + 0.5))
+
+
+def _anchor_bounds(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    anchor: SubtitlePosition,
+) -> tuple[int, int, int, int]:
+    if anchor.value.endswith("left"):
+        left, right = x, x + width
+    elif anchor.value.endswith("right"):
+        left, right = x - width, x
+    else:
+        left, right = x - width // 2, x + (width + 1) // 2
+    if anchor.value.startswith("top-"):
+        top, bottom = y, y + height
+    elif anchor.value.startswith("bottom-"):
+        top, bottom = y - height, y
+    else:
+        top, bottom = y - height // 2, y + (height + 1) // 2
+    return left, top, right, bottom
 
 
 def resolve_wrapping_metrics(

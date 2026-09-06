@@ -14,6 +14,7 @@ from multisubs.subtitler import (
     render_subtitle_preview,
     validate_ffmpeg_support,
 )
+from multisubs.templates import TEMPLATE_CHOICES
 
 
 @pytest.mark.integration
@@ -132,16 +133,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
         check=True,
     )
 
-    for template_name in (
-        "default",
-        "clean-outline",
-        "social-bold",
-        "classic-yellow",
-        "newsroom",
-        "editorial",
-        "high-contrast",
-        "neon-karaoke",
-    ):
+    for template_name in TEMPLATE_CHOICES:
         output_dir = tmp_path / template_name
         arguments = [
             "-i",
@@ -164,6 +156,14 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
 
         assert preview_path.exists()
         assert progress[0] == f"Using subtitle template: {template_name}."
+        animation = request.subtitle_config.animation
+        assert progress[1] == (
+            "Resolved subtitle animations: "
+            f"cue.text={cli._format_animation_track(animation.cue.text)}, "
+            f"cue.backdrop={cli._format_animation_track(animation.cue.backdrop)}, "
+            f"word.text={cli._format_animation_track(animation.word.text)}, "
+            f"word.backdrop={cli._format_animation_track(animation.word.backdrop)}."
+        )
         with Image.open(preview_path) as image:
             assert image.size == canvas
             assert image.format == "PNG"
@@ -181,7 +181,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
         "Primeira palavra destacada no modo ativo",
         "--template",
         "neon-karaoke",
-        "--karaoke-mode",
+        "--animation-word-text-mode",
         "active-word",
     ]
     parser = cli.build_parser()

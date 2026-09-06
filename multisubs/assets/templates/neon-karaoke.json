@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "name": "neon-karaoke",
-  "description": "High-energy captions with progressive word highlighting.",
+  "description": "High-energy captions with progressive word highlighting; aligned word timing is required.",
   "style": {
     "typography": {
       "font_family": "Montserrat",
@@ -15,6 +15,7 @@
       "highlight_color": "#00F5D4"
     },
     "backdrop": {"type": "outline", "color": "#080012E6", "size": "7%"},
+    "word_backdrop": {"type": "none", "color": "#111827E6", "size": "12%"},
     "shadow": {"size": "5%"},
     "opacity": "100%"
   },
@@ -25,7 +26,13 @@
     "max_height": "20%"
   },
   "animation": {
-    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
-    "word": {"type": "karaoke", "mode": "progressive"}
+    "cue": {
+      "text": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
+      "backdrop": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+    },
+    "word": {
+      "text": {"mode": "progressive", "entrance": {"type": "none"}, "emphasis": {"type": "highlight"}, "exit": {"type": "none"}},
+      "backdrop": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+    }
   }
 }

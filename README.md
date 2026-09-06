@@ -23,13 +23,13 @@ WhisperX must download model assets that are not already cached.
 | Feature | What it gives you |
 | --- | --- |
 | 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
-| 🧩 Ready-made templates | Eight built-in presentations for interviews, social video, news, editorial work, high contrast, and karaoke. |
+| 🧩 Ready-made templates | Thirteen built-in presentations for interviews, social video, news, editorial work, high contrast, animation, and karaoke. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
 | 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
 | 🎯 Precise placement | Nine semantic positions, relative units, margins, safe envelopes, and exact PlayRes coordinates. |
 | 👀 Fast previews | Render one subtitle preview frame without loading WhisperX or transcribing the video. |
-| 🎤 Karaoke | Progressive or active-word highlighting based on aligned word timestamps. |
+| ✨ Subtitle animation | Independent entrance, emphasis, and exit phases for complete cues and aligned words. |
 | 🧠 Adaptive wrapping | Font-aware wrapping that favors readable language and timing boundaries. |
 | 🛡️ Safe outputs | Collision-safe names and temporary rendering prevent existing or partial files from being overwritten. |
 
@@ -106,7 +106,7 @@ multisubs -i ./video.mp4 -l pt \
 ```
 
 The current Roboto Regular, white-on-translucent-black presentation remains the
-`default`. Every explicit appearance, layout, or effect option overrides only
+`default`. Every explicit appearance, layout, or animation option overrides only
 its corresponding template field:
 
 ```bash
@@ -126,29 +126,40 @@ multisubs -i ./video.mp4 -l pt \
 | `editorial` | Documentary and cultural material | Lora SemiBold Italic | Warm off-white serif text with a subtle outline. |
 | `high-contrast` | Maximum visual differentiation | Atkinson Hyperlegible Next Bold | Black text on an opaque yellow box. |
 | `neon-karaoke` | Energetic word-timed captions | Montserrat Bold | Large outlined text with progressive turquoise highlighting. |
+| `cinematic-fade` | Documentaries and cinematic scenes | Lora SemiBold Italic | Warm serif captions with gentle entrance and exit fades. |
+| `impact-yellow` | Reels, Shorts, calls to action | Montserrat Black | Uppercase yellow text with cue pop and aligned-word bounce. |
+| `lower-third-slide` | Reports, names, and concise facts | Oswald SemiBold | A compact lower-third box that slides in from the left. |
+| `soft-zoom` | Courses, interviews, polished social video | Inter Medium | Clean outlined text with restrained zoom and float. |
+| `word-focus` | Accessible word-following captions | Atkinson Hyperlegible Next Bold | High-contrast cue box, word pop, and an active yellow word box. |
 
 The exact template baselines are:
 
-| Template | Size and text | Backdrop | Native layout |
-| --- | --- | --- | --- |
-| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `0px`, shadow `4%` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` |
-| `clean-outline` | `4%`, `#FFFFFF`, original, `100%` | outline `#000000CC`, `5%`, shadow `0px` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`14%` |
-| `social-bold` | `5%`, `#FFFFFF`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `3%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` |
-| `classic-yellow` | `4.2%`, `#FFD54F`, original, `100%` | outline `#000000E6`, `6%`, shadow `3%` | bottom-center; L/R `12%`, B `3%`, W/H `100%`/`16%` |
-| `newsroom` | `4.2%`, `#FFFFFF`, uppercase, `100%`, spacing `1%` | box `#0B1F3ACC`, `8%`, shadow `0px` | bottom-left; L `5%`, R `35%`, B `3%`, W/H `100%`/`16%` |
-| `editorial` | `4%`, `#FFF8E7`, original, `95%` | outline `#111111CC`, `4%`, shadow `3%` | bottom-center; L/R `16%`, B `3%`, W/H `100%`/`15%` |
-| `high-contrast` | `4.3%`, `#000000`, original, `100%` | box `#FFD600FF`, `10%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` |
-| `neon-karaoke` | `5%`, `#FFFFFF`, original, `100%` | outline `#080012E6`, `7%`, shadow `5%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`20%` |
+| Template | Size and text | Backdrop | Native layout | Animation |
+| --- | --- | --- | --- | --- |
+| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `0px`, shadow `4%` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
+| `clean-outline` | `4%`, `#FFFFFF`, original, `100%` | outline `#000000CC`, `5%`, shadow `0px` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`14%` | none |
+| `social-bold` | `5%`, `#FFFFFF`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `3%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | none |
+| `classic-yellow` | `4.2%`, `#FFD54F`, original, `100%` | outline `#000000E6`, `6%`, shadow `3%` | bottom-center; L/R `12%`, B `3%`, W/H `100%`/`16%` | none |
+| `newsroom` | `4.2%`, `#FFFFFF`, uppercase, `100%`, spacing `1%` | box `#0B1F3ACC`, `8%`, shadow `0px` | bottom-left; L `5%`, R `35%`, B `3%`, W/H `100%`/`16%` | none |
+| `editorial` | `4%`, `#FFF8E7`, original, `95%` | outline `#111111CC`, `4%`, shadow `3%` | bottom-center; L/R `16%`, B `3%`, W/H `100%`/`15%` | none |
+| `high-contrast` | `4.3%`, `#000000`, original, `100%` | box `#FFD600FF`, `10%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` | none |
+| `neon-karaoke` | `5%`, `#FFFFFF`, original, `100%` | outline `#080012E6`, `7%`, shadow `5%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`20%` | progressive word highlight |
+| `cinematic-fade` | `4.2%`, `#FFF4E6`, italic, `95%` | outline `#111111D9`, `4%`, shadow `2%` | bottom-center; L/R `15%`, B `3%`, W/H `100%`/`16%` | fade in/out |
+| `impact-yellow` | `5.2%`, `#FFD60A`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `4%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | pop in, word bounce, fade out |
+| `lower-third-slide` | `4.1%`, `#FFFFFF`, uppercase, `100%` | box `#0B1F3AE6`, `7%`, shadow `0px` | bottom-left; L `5%`, R `38%`, B `3%`, W/H `100%`/`16%` | slide right in, fade out |
+| `soft-zoom` | `4.3%`, `#F8FAFC`, original, `100%` | outline `#111827CC`, `4%`, shadow `2%` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`16%` | zoom in, gentle float, fade out |
+| `word-focus` | `4.5%`, `#FFFFFF`, original, `100%` | cue box `#111827D9`/`8%`; word box `#FFD54F`/`12%`; shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` | cue fade, word pop, active word box |
 
 All use `auto` line height and a `0%` top margin. Unlisted letter spacing is
-`0px`. `neon-karaoke` additionally enables progressive karaoke with highlight
-color `#00F5D4`. Preview shows a representative static effect: progressive
-mode highlights the first half of the cue and active-word mode highlights its
-first word. Use `--no-karaoke` when only the static styling is wanted:
+`0px`. `neon-karaoke` uses highlight color `#00F5D4`; `word-focus` uses dark
+text `#111827` over its active yellow word box. Preview suppresses motion and
+shows a deterministic representative state. `progressive` word tracks affect
+the first half of the cue, while `active-word` tracks affect only its first
+word. Disable one inherited phase without changing the other tracks:
 
 ```bash
 multisubs -i ./video.mp4 --preview-layout \
-  --template neon-karaoke --no-karaoke
+  --template neon-karaoke --animation-word-text-emphasis none
 ```
 
 ### Translate speech to English
@@ -184,29 +195,58 @@ Without `--preview-at`, the video midpoint is used. Preview styling, wrapping,
 placement, coordinates, and custom fonts match the final render path. Output is
 saved as `<video-stem>-subtitle-preview.png` with a numeric suffix when needed.
 
-### Add word-timed karaoke
+### Add subtitle animations
 
-Progressively keep spoken words highlighted:
-
-```bash
-multisubs -i ./video.mp4 -l pt \
-  --karaoke \
-  --karaoke-highlight-color '#FFD54F'
-```
-
-Highlight only the currently spoken word:
+Text and backdrop have independent entrance, emphasis, and exit tracks at both
+cue and aligned-word scope. This permits combinations such as a sliding cue box
+with text that fades independently:
 
 ```bash
 multisubs -i ./video.mp4 -l pt \
-  --karaoke \
-  --karaoke-mode active-word
+  --animation-cue-backdrop-entrance slide-left \
+  --animation-cue-backdrop-entrance-duration 250ms \
+  --animation-cue-text-entrance fade \
+  --animation-cue-text-entrance-duration 0.15s \
+  --animation-cue-text-emphasis breathe \
+  --animation-cue-text-exit fade
 ```
 
-Karaoke works only with source-language transcription and cannot be combined
-with translation. Layout preview does not invent timings: it shows the first
-half of a progressive cue highlighted, or only the first word in active-word
-mode. Cues with incomplete timing data in final rendering fall back to normal
-subtitles instead of receiving invented timestamps.
+Entrance supports `none`, `fade`, the applicable slide directions, `pop`, and
+`zoom`. Emphasis supports `none`, `pulse`, `bounce`, `float`, and `breathe`;
+cue tracks additionally support `shake` and `flash`. Exit supports `none`,
+`fade`, the applicable slide directions, and `zoom`. Every motion phase has a
+deterministic default duration. Append `-duration` to its option to use a value
+from `10ms` through `5000ms`, written in milliseconds or seconds.
+
+Word text can be highlighted progressively, providing a karaoke-style result:
+
+```bash
+multisubs -i ./video.mp4 -l pt \
+  --animation-word-text-emphasis highlight \
+  --animation-word-text-mode progressive \
+  --animation-word-text-highlight-color '#FFD54F'
+```
+
+A word decoration is enabled by choosing its visual type. Its animation and
+timing mode remain independent from word text:
+
+```bash
+multisubs -i ./video.mp4 -l pt \
+  --word-backdrop box \
+  --word-backdrop-color '#FFD54F' \
+  --word-backdrop-size 12% \
+  --animation-word-backdrop-mode active-word \
+  --animation-word-backdrop-entrance fade \
+  --animation-word-text-emphasis highlight \
+  --animation-word-text-highlight-color '#111827'
+```
+
+`active-word` affects only the current validated word interval and leaves pauses
+undecorated. `progressive` keeps each affected word visible through the end of
+the cue. Word behavior requires source-language alignment and therefore cannot
+be combined with translation. Cues with incomplete timing mappings fall back
+to ordinary subtitles. Preview does not invent timing: it shows the first word
+for `active-word` and the first half of the cue for `progressive`.
 
 ### Customize typography
 
@@ -234,7 +274,7 @@ The typography controls include:
 - `--letter-spacing`: non-negative tracking in `%` or PlayRes `px`.
 - `--line-height`: `auto`, a percentage of the natural line height, or PlayRes
   pixels.
-- `--opacity`: multiplies the alpha of text, backdrop, shadow, and karaoke
+- `--opacity`: multiplies the alpha of text, cue/word backdrops, shadow, and timed
   highlighting without changing layout.
 - `--text-case`: `original`, `uppercase`, or `lowercase`, applied before
   measurement and wrapping.
@@ -326,7 +366,7 @@ Run `multisubs --help` for the parser's complete, authoritative help text.
 Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 `medium.en`, `medium`, `large`, and `turbo`.
 
-### Preview and effects
+### Preview and animation
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -334,15 +374,17 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
 | `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
 | `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
-| `--karaoke`, `--no-karaoke` | off | Enable karaoke or disable an effect inherited from a template. |
-| `--karaoke-mode MODE` | `progressive` when enabled | Use `progressive` or `active-word`. |
-| `--karaoke-highlight-color COLOR` | `#FFD54F` | Set the karaoke highlight color. |
+| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit} TYPE` | inherited or `none` | Select one phase on one independent visual track; run `--help` for the effects valid for each phase. |
+| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit}-duration DURATION` | effect or template default | Override an enabled phase with `10ms`–`5000ms`, expressed as `150ms` or `0.15s`. |
+| `--animation-word-text-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for word text. |
+| `--animation-word-backdrop-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for the word decoration. |
+| `--animation-word-text-highlight-color COLOR` | `#FFD54F` when enabled | Set the text color used by the `highlight` word emphasis. |
 
 ### Appearance
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--template NAME` | `default` | Select one of the eight built-in presentation baselines. |
+| `--template NAME` | `default` | Select one of the thirteen built-in presentation baselines. |
 | `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
 | `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
 | `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
@@ -356,6 +398,9 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | `--backdrop KIND` | `box` | `none`, `outline`, or `box`. |
 | `--backdrop-color COLOR` | `#00000099` | Outline, box, and shadow color. |
 | `--backdrop-size LENGTH` | `0px` | Outline thickness or box padding. |
+| `--word-backdrop KIND` | `none` | Timed word decoration: `none`, `outline`, or `box`. |
+| `--word-backdrop-color COLOR` | `#111827E6` | Timed word-decoration color. |
+| `--word-backdrop-size LENGTH` | `20px` | Outline thickness or padding for each timed word decoration. |
 | `--shadow-size LENGTH` | `4%` | Shadow size relative to the resolved font size or in pixels. |
 | `--fonts-dir DIR` | — | Additional `.ttf`, `.otf`, or `.ttc` fonts for this run. |
 
@@ -413,7 +458,7 @@ resolution-aware; pixels refer to the generated ASS PlayRes canvas.
 | `--font-size` | Autorotated render height. |
 | `--letter-spacing` | Resolved font size. |
 | `--line-height` | Natural measured font line height. |
-| `--backdrop-size`, `--shadow-size` | Resolved font size. |
+| `--backdrop-size`, `--word-backdrop-size`, `--shadow-size` | Resolved font size. |
 | `--margin-left`, `--margin-right` | Render width. |
 | `--margin-top`, `--margin-bottom` | Render height. |
 | `--max-width` | Native: width after side margins; explicit: render width. |
@@ -492,10 +537,12 @@ partial final media is not published.
 
 When `--keep-transcriptions` is enabled, the versioned JSON transcript includes
 source and processing metadata, original and displayed cue text, render
-geometry, resolved layout and typography, wrapping diagnostics, and optional
-karaoke metadata. Rendering diagnostics also record the requested and resolved
-template names; omitted selection is recorded as requested `null` and resolved
-`default`.
+geometry, resolved layout and typography, wrapping diagnostics, and the four
+independent cue/word text/backdrop animation tracks. Rendering diagnostics also record the
+requested and resolved template names; omitted selection is recorded as
+requested `null` and resolved `default`. The current retained JSON contract
+uses schema version `3` and stores animation data under
+`metadata.rendering.animation`.
 
 ## 🧪 Development
 
@@ -545,8 +592,10 @@ and system tools retain their own licenses.
 
 - One local input video is processed per invocation.
 - Translation output is fixed to English.
-- Karaoke is unavailable for translation; previews show a static representative
-  highlight rather than timed word animation.
+- Aligned-word behavior is unavailable for translation; previews suppress all
+  motion and show one representative state for each configured word track.
+- Animation distance, scale, and easing are fixed per semantic type; phase
+  duration can be customized from `10ms` through `5000ms`.
 - There is no interactive subtitle editor or graphical interface.
 - Speaker diarization and speaker-specific styling are not supported.
 - The output uses hard subtitles; selectable soft subtitle tracks are not

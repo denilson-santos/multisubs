@@ -476,7 +476,10 @@ def test_explicit_progressive_lines_keep_cue_global_word_boundaries(
             "max_width": "600px",
             "max_height": "200px",
         },
-        effects_values={"karaoke": True},
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "progressive",
+        },
     )
     segment = {
         "start": 0.0,
@@ -500,16 +503,15 @@ def test_explicit_progressive_lines_keep_cue_global_word_boundaries(
     lines = [
         line
         for line in path.read_text(encoding="utf-8").splitlines()
-        if line.startswith("Dialogue: 1,")
+        if line.startswith("Dialogue: 2,")
     ]
-    assert len(lines) == 6
-    assert sum(r"{\k" in line for line in lines) == 3
+    assert len(lines) == 7
+    assert all(r"{\k" not in line for line in lines)
     assert sum("0:00:00.00,0:00:00.20" in line for line in lines) == 2
-    second_line = lines[3:]
-    assert len(second_line) == 3
+    second_line = [line for line in lines if line.endswith("three")]
+    assert len(second_line) == 2
     assert r"\1c&H4FD5FF&" not in second_line[0]
-    assert r"\1c&H4FD5FF&" not in second_line[1]
-    assert r"\1c&H4FD5FF&" in second_line[2]
+    assert r"\1c&H4FD5FF&" in second_line[1]
 
 
 def test_named_center_uses_native_alignment_and_horizontal_margins(

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "templates": [
     "default.json",
     "clean-outline.json",
@@ -8,6 +8,11 @@
     "newsroom.json",
     "editorial.json",
     "high-contrast.json",
-    "neon-karaoke.json"
+    "neon-karaoke.json",
+    "cinematic-fade.json",
+    "impact-yellow.json",
+    "lower-third-slide.json",
+    "soft-zoom.json",
+    "word-focus.json"
   ]
 }

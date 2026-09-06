@@ -15,7 +15,6 @@ from .models import (
     CueAnimationType,
     FontWeight,
     FontWeightInputForm,
-    KaraokeMode,
     RelativeLength,
     SubtitleAnimation,
     SubtitleAnimationPhase,
@@ -23,6 +22,7 @@ from .models import (
     SubtitleBackdropStyle,
     SubtitleConfig,
     SubtitleCueAnimation,
+    SubtitleElementAnimation,
     SubtitleLayout,
     SubtitleOpacity,
     SubtitlePlacementMode,
@@ -31,8 +31,10 @@ from .models import (
     SubtitleStyle,
     SubtitleTypography,
     SubtitleWordAnimation,
+    SubtitleWordBackdropStyle,
+    SubtitleWordElementAnimation,
     TextCase,
-    WordAnimationType,
+    WordAnimationMode,
 )
 
 SUPPORTED_LANGUAGES = (
@@ -95,7 +97,102 @@ MODELS = (
 POSITION_CHOICES = tuple(position.value for position in SubtitlePosition)
 DEFAULT_POSITION = SubtitlePosition.BOTTOM_CENTER
 BACKDROP_CHOICES = tuple(backdrop.value for backdrop in SubtitleBackdrop)
-KARAOKE_MODE_CHOICES = tuple(mode.value for mode in KaraokeMode)
+CUE_ENTRANCE_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.FADE,
+        CueAnimationType.SLIDE_UP,
+        CueAnimationType.SLIDE_DOWN,
+        CueAnimationType.SLIDE_LEFT,
+        CueAnimationType.SLIDE_RIGHT,
+        CueAnimationType.POP,
+        CueAnimationType.ZOOM,
+    }
+)
+CUE_EMPHASIS_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.PULSE,
+        CueAnimationType.BOUNCE,
+        CueAnimationType.FLOAT,
+        CueAnimationType.SHAKE,
+        CueAnimationType.FLASH,
+        CueAnimationType.BREATHE,
+    }
+)
+CUE_EXIT_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.FADE,
+        CueAnimationType.SLIDE_UP,
+        CueAnimationType.SLIDE_DOWN,
+        CueAnimationType.SLIDE_LEFT,
+        CueAnimationType.SLIDE_RIGHT,
+        CueAnimationType.ZOOM,
+    }
+)
+WORD_ENTRANCE_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.FADE,
+        CueAnimationType.SLIDE_UP,
+        CueAnimationType.SLIDE_DOWN,
+        CueAnimationType.POP,
+        CueAnimationType.ZOOM,
+    }
+)
+WORD_TEXT_EMPHASIS_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.HIGHLIGHT,
+        CueAnimationType.PULSE,
+        CueAnimationType.BOUNCE,
+        CueAnimationType.FLOAT,
+        CueAnimationType.BREATHE,
+    }
+)
+WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.PULSE,
+        CueAnimationType.BOUNCE,
+        CueAnimationType.FLOAT,
+        CueAnimationType.BREATHE,
+    }
+)
+# Kept as the union for callers that display a generic word-emphasis list.
+WORD_EMPHASIS_ANIMATION_CHOICES = WORD_TEXT_EMPHASIS_ANIMATION_CHOICES
+WORD_EXIT_ANIMATION_CHOICES = tuple(
+    animation.value
+    for animation in CueAnimationType
+    if animation
+    in {
+        CueAnimationType.NONE,
+        CueAnimationType.FADE,
+        CueAnimationType.SLIDE_UP,
+        CueAnimationType.SLIDE_DOWN,
+        CueAnimationType.ZOOM,
+    }
+)
+WORD_ANIMATION_MODE_CHOICES = tuple(mode.value for mode in WordAnimationMode)
 FONT_WEIGHT_NAMES = tuple(weight.canonical_name for weight in FontWeight)
 FONT_WEIGHT_RANKS = tuple(weight.rank for weight in FontWeight)
 TEXT_CASE_CHOICES = tuple(text_case.value for text_case in TextCase)
@@ -123,11 +220,15 @@ _RELATIVE_LENGTH_PATTERN = re.compile(
     r"(?P<unit>%|px)$"
 )
 _OPACITY_PATTERN = re.compile(r"^(?P<number>(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,3})?)%$")
+_DURATION_PATTERN = re.compile(
+    r"^(?P<number>(?:0|[1-9][0-9]{0,4})(?:\.[0-9]{1,3})?)(?P<unit>ms|s)$"
+)
 _RELATIVE_FIELDS = {
     "font_size",
     "letter_spacing",
     "line_height",
     "outline_weight",
+    "word_backdrop_size",
     "shadow_weight",
     "margin_left",
     "margin_right",
@@ -150,15 +251,91 @@ DEFAULT_ITALIC = False
 DEFAULT_BACKDROP = SubtitleBackdrop.BOX
 DEFAULT_BACKDROP_COLOR = "#00000099"
 DEFAULT_BACKDROP_SIZE = "0px"
+DEFAULT_WORD_BACKDROP = SubtitleBackdrop.NONE
+DEFAULT_WORD_BACKDROP_COLOR = "#111827E6"
+DEFAULT_WORD_BACKDROP_SIZE = "20px"
 DEFAULT_SHADOW_SIZE = "4%"
-DEFAULT_KARAOKE_HIGHLIGHT_COLOR = "#FFD54F"
-DEFAULT_KARAOKE_MODE = KaraokeMode.PROGRESSIVE
+DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR = "#FFD54F"
+DEFAULT_WORD_ANIMATION_MODE = WordAnimationMode.ACTIVE_WORD
 DEFAULT_MARGIN_LEFT = "18%"
 DEFAULT_MARGIN_RIGHT = "18%"
 DEFAULT_MARGIN_TOP = "0%"
 DEFAULT_MARGIN_BOTTOM = "3%"
 DEFAULT_MAX_WIDTH = "100%"
 DEFAULT_MAX_HEIGHT = "10%"
+
+_ENTRANCE_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.FADE: 160,
+        CueAnimationType.SLIDE_UP: 220,
+        CueAnimationType.SLIDE_DOWN: 220,
+        CueAnimationType.SLIDE_LEFT: 220,
+        CueAnimationType.SLIDE_RIGHT: 220,
+        CueAnimationType.POP: 220,
+        CueAnimationType.ZOOM: 220,
+    }
+)
+_CUE_EMPHASIS_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.PULSE: 600,
+        CueAnimationType.BOUNCE: 600,
+        CueAnimationType.FLOAT: 900,
+        CueAnimationType.SHAKE: 400,
+        CueAnimationType.FLASH: 500,
+        CueAnimationType.BREATHE: 1200,
+    }
+)
+_EXIT_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.FADE: 120,
+        CueAnimationType.SLIDE_UP: 180,
+        CueAnimationType.SLIDE_DOWN: 180,
+        CueAnimationType.SLIDE_LEFT: 180,
+        CueAnimationType.SLIDE_RIGHT: 180,
+        CueAnimationType.ZOOM: 160,
+    }
+)
+_WORD_ENTRANCE_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.FADE: 100,
+        CueAnimationType.SLIDE_UP: 140,
+        CueAnimationType.SLIDE_DOWN: 140,
+        CueAnimationType.POP: 160,
+        CueAnimationType.ZOOM: 140,
+    }
+)
+_WORD_TEXT_EMPHASIS_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.HIGHLIGHT: 0,
+        CueAnimationType.PULSE: 240,
+        CueAnimationType.BOUNCE: 240,
+        CueAnimationType.FLOAT: 600,
+        CueAnimationType.BREATHE: 600,
+    }
+)
+_WORD_BACKDROP_EMPHASIS_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.PULSE: 240,
+        CueAnimationType.BOUNCE: 240,
+        CueAnimationType.FLOAT: 600,
+        CueAnimationType.BREATHE: 600,
+    }
+)
+_WORD_EXIT_ANIMATION_DURATIONS_MS = MappingProxyType(
+    {
+        CueAnimationType.NONE: 0,
+        CueAnimationType.FADE: 100,
+        CueAnimationType.SLIDE_UP: 120,
+        CueAnimationType.SLIDE_DOWN: 120,
+        CueAnimationType.ZOOM: 100,
+    }
+)
 
 
 def parse_relative_length(raw_value: str) -> RelativeLength:
@@ -212,6 +389,28 @@ def parse_opacity(raw_value: object) -> SubtitleOpacity:
     if not percentage.is_finite() or percentage < 0 or percentage > 100:
         raise ValidationError("opacity must be between 0% and 100%")
     return SubtitleOpacity(percentage=percentage, original=original)
+
+
+def parse_animation_duration(raw_value: object) -> int:
+    """Parse a unit-bearing animation duration into whole milliseconds."""
+    if not isinstance(raw_value, str):
+        raise ValidationError("animation duration must end in ms or s")
+    match = _DURATION_PATTERN.fullmatch(raw_value.strip().casefold())
+    if match is None:
+        raise ValidationError(
+            "animation duration must use ms or s (for example 150ms or 0.15s)"
+        )
+    try:
+        number = Decimal(match.group("number"))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValidationError("animation duration must be finite") from exc
+    milliseconds = number * (1000 if match.group("unit") == "s" else 1)
+    if not milliseconds.is_finite() or milliseconds != milliseconds.to_integral_value():
+        raise ValidationError("animation duration must resolve to whole milliseconds")
+    result = int(milliseconds)
+    if result < 10 or result > 5000:
+        raise ValidationError("animation duration must be from 10ms through 5000ms")
+    return result
 
 
 def parse_text_case(raw_value: object) -> TextCase:
@@ -285,7 +484,7 @@ def validate_subtitle_config(
     appearance_values: Mapping[str, object] | None = None,
     position: SubtitlePosition | str | None = None,
     relative_values: Mapping[str, RelativeLength | str] | None = None,
-    effects_values: Mapping[str, object] | None = None,
+    animation_values: Mapping[str, object] | None = None,
     position_x: RelativeLength | str | None = None,
     position_y: RelativeLength | str | None = None,
     anchor: SubtitlePosition | str | None = None,
@@ -298,7 +497,7 @@ def validate_subtitle_config(
             defaults is not None
             or appearance_values
             or relative_values
-            or effects_values
+            or animation_values
             or position_x is not None
             or position_y is not None
         ):
@@ -316,11 +515,11 @@ def validate_subtitle_config(
                 "configuration"
             )
         _validate_typed_subtitle_config(value)
-        if value.animation.word.enabled:
+        if value.animation.word.uses_timed_highlight:
             highlight_color = _validate_color(
                 value.style.typography.highlight_color
-                or DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
-                "karaoke-highlight-color",
+                or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
+                "animation-word-text-highlight-color",
             )
             if highlight_color != value.style.typography.highlight_color:
                 return replace(
@@ -346,14 +545,20 @@ def validate_subtitle_config(
     default_style = defaults.style if defaults is not None else None
     default_typography = default_style.typography if default_style is not None else None
     default_backdrop = default_style.backdrop if default_style is not None else None
+    default_word_backdrop = (
+        default_style.word_backdrop if default_style is not None else None
+    )
     default_shadow = default_style.shadow if default_style is not None else None
     default_layout = defaults.layout if defaults is not None else None
+    default_cue_animation = (
+        defaults.animation.cue if defaults is not None else SubtitleCueAnimation()
+    )
     default_word_animation = (
         defaults.animation.word if defaults is not None else SubtitleWordAnimation()
     )
 
     appearance_overrides = dict(appearance_values or {})
-    effects_overrides = dict(effects_values or {})
+    animation_overrides = dict(animation_values or {})
     known_appearance_fields = {
         "font",
         "text_color",
@@ -362,6 +567,8 @@ def validate_subtitle_config(
         "italic",
         "backdrop",
         "backdrop_color",
+        "word_backdrop",
+        "word_backdrop_color",
         "opacity",
         "text_case",
         "fonts_dir",
@@ -408,37 +615,98 @@ def validate_subtitle_config(
         )
     )
 
-    if "karaoke_highlight_color" in effects_overrides:
-        if "highlight_color" in effects_overrides:
-            raise ValidationError("highlight-color was provided more than once")
-        effects_overrides["highlight_color"] = effects_overrides.pop(
-            "karaoke_highlight_color"
+    track_specs = {
+        "cue_text": (
+            default_cue_animation.text,
+            CUE_ENTRANCE_ANIMATION_CHOICES,
+            CUE_EMPHASIS_ANIMATION_CHOICES,
+            CUE_EXIT_ANIMATION_CHOICES,
+            _ENTRANCE_ANIMATION_DURATIONS_MS,
+            _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        "cue_backdrop": (
+            default_cue_animation.backdrop,
+            CUE_ENTRANCE_ANIMATION_CHOICES,
+            CUE_EMPHASIS_ANIMATION_CHOICES,
+            CUE_EXIT_ANIMATION_CHOICES,
+            _ENTRANCE_ANIMATION_DURATIONS_MS,
+            _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        "word_text": (
+            default_word_animation.text,
+            WORD_ENTRANCE_ANIMATION_CHOICES,
+            WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
+            WORD_EXIT_ANIMATION_CHOICES,
+            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
+            _WORD_TEXT_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _WORD_EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        "word_backdrop": (
+            default_word_animation.backdrop,
+            WORD_ENTRANCE_ANIMATION_CHOICES,
+            WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
+            WORD_EXIT_ANIMATION_CHOICES,
+            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
+            _WORD_BACKDROP_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _WORD_EXIT_ANIMATION_DURATIONS_MS,
+        ),
+    }
+    known_animation_fields = {
+        "word_text_mode",
+        "word_backdrop_mode",
+        "word_text_highlight_color",
+    }
+    for prefix in track_specs:
+        for phase_name in ("entrance", "emphasis", "exit"):
+            known_animation_fields.add(f"{prefix}_{phase_name}")
+            known_animation_fields.add(f"{prefix}_{phase_name}_duration")
+    unknown_animation_fields = set(animation_overrides).difference(
+        known_animation_fields
+    )
+    if unknown_animation_fields:
+        names = ", ".join(sorted(unknown_animation_fields))
+        raise ValidationError(f"Unknown animation value(s): {names}")
+    resolved_tracks = {
+        prefix: _resolve_animation_track(
+            prefix,
+            default_track,
+            animation_overrides,
+            entrance_choices=entrance_choices,
+            emphasis_choices=emphasis_choices,
+            exit_choices=exit_choices,
+            entrance_durations=entrance_durations,
+            emphasis_durations=emphasis_durations,
+            exit_durations=exit_durations,
         )
-    if "mode" in effects_overrides:
-        if "karaoke_mode" in effects_overrides:
-            raise ValidationError("karaoke-mode was provided more than once")
-        effects_overrides["karaoke_mode"] = effects_overrides.pop("mode")
-    unknown_effect_fields = set(effects_overrides).difference(
-        {"karaoke", "karaoke_mode", "highlight_color"}
+        for prefix, (
+            default_track,
+            entrance_choices,
+            emphasis_choices,
+            exit_choices,
+            entrance_durations,
+            emphasis_durations,
+            exit_durations,
+        ) in track_specs.items()
+    }
+    word_text_mode = _validate_word_animation_mode(
+        animation_overrides.get("word_text_mode", default_word_animation.text.mode)
     )
-    if unknown_effect_fields:
-        names = ", ".join(sorted(unknown_effect_fields))
-        raise ValidationError(f"Unknown effect value(s): {names}")
-    karaoke = _validate_boolean(
-        effects_overrides.get("karaoke", default_word_animation.enabled), "karaoke"
+    word_backdrop_mode = _validate_word_animation_mode(
+        animation_overrides.get(
+            "word_backdrop_mode", default_word_animation.backdrop.mode
+        )
     )
-    explicit_karaoke_mode = effects_overrides.get("karaoke_mode")
-    if not karaoke and explicit_karaoke_mode is not None:
-        raise ValidationError("karaoke-mode requires --karaoke")
-    raw_karaoke_mode = (
-        explicit_karaoke_mode
-        if explicit_karaoke_mode is not None
-        else default_word_animation.mode or DEFAULT_KARAOKE_MODE
+    explicit_highlight_color = animation_overrides.get("word_text_highlight_color")
+    word_text_highlighted = (
+        resolved_tracks["word_text"].emphasis.type is CueAnimationType.HIGHLIGHT
     )
-    karaoke_mode = _validate_karaoke_mode(raw_karaoke_mode) if karaoke else None
-    explicit_highlight_color = effects_overrides.get("highlight_color")
-    if not karaoke and explicit_highlight_color is not None:
-        raise ValidationError("karaoke-highlight-color requires --karaoke")
+    if not word_text_highlighted and explicit_highlight_color is not None:
+        raise ValidationError(
+            "animation-word-text-highlight-color requires "
+            "--animation-word-text-emphasis highlight"
+        )
     raw_highlight_color = (
         explicit_highlight_color
         if explicit_highlight_color is not None
@@ -447,14 +715,14 @@ def validate_subtitle_config(
             if default_typography is not None
             else None
         )
-        or DEFAULT_KARAOKE_HIGHLIGHT_COLOR
+        or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR
     )
     highlight_color = (
         _validate_color(
             raw_highlight_color,
-            "karaoke-highlight-color",
+            "animation-word-text-highlight-color",
         )
-        if karaoke
+        if word_text_highlighted
         else None
     )
 
@@ -603,6 +871,31 @@ def validate_subtitle_config(
                     else parse_relative_length(DEFAULT_BACKDROP_SIZE),
                 ),
             ),
+            word_backdrop=SubtitleWordBackdropStyle(
+                kind=_validate_backdrop(
+                    appearance_overrides.get(
+                        "word_backdrop",
+                        default_word_backdrop.kind
+                        if default_word_backdrop is not None
+                        else DEFAULT_WORD_BACKDROP,
+                    )
+                ),
+                color=_validate_color(
+                    appearance_overrides.get(
+                        "word_backdrop_color",
+                        default_word_backdrop.color
+                        if default_word_backdrop is not None
+                        else DEFAULT_WORD_BACKDROP_COLOR,
+                    ),
+                    "word-backdrop-color",
+                ),
+                size=parsed_length_values.get(
+                    "word_backdrop_size",
+                    default_word_backdrop.size
+                    if default_word_backdrop is not None
+                    else parse_relative_length(DEFAULT_WORD_BACKDROP_SIZE),
+                ),
+            ),
             shadow=SubtitleShadow(
                 size=parsed_length_values.get(
                     "shadow_weight",
@@ -669,12 +962,22 @@ def validate_subtitle_config(
         ),
         animation=SubtitleAnimation(
             cue=SubtitleCueAnimation(
-                entrance=SubtitleAnimationPhase(CueAnimationType.NONE),
-                exit=SubtitleAnimationPhase(CueAnimationType.NONE),
+                text=resolved_tracks["cue_text"],
+                backdrop=resolved_tracks["cue_backdrop"],
             ),
             word=SubtitleWordAnimation(
-                type=(WordAnimationType.KARAOKE if karaoke else WordAnimationType.NONE),
-                mode=karaoke_mode,
+                text=SubtitleWordElementAnimation(
+                    entrance=resolved_tracks["word_text"].entrance,
+                    emphasis=resolved_tracks["word_text"].emphasis,
+                    exit=resolved_tracks["word_text"].exit,
+                    mode=word_text_mode,
+                ),
+                backdrop=SubtitleWordElementAnimation(
+                    entrance=resolved_tracks["word_backdrop"].entrance,
+                    emphasis=resolved_tracks["word_backdrop"].emphasis,
+                    exit=resolved_tracks["word_backdrop"].exit,
+                    mode=word_backdrop_mode,
+                ),
             ),
         ),
     )
@@ -841,6 +1144,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         raise ValidationError("explicit placement requires max-height")
     typography = config.style.typography
     backdrop = config.style.backdrop
+    word_backdrop = config.style.word_backdrop
     shadow = config.style.shadow
     _validate_font(typography.font)
     _validate_color(typography.color, "text-color")
@@ -878,6 +1182,12 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
     _validate_boolean(typography.italic, "italic")
     _validate_backdrop(backdrop.kind)
     _validate_color(backdrop.color, "backdrop-color")
+    if not isinstance(word_backdrop, SubtitleWordBackdropStyle):
+        raise ValidationError(
+            "word backdrop must use the typed SubtitleWordBackdropStyle contract"
+        )
+    _validate_backdrop(word_backdrop.kind)
+    _validate_color(word_backdrop.color, "word-backdrop-color")
     _validate_opacity(config.style.opacity)
     if not isinstance(typography.text_case, TextCase):
         raise ValidationError("text-case must use the typed TextCase contract")
@@ -892,6 +1202,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         "font_size": typography.font_size,
         "letter_spacing": typography.letter_spacing,
         "outline_weight": backdrop.size,
+        "word_backdrop_size": config.style.word_backdrop.size,
         "shadow_weight": shadow.size,
         "margin_left": config.layout.margin_left,
         "margin_right": config.layout.margin_right,
@@ -1018,49 +1329,200 @@ def _validate_animation(
         )
     if not isinstance(value.cue, SubtitleCueAnimation):
         raise ValidationError("cue animation must use the typed cue contract")
-    for phase_name, phase in (
-        ("entrance", value.cue.entrance),
-        ("exit", value.cue.exit),
-    ):
-        if not isinstance(phase, SubtitleAnimationPhase):
-            raise ValidationError(
-                f"cue {phase_name} must use the typed animation phase contract"
-            )
-        if phase.type is not CueAnimationType.NONE:
-            raise ValidationError(f"cue {phase_name} animation must be none")
     if not isinstance(value.word, SubtitleWordAnimation):
         raise ValidationError("word animation must use the typed word contract")
-    if value.word.type is WordAnimationType.NONE:
-        if value.word.mode is not None:
-            raise ValidationError("karaoke-mode requires karaoke to be enabled")
-        if typography.highlight_color is not None:
-            raise ValidationError(
-                "karaoke-highlight-color requires karaoke to be enabled"
-            )
-        return value
-    if value.word.type is not WordAnimationType.KARAOKE:
-        raise ValidationError("word animation type must be none or karaoke")
-    if not isinstance(value.word.mode, KaraokeMode):
-        raise ValidationError("karaoke-mode must use the typed KaraokeMode contract")
-    _validate_color(
-        typography.highlight_color
-        if typography.highlight_color is not None
-        else DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
-        "karaoke-highlight-color",
+    tracks = (
+        (
+            "cue text",
+            value.cue.text,
+            _ENTRANCE_ANIMATION_DURATIONS_MS,
+            _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        (
+            "cue backdrop",
+            value.cue.backdrop,
+            _ENTRANCE_ANIMATION_DURATIONS_MS,
+            _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        (
+            "word text",
+            value.word.text,
+            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
+            _WORD_TEXT_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _WORD_EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        (
+            "word backdrop",
+            value.word.backdrop,
+            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
+            _WORD_BACKDROP_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _WORD_EXIT_ANIMATION_DURATIONS_MS,
+        ),
     )
+    for scope, track, entrance_durations, emphasis_durations, exit_durations in tracks:
+        if not isinstance(track, SubtitleElementAnimation):
+            raise ValidationError(
+                f"{scope} animation must use the typed element contract"
+            )
+        for phase_name, phase, durations in (
+            ("entrance", track.entrance, entrance_durations),
+            ("emphasis", track.emphasis, emphasis_durations),
+            ("exit", track.exit, exit_durations),
+        ):
+            _validate_animation_phase(
+                phase, durations=durations, scope=scope, phase=phase_name
+            )
+    for scope, track in (
+        ("word text", value.word.text),
+        ("word backdrop", value.word.backdrop),
+    ):
+        if not isinstance(track, SubtitleWordElementAnimation):
+            raise ValidationError(
+                f"{scope} animation must use the typed word element contract"
+            )
+        if not isinstance(track.mode, WordAnimationMode):
+            raise ValidationError(
+                f"{scope} mode must use the typed WordAnimationMode contract"
+            )
+    if value.word.text.emphasis.type is CueAnimationType.HIGHLIGHT:
+        _validate_color(
+            typography.highlight_color or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
+            "animation-word-text-highlight-color",
+        )
+    elif typography.highlight_color is not None:
+        raise ValidationError(
+            "animation-word-text-highlight-color requires word text highlight emphasis"
+        )
     return value
 
 
-def _validate_karaoke_mode(value: object) -> KaraokeMode:
-    if isinstance(value, KaraokeMode):
+def _resolve_animation_track(
+    prefix: str,
+    default: SubtitleElementAnimation,
+    overrides: Mapping[str, object],
+    *,
+    entrance_choices: tuple[str, ...],
+    emphasis_choices: tuple[str, ...],
+    exit_choices: tuple[str, ...],
+    entrance_durations: Mapping[CueAnimationType, int],
+    emphasis_durations: Mapping[CueAnimationType, int],
+    exit_durations: Mapping[CueAnimationType, int],
+) -> SubtitleElementAnimation:
+    phases: dict[str, SubtitleAnimationPhase] = {}
+    for phase_name, choices, durations in (
+        ("entrance", entrance_choices, entrance_durations),
+        ("emphasis", emphasis_choices, emphasis_durations),
+        ("exit", exit_choices, exit_durations),
+    ):
+        type_key = f"{prefix}_{phase_name}"
+        duration_key = f"{type_key}_duration"
+        default_phase = getattr(default, phase_name)
+        requested_type = overrides.get(type_key, default_phase)
+        if (
+            isinstance(requested_type, str)
+            and requested_type == default_phase.type.value
+        ):
+            requested_type = default_phase
+        selected = _parse_animation_phase(
+            requested_type,
+            durations=durations,
+            choices=choices,
+            scope=prefix.replace("_", "-"),
+            phase=phase_name,
+        )
+        explicit_duration = overrides.get(duration_key)
+        if explicit_duration is not None:
+            if selected.type in {CueAnimationType.NONE, CueAnimationType.HIGHLIGHT}:
+                raise ValidationError(
+                    f"animation-{prefix.replace('_', '-')}-{phase_name}-duration "
+                    f"cannot be used with {selected.type.value}"
+                )
+            selected = replace(
+                selected, duration_ms=parse_animation_duration(explicit_duration)
+            )
+        phases[phase_name] = selected
+    return SubtitleElementAnimation(**phases)
+
+
+def _parse_animation_phase(
+    value: object,
+    *,
+    durations: Mapping[CueAnimationType, int],
+    choices: tuple[str, ...],
+    scope: str,
+    phase: str,
+) -> SubtitleAnimationPhase:
+    if isinstance(value, SubtitleAnimationPhase):
+        _validate_animation_phase(
+            value,
+            durations=durations,
+            scope=scope,
+            phase=phase,
+        )
+        return value
+    if isinstance(value, CueAnimationType):
+        animation_type = value
+    elif isinstance(value, str):
+        try:
+            animation_type = CueAnimationType(value)
+        except ValueError:
+            animation_type = None
+    else:
+        animation_type = None
+    if animation_type is None or animation_type not in durations:
+        raise ValidationError(
+            f"animation-{scope}-{phase} must be one of: " + ", ".join(choices)
+        )
+    return SubtitleAnimationPhase(
+        type=animation_type,
+        duration_ms=durations[animation_type],
+    )
+
+
+def _validate_animation_phase(
+    value: object,
+    *,
+    durations: Mapping[CueAnimationType, int],
+    scope: str,
+    phase: str,
+) -> SubtitleAnimationPhase:
+    if not isinstance(value, SubtitleAnimationPhase):
+        raise ValidationError(
+            f"{scope} {phase} must use the typed animation phase contract"
+        )
+    if not isinstance(value.type, CueAnimationType) or value.type not in durations:
+        raise ValidationError(f"{scope} {phase} animation type is invalid")
+    if (
+        isinstance(value.duration_ms, bool)
+        or not isinstance(value.duration_ms, int)
+        or value.duration_ms < 0
+        or value.duration_ms > 5000
+    ):
+        raise ValidationError(
+            f"{scope} {phase} animation duration must be from 0 through 5000 ms"
+        )
+    durationless_types = {CueAnimationType.NONE, CueAnimationType.HIGHLIGHT}
+    if value.type in durationless_types and value.duration_ms != 0:
+        raise ValidationError(
+            f"{scope} {phase} animation {value.type.value} must have 0 ms duration"
+        )
+    if value.type not in durationless_types and value.duration_ms == 0:
+        raise ValidationError(f"{scope} {phase} animation requires a positive duration")
+    return value
+
+
+def _validate_word_animation_mode(value: object) -> WordAnimationMode:
+    if isinstance(value, WordAnimationMode):
         return value
     if isinstance(value, str):
         try:
-            return KaraokeMode(value)
+            return WordAnimationMode(value)
         except ValueError:
             pass
     raise ValidationError(
-        "karaoke-mode must be one of: " + ", ".join(KARAOKE_MODE_CHOICES)
+        "word animation mode must be one of: " + ", ".join(WORD_ANIMATION_MODE_CHOICES)
     )
 
 

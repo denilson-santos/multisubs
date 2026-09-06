@@ -1,34 +1,34 @@
 {
   "schema_version": 4,
-  "name": "clean-outline",
-  "description": "Neutral modern captions for interviews, courses, and demonstrations.",
+  "name": "soft-zoom",
+  "description": "Clean modern captions with a restrained cue zoom, gentle float, and fade exit; aligned words are not required.",
   "style": {
     "typography": {
       "font_family": "Inter",
       "font_weight": "medium",
-      "font_size": "4%",
+      "font_size": "4.3%",
       "italic": false,
       "letter_spacing": "0px",
       "line_height": "auto",
       "text_case": "original",
-      "color": "#FFFFFF",
+      "color": "#F8FAFC",
       "highlight_color": null
     },
-    "backdrop": {"type": "outline", "color": "#000000CC", "size": "5%"},
+    "backdrop": {"type": "outline", "color": "#111827CC", "size": "4%"},
     "word_backdrop": {"type": "none", "color": "#111827E6", "size": "12%"},
-    "shadow": {"size": "0px"},
+    "shadow": {"size": "2%"},
     "opacity": "100%"
   },
   "layout": {
     "position": "bottom-center",
     "margins": {"left": "14%", "right": "14%", "top": "0%", "bottom": "3%"},
     "max_width": "100%",
-    "max_height": "14%"
+    "max_height": "16%"
   },
   "animation": {
     "cue": {
-      "text": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
-      "backdrop": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+      "text": {"entrance": {"type": "zoom", "duration_ms": 220}, "emphasis": {"type": "float", "duration_ms": 900}, "exit": {"type": "fade", "duration_ms": 120}},
+      "backdrop": {"entrance": {"type": "zoom", "duration_ms": 220}, "emphasis": {"type": "float", "duration_ms": 900}, "exit": {"type": "fade", "duration_ms": 120}}
     },
     "word": {
       "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},

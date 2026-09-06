@@ -6,6 +6,7 @@ import pytest
 from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import (
+    position_visual_lines,
     resolve_cue_placement,
     resolve_line_height,
     resolve_native_layout_region,
@@ -14,7 +15,13 @@ from multisubs.layout import (
     resolve_wrapping_metrics,
     unicode_display_width,
 )
-from multisubs.models import SubtitlePlacementMode, SubtitlePosition, VideoGeometry
+from multisubs.models import (
+    SubtitleDisplayFragment,
+    SubtitlePlacementMode,
+    SubtitlePosition,
+    SubtitleVisualLine,
+    VideoGeometry,
+)
 from multisubs.text_measurement import (
     TextMeasurementInfo,
     TextMeasurer,
@@ -32,6 +39,77 @@ GEOMETRY = VideoGeometry(
     display_aspect_ratio=Fraction(16, 9),
     duration_seconds=10.0,
 )
+
+
+def test_positioned_visual_line_uses_measured_fragment_advances():
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="basic",
+        metric_size=40,
+    )
+    measurer = TextMeasurer(
+        info,
+        lambda text: len(text) * 10 + max(0, len(text) - 1) * 2,
+        line_height=40,
+    )
+    requested = validate_subtitle_config(
+        None,
+        position="bottom-left",
+        appearance_values={"backdrop": "none"},
+        relative_values={
+            "font_size": "40px",
+            "shadow_weight": "0px",
+            "margin_left": "20px",
+            "margin_right": "20px",
+            "margin_bottom": "20px",
+            "max_width": "400px",
+            "max_height": "100px",
+        },
+    )
+    resolved = resolve_subtitle_config(
+        requested,
+        GEOMETRY,
+        text_measurer=measurer,
+    )
+    metrics = resolve_wrapping_metrics(
+        resolved,
+        GEOMETRY,
+        text_measurer=measurer,
+    )
+    line = SubtitleVisualLine(
+        text="one two",
+        fragments=(
+            SubtitleDisplayFragment("one", 0),
+            SubtitleDisplayFragment(" "),
+            SubtitleDisplayFragment("two", 1),
+        ),
+        width=82,
+        index=0,
+    )
+
+    positioned = position_visual_lines(
+        (line,),
+        resolved,
+        GEOMETRY,
+        metrics,
+        placement=None,
+    )
+
+    assert len(positioned) == 1
+    assert positioned[0].position_x == 20
+    assert [item.position_x for item in positioned[0].fragment_placements] == [
+        37,
+        61,
+        85,
+    ]
+    assert all(
+        item.anchor is SubtitlePosition.BOTTOM_CENTER
+        for item in positioned[0].fragment_placements
+    )
 
 
 @pytest.mark.parametrize(

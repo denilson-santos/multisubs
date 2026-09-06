@@ -1,6 +1,8 @@
 # Declarative template schema
 
-Status: In review
+Status: Done
+
+Delivery: [#64](https://github.com/denilson-santos/multisubs/pull/64)
 
 Depends on:
 
@@ -103,6 +105,10 @@ Each resource uses this complete high-level shape:
       "color": "#080012E6",
       "size": "7%"
     },
+    "word_backdrop": {
+      "color": "#111827E6",
+      "size": "12%"
+    },
     "shadow": {
       "size": "5%"
     },
@@ -179,7 +185,8 @@ original exception remains chained for tests or debugging.
 Refactor the private runtime configuration so one `SubtitleConfig` owns three
 immutable branches:
 
-- `style`, containing typed typography, backdrop, shadow, and opacity values;
+- `style`, containing typed typography, cue backdrop, word backdrop, shadow,
+  and opacity values;
 - `layout`, retaining the existing placement and envelope contract;
 - `animation`, containing cue and word animation values. In this plan both cue
   phases have type `none`, while the word branch represents the

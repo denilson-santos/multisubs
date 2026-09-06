@@ -113,6 +113,8 @@ def test_default_appearance_is_semantic_and_resolution_independent():
     assert config.style.backdrop.kind is SubtitleBackdrop.BOX
     assert config.style.backdrop.color == "#00000099"
     assert config.style.backdrop.size == parse_relative_length("0px")
+    assert config.style.word_backdrop.color == "#111827E6"
+    assert config.style.word_backdrop.size == parse_relative_length("20px")
     assert config.style.shadow.size == parse_relative_length("4%")
     assert config.style.opacity == SubtitleOpacity(Decimal("100"), "100%")
     assert typography.text_case is TextCase.ORIGINAL

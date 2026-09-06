@@ -12,6 +12,9 @@ from pathlib import Path
 from . import __version__
 from .config import (
     BACKDROP_CHOICES,
+    CUE_EMPHASIS_ANIMATION_CHOICES,
+    CUE_ENTRANCE_ANIMATION_CHOICES,
+    CUE_EXIT_ANIMATION_CHOICES,
     DEFAULT_BACKDROP,
     DEFAULT_BACKDROP_COLOR,
     DEFAULT_BACKDROP_SIZE,
@@ -19,8 +22,6 @@ from .config import (
     DEFAULT_FONT_SIZE,
     DEFAULT_FONT_WEIGHT,
     DEFAULT_ITALIC,
-    DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
-    DEFAULT_KARAOKE_MODE,
     DEFAULT_LETTER_SPACING,
     DEFAULT_LINE_HEIGHT,
     DEFAULT_MARGIN_BOTTOM,
@@ -34,14 +35,23 @@ from .config import (
     DEFAULT_SHADOW_SIZE,
     DEFAULT_TEXT_CASE,
     DEFAULT_TEXT_COLOR,
+    DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
+    DEFAULT_WORD_ANIMATION_MODE,
+    DEFAULT_WORD_BACKDROP,
+    DEFAULT_WORD_BACKDROP_COLOR,
+    DEFAULT_WORD_BACKDROP_SIZE,
     FONT_WEIGHT_ALIASES,
     FONT_WEIGHT_NAMES,
     FONT_WEIGHT_RANKS,
-    KARAOKE_MODE_CHOICES,
     MODELS,
     POSITION_CHOICES,
     SUPPORTED_LANGUAGES,
     TEXT_CASE_CHOICES,
+    WORD_ANIMATION_MODE_CHOICES,
+    WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
+    WORD_ENTRANCE_ANIMATION_CHOICES,
+    WORD_EXIT_ANIMATION_CHOICES,
+    WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
     parse_line_height,
     parse_opacity,
     parse_relative_length,
@@ -60,6 +70,7 @@ from .models import (
     RunArtifacts,
     RunRequest,
     SubtitleConfig,
+    SubtitleElementAnimation,
     SubtitleOpacity,
     TextCase,
     TranscriptionPaths,
@@ -89,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Generate and embed subtitles into a local video.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Supported language codes: " + ", ".join(SUPPORTED_LANGUAGES),
+        allow_abbrev=False,
     )
     parser.add_argument(
         "-v",
@@ -150,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="{" + ",".join(TEMPLATE_CHOICES) + "}",
         help=(
             "Built-in subtitle presentation; explicit appearance, layout, and "
-            f"effect options override individual fields (default: "
+            f"animation options override individual fields (default: "
             f"{DEFAULT_SUBTITLE_TEMPLATE})."
         ),
     )
@@ -257,6 +269,24 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Outline, box, and shadow color (default: {DEFAULT_BACKDROP_COLOR}).",
     )
     appearance_group.add_argument(
+        "--word-backdrop",
+        choices=BACKDROP_CHOICES,
+        default=None,
+        help=(
+            "Timed word decoration: none, outline, or box "
+            f"(default: {DEFAULT_WORD_BACKDROP.value})."
+        ),
+    )
+    appearance_group.add_argument(
+        "--word-backdrop-color",
+        default=None,
+        metavar="COLOR",
+        help=(
+            "Timed word-box color using #RRGGBB or #RRGGBBAA "
+            f"(default: {DEFAULT_WORD_BACKDROP_COLOR})."
+        ),
+    )
+    appearance_group.add_argument(
         "--opacity",
         type=_opacity_argument_type,
         default=None,
@@ -283,33 +313,86 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing additional fonts for FFmpeg/libass.",
     )
 
-    effects_group = parser.add_argument_group(
-        "Subtitle effects",
-        "Optional effects applied to transcription cues.",
+    animation_group = parser.add_argument_group(
+        "Subtitle animations",
+        "Semantic cue and aligned-word animations.",
     )
-    effects_group.add_argument(
-        "--karaoke",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Enable or disable aligned-word karaoke highlighting.",
-    )
-    effects_group.add_argument(
-        "--karaoke-mode",
-        choices=KARAOKE_MODE_CHOICES,
-        default=None,
-        metavar="MODE",
-        help=(
-            "Karaoke highlight behavior: progressive or active-word "
-            f"(default when enabled: {DEFAULT_KARAOKE_MODE.value})."
+    for scope, element, phase_choices in (
+        (
+            "cue",
+            "text",
+            (
+                CUE_ENTRANCE_ANIMATION_CHOICES,
+                CUE_EMPHASIS_ANIMATION_CHOICES,
+                CUE_EXIT_ANIMATION_CHOICES,
+            ),
         ),
-    )
-    effects_group.add_argument(
-        "--karaoke-highlight-color",
+        (
+            "cue",
+            "backdrop",
+            (
+                CUE_ENTRANCE_ANIMATION_CHOICES,
+                CUE_EMPHASIS_ANIMATION_CHOICES,
+                CUE_EXIT_ANIMATION_CHOICES,
+            ),
+        ),
+        (
+            "word",
+            "text",
+            (
+                WORD_ENTRANCE_ANIMATION_CHOICES,
+                WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
+                WORD_EXIT_ANIMATION_CHOICES,
+            ),
+        ),
+        (
+            "word",
+            "backdrop",
+            (
+                WORD_ENTRANCE_ANIMATION_CHOICES,
+                WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
+                WORD_EXIT_ANIMATION_CHOICES,
+            ),
+        ),
+    ):
+        for phase, choices in zip(
+            ("entrance", "emphasis", "exit"), phase_choices, strict=True
+        ):
+            option = f"--animation-{scope}-{element}-{phase}"
+            animation_group.add_argument(
+                option,
+                choices=choices,
+                default=None,
+                help=(
+                    f"{scope.title()} {element} {phase} animation; omission "
+                    "inherits the selected template."
+                ),
+            )
+            animation_group.add_argument(
+                f"{option}-duration",
+                default=None,
+                metavar="DURATION",
+                help=(
+                    "Override this effect duration with a value such as 150ms or 0.15s."
+                ),
+            )
+    for element in ("text", "backdrop"):
+        animation_group.add_argument(
+            f"--animation-word-{element}-mode",
+            choices=WORD_ANIMATION_MODE_CHOICES,
+            default=None,
+            help=(
+                f"Timed word {element} behavior: progressive or active-word "
+                f"(default: {DEFAULT_WORD_ANIMATION_MODE.value})."
+            ),
+        )
+    animation_group.add_argument(
+        "--animation-word-text-highlight-color",
         default=None,
         metavar="COLOR",
         help=(
-            "Karaoke highlight color using #RRGGBB or #RRGGBBAA "
-            f"(default when enabled: {DEFAULT_KARAOKE_HIGHLIGHT_COLOR})."
+            "Word highlight color using #RRGGBB or #RRGGBBAA "
+            f"(default when enabled: {DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR})."
         ),
     )
 
@@ -339,6 +422,11 @@ def build_parser() -> argparse.ArgumentParser:
             "--backdrop-size",
             "Backdrop/outline size as a percentage of the resolved font size "
             f"or pixels (default: {DEFAULT_BACKDROP_SIZE.replace('%', '%%')}).",
+        ),
+        (
+            "--word-backdrop-size",
+            "Timed word-box padding as a percentage of the resolved font size "
+            f"or pixels (default: {DEFAULT_WORD_BACKDROP_SIZE.replace('%', '%%')}).",
         ),
         (
             "--shadow-size",
@@ -505,19 +593,30 @@ def _build_request(
             "italic": args.italic,
             "backdrop": args.backdrop,
             "backdrop_color": args.backdrop_color,
+            "word_backdrop": args.word_backdrop,
+            "word_backdrop_color": args.word_backdrop_color,
             "opacity": args.opacity,
             "text_case": args.text_case,
             "fonts_dir": args.fonts_dir,
         }.items()
         if value is not None
     }
-    effects_values = {
-        "karaoke": args.karaoke,
-        "karaoke_mode": args.karaoke_mode,
-        "highlight_color": args.karaoke_highlight_color,
-    }
-    effects_values = {
-        key: value for key, value in effects_values.items() if value is not None
+    animation_values = {}
+    for scope in ("cue", "word"):
+        for element in ("text", "backdrop"):
+            for phase in ("entrance", "emphasis", "exit"):
+                key = f"{scope}_{element}_{phase}"
+                animation_values[key] = getattr(args, f"animation_{key}")
+                animation_values[f"{key}_duration"] = getattr(
+                    args, f"animation_{key}_duration"
+                )
+    animation_values.update(
+        word_text_mode=args.animation_word_text_mode,
+        word_backdrop_mode=args.animation_word_backdrop_mode,
+        word_text_highlight_color=args.animation_word_text_highlight_color,
+    )
+    animation_values = {
+        key: value for key, value in animation_values.items() if value is not None
     }
     relative_values = {
         key: value
@@ -526,6 +625,7 @@ def _build_request(
             "letter_spacing": args.letter_spacing,
             "line_height": args.line_height,
             "outline_weight": args.backdrop_size,
+            "word_backdrop_size": args.word_backdrop_size,
             "shadow_weight": args.shadow_size,
             "margin_left": args.margin_left,
             "margin_right": args.margin_right,
@@ -544,7 +644,7 @@ def _build_request(
             None,
             defaults=template.config,
             appearance_values=appearance_values,
-            effects_values=effects_values,
+            animation_values=animation_values,
             position=args.position,
             relative_values=relative_values,
             anchor=args.anchor,
@@ -552,7 +652,7 @@ def _build_request(
     except ValidationError as exc:
         parser.error(str(exc))
 
-    _validate_effect_request(
+    _validate_animation_request(
         subtitle_config,
         task=args.task,
         parser=parser,
@@ -616,15 +716,19 @@ def _validate_translation_request(
         )
 
 
-def _validate_effect_request(
+def _validate_animation_request(
     subtitle_config: SubtitleConfig,
     *,
     task: str,
     parser: argparse.ArgumentParser,
 ) -> None:
-    if subtitle_config.animation.word.karaoke and task == "translate":
+    needs_word_timing = (
+        subtitle_config.animation.word.text.enabled
+        or subtitle_config.style.word_backdrop.kind.value != "none"
+    )
+    if needs_word_timing and task == "translate":
         parser.error(
-            "--karaoke cannot be combined with --task translate because "
+            "word animation cannot be combined with --task translate because "
             "source-language word timings do not map losslessly to translated text"
         )
 
@@ -645,6 +749,13 @@ def _run_request(
         )
 
 
+def _format_animation_track(track: SubtitleElementAnimation) -> str:
+    """Format one validated animation track for progress output."""
+    return "/".join(
+        getattr(track, phase).type.value for phase in ("entrance", "emphasis", "exit")
+    )
+
+
 def _run_request_with_fonts(
     request: RunRequest | PreviewRequest,
     progress: ProgressReporter,
@@ -653,6 +764,14 @@ def _run_request_with_fonts(
 ) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
     progress(f"Using subtitle template: {request.subtitle_template_resolved}.")
+    animation = request.subtitle_config.animation
+    progress(
+        "Resolved subtitle animations: "
+        f"cue.text={_format_animation_track(animation.cue.text)}, "
+        f"cue.backdrop={_format_animation_track(animation.cue.backdrop)}, "
+        f"word.text={_format_animation_track(animation.word.text)}, "
+        f"word.backdrop={_format_animation_track(animation.word.backdrop)}."
+    )
     if isinstance(request, PreviewRequest):
         return _run_preview_request(
             request,

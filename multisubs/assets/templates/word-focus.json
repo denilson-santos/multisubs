@@ -1,0 +1,38 @@
+{
+  "schema_version": 4,
+  "name": "word-focus",
+  "description": "Accessible high-contrast captions with cue fades, word pop entrances, and an active-word highlight box; aligned word timing is required.",
+  "style": {
+    "typography": {
+      "font_family": "Atkinson Hyperlegible Next",
+      "font_weight": "bold",
+      "font_size": "4.5%",
+      "italic": false,
+      "letter_spacing": "0px",
+      "line_height": "auto",
+      "text_case": "original",
+      "color": "#FFFFFF",
+      "highlight_color": "#111827"
+    },
+    "backdrop": {"type": "box", "color": "#111827D9", "size": "8%"},
+    "word_backdrop": {"type": "box", "color": "#FFD54F", "size": "12%"},
+    "shadow": {"size": "0px"},
+    "opacity": "100%"
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {"left": "10%", "right": "10%", "top": "0%", "bottom": "3%"},
+    "max_width": "100%",
+    "max_height": "18%"
+  },
+  "animation": {
+    "cue": {
+      "text": {"entrance": {"type": "fade", "duration_ms": 160}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 120}},
+      "backdrop": {"entrance": {"type": "fade", "duration_ms": 160}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 120}}
+    },
+    "word": {
+      "text": {"mode": "active-word", "entrance": {"type": "pop", "duration_ms": 160}, "emphasis": {"type": "highlight"}, "exit": {"type": "none"}},
+      "backdrop": {"mode": "active-word", "entrance": {"type": "fade", "duration_ms": 100}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 100}}
+    }
+  }
+}

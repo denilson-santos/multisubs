@@ -19,6 +19,7 @@ Read the relevant project documentation before changing behavior:
 | multisubs/cli.py | Argument parsing, user-facing validation, output-directory selection, and artifact cleanup. |
 | multisubs/transcriber.py | WhisperX loading, transcription, word alignment, subtitle-cue construction, and JSON/SRT/ASS generation. |
 | multisubs/ass.py | ASS header, style, timestamp, dialogue escaping, and serialization. |
+| multisubs/animation.py | Cue- and word-relative phase normalization and animation-state sampling. |
 | multisubs/subtitler.py | ffprobe geometry detection and FFmpeg invocation that burns an ASS file into the output video. |
 | multisubs/config.py | Semantic style, layout, and animation defaults plus typed input validation. |
 | multisubs/layout.py | Geometry-aware relative-unit resolution, native regions, explicit envelopes, and wrapping budgets. |
