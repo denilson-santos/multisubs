@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "name": "default",
   "description": "Current general-purpose white captions on a translucent black box.",
   "style": {
@@ -15,6 +15,7 @@
       "highlight_color": null
     },
     "backdrop": {"type": "box", "color": "#00000099", "size": "0px"},
+    "word_backdrop": {"type": "none", "color": "#111827E6", "size": "20px"},
     "shadow": {"size": "4%"},
     "opacity": "100%"
   },
@@ -25,7 +26,13 @@
     "max_height": "10%"
   },
   "animation": {
-    "cue": {"entrance": {"type": "none"}, "exit": {"type": "none"}},
-    "word": {"type": "none", "mode": null}
+    "cue": {
+      "text": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
+      "backdrop": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+    },
+    "word": {
+      "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
+      "backdrop": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+    }
   }
 }

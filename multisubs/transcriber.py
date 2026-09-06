@@ -15,9 +15,11 @@ from numbers import Real
 from pathlib import Path
 from typing import Any, cast
 
+from .animation import normalize_cue_animation, normalize_word_animation
 from .ass import (
     allocate_active_word_intervals,
     allocate_karaoke_durations,
+    quantize_ass_centiseconds,
     resolve_subtitle_palettes,
     write_ass,
 )
@@ -36,10 +38,13 @@ from .layout import (
 from .models import (
     KaraokeCue,
     RelativeLength,
+    SubtitleAnimationPhase,
     SubtitleConfig,
     SubtitleDisplayFragment,
+    SubtitleElementAnimation,
     SubtitlePlacementMode,
     SubtitlePosition,
+    SubtitleWordElementAnimation,
     TextCase,
     TranscriptDocument,
     TranscriptionPaths,
@@ -310,11 +315,11 @@ def write_transcription_artifacts(
         display_segments,
         resolved_config,
     )
-    if resolved_config.animation.word.karaoke and fallback_cues:
+    if _requires_word_timing(resolved_config) and fallback_cues:
         _report(
             progress,
             f"Warning: {fallback_cues} subtitle cue(s) could not be mapped "
-            "to complete word timings and were rendered without karaoke; "
+            "to complete word timings and were rendered without word animation; "
             "no timestamps were invented.",
         )
     measurement_diagnostic = resolved_wrapping_metrics.text_measurer.diagnostic
@@ -382,9 +387,9 @@ def _normalise_output_dir(output_dir: str | Path) -> Path:
 
 
 def _validate_effect_task(config: SubtitleConfig, task: str) -> None:
-    if config.animation.word.karaoke and task == "translate":
+    if _requires_word_timing(config) and task == "translate":
         raise ValidationError(
-            "Karaoke subtitles cannot be generated for translation because "
+            "Word animations cannot be generated for translation because "
             "source-language word timings do not map losslessly to translated text"
         )
 
@@ -873,13 +878,13 @@ def prepare_karaoke_cues(
     segments: Sequence[Mapping[str, Any]],
     resolved_config: SubtitleConfig,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Prepare one immutable karaoke contract per eligible display cue."""
+    """Prepare one immutable aligned-word timing contract per eligible cue."""
     prepared: list[dict[str, Any]] = []
     fallback_cues = 0
     for segment in segments:
         prepared_segment = dict(segment)
         prepared_segment.pop("_karaoke_cue", None)
-        if resolved_config.animation.word.karaoke:
+        if _requires_word_timing(resolved_config):
             karaoke_cue = _prepare_karaoke_cue(
                 segment, resolved_config.style.typography.text_case
             )
@@ -993,7 +998,7 @@ def _write_json(
         resolved_subtitle_config
     )
     json_data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "metadata": {
             "file_name": file_name,
             "original_path": str(input_path),
@@ -1036,6 +1041,10 @@ def _write_json(
                     "bottom": resolved_layout.margin_bottom,
                 },
                 "requested": {
+                    "backdrop_type": subtitle_config.style.backdrop.kind.value,
+                    "word_backdrop_type": (
+                        subtitle_config.style.word_backdrop.kind.value
+                    ),
                     "font_size": _format_requested_length(
                         subtitle_config.style.typography.font_size
                     ),
@@ -1050,6 +1059,9 @@ def _write_json(
                     ),
                     "backdrop_size": _format_requested_length(
                         subtitle_config.style.backdrop.size
+                    ),
+                    "word_backdrop_size": _format_requested_length(
+                        subtitle_config.style.word_backdrop.size
                     ),
                     "shadow_size": _format_requested_length(
                         subtitle_config.style.shadow.size
@@ -1068,6 +1080,12 @@ def _write_json(
                     "max_height": _format_requested_length(requested_layout.max_height),
                 },
                 "resolved": {
+                    "backdrop_type": (
+                        resolved_subtitle_config.style.backdrop.kind.value
+                    ),
+                    "word_backdrop_type": (
+                        resolved_subtitle_config.style.word_backdrop.kind.value
+                    ),
                     "font_size": resolved_subtitle_config.style.typography.font_size,
                     "letter_spacing": (
                         resolved_subtitle_config.style.typography.letter_spacing
@@ -1076,6 +1094,9 @@ def _write_json(
                         resolved_subtitle_config.style.typography.line_height
                     ),
                     "backdrop_size": resolved_subtitle_config.style.backdrop.size,
+                    "word_backdrop_size": (
+                        resolved_subtitle_config.style.word_backdrop.size
+                    ),
                     "shadow_size": resolved_subtitle_config.style.shadow.size,
                     "margins": {
                         "left": resolved_layout.margin_left,
@@ -1142,33 +1163,23 @@ def _write_json(
                     "base_colors": {
                         "text": base_palette.text_color,
                         "backdrop": base_palette.backdrop_color,
+                        "word_backdrop": base_palette.word_backdrop_color,
                         "shadow": base_palette.backdrop_color,
-                        "karaoke_highlight": base_palette.highlight_color,
+                        "word_highlight": base_palette.highlight_color,
                     },
                     "effective_colors": {
                         "text": effective_palette.text_color,
                         "backdrop": effective_palette.backdrop_color,
+                        "word_backdrop": effective_palette.word_backdrop_color,
                         "shadow": effective_palette.backdrop_color,
-                        "karaoke_highlight": effective_palette.highlight_color,
+                        "word_highlight": effective_palette.highlight_color,
                     },
                 },
-                "effects": {
-                    "karaoke": {
-                        "enabled": resolved_subtitle_config.animation.word.karaoke,
-                        "mode": (
-                            resolved_subtitle_config.animation.word.mode.value
-                            if resolved_subtitle_config.animation.word.mode is not None
-                            else None
-                        ),
-                        "normal_color": (
-                            resolved_subtitle_config.style.typography.color
-                        ),
-                        "highlight_color": (
-                            resolved_subtitle_config.style.typography.highlight_color
-                        ),
-                        "fallback_cues": karaoke_fallback_cues,
-                    }
-                },
+                "animation": _serialize_animation_metadata(
+                    resolved_subtitle_config,
+                    segments,
+                    karaoke_fallback_cues=karaoke_fallback_cues,
+                ),
             },
         },
         "transcription": {
@@ -1208,6 +1219,94 @@ def _write_json(
             f"Could not serialize JSON transcript '{path}': {exc}"
         ) from exc
     atomic_write_text(path, f"{content}\n")
+
+
+def _serialize_animation_metadata(
+    config: SubtitleConfig,
+    segments: Sequence[Mapping[str, Any]],
+    *,
+    karaoke_fallback_cues: int,
+) -> dict[str, object]:
+    cue = config.animation.cue
+
+    def phase_data(phase: SubtitleAnimationPhase) -> dict[str, object]:
+        data: dict[str, object] = {"type": phase.type.value}
+        if phase.duration_ms:
+            data["duration_ms"] = phase.duration_ms
+        return data
+
+    word = config.animation.word
+
+    def track_data(
+        track: SubtitleElementAnimation | SubtitleWordElementAnimation,
+        *,
+        include_mode: bool = False,
+        active: bool,
+    ) -> dict[str, object]:
+        data: dict[str, object] = {
+            "active": active,
+            "entrance": phase_data(track.entrance),
+            "emphasis": phase_data(track.emphasis),
+            "exit": phase_data(track.exit),
+        }
+        if include_mode:
+            if not isinstance(track, SubtitleWordElementAnimation):
+                raise ArtifactError("Only word animation tracks have a mode")
+            data["mode"] = track.mode.value
+        return data
+
+    shortened_cues = {}
+    for element, track in (("text", cue.text), ("backdrop", cue.backdrop)):
+        shortened_cues[element] = sum(
+            normalize_cue_animation(
+                quantize_ass_centiseconds(segment["start"]),
+                quantize_ass_centiseconds(segment["end"]),
+                track,
+            ).shortened
+            for segment in segments
+        )
+    shortened_words = {"text": 0, "backdrop": 0}
+    for segment in segments:
+        prepared = segment.get("_karaoke_cue")
+        if not isinstance(prepared, KaraokeCue):
+            continue
+        for start, end in prepared.active_intervals:
+            shortened_words["text"] += normalize_word_animation(
+                start, end, word.text
+            ).shortened
+            shortened_words["backdrop"] += normalize_word_animation(
+                start, end, word.backdrop
+            ).shortened
+    return {
+        "cue": {
+            "text": track_data(cue.text, active=True),
+            "backdrop": track_data(
+                cue.backdrop,
+                active=config.style.backdrop.kind.value != "none",
+            ),
+            "shortened_cues": shortened_cues,
+        },
+        "word": {
+            "text": track_data(word.text, include_mode=True, active=word.text.enabled),
+            "backdrop": track_data(
+                word.backdrop,
+                include_mode=True,
+                active=config.style.word_backdrop.kind.value != "none",
+            ),
+            "normal_color": config.style.typography.color,
+            "highlight_color": config.style.typography.highlight_color,
+            "shortened_words": shortened_words,
+            "fallback_cues": karaoke_fallback_cues,
+        },
+    }
+
+
+def _requires_word_timing(config: SubtitleConfig) -> bool:
+    """Return whether effective rendering needs aligned word timestamps."""
+    return (
+        config.animation.word.text.enabled
+        or config.style.word_backdrop.kind.value != "none"
+    )
 
 
 def _format_fraction(value: Fraction) -> str:

@@ -1,22 +1,22 @@
 {
   "schema_version": 4,
-  "name": "social-bold",
-  "description": "Large energetic uppercase captions for short-form video.",
+  "name": "impact-yellow",
+  "description": "Bold yellow social captions with a cue pop, aligned-word bounce, and cue fade; aligned word timing is required.",
   "style": {
     "typography": {
       "font_family": "Montserrat",
-      "font_weight": "extra-bold",
-      "font_size": "5%",
+      "font_weight": "black",
+      "font_size": "5.2%",
       "italic": false,
       "letter_spacing": "0px",
       "line_height": "auto",
       "text_case": "uppercase",
-      "color": "#FFFFFF",
+      "color": "#FFD60A",
       "highlight_color": null
     },
     "backdrop": {"type": "outline", "color": "#000000E6", "size": "8%"},
     "word_backdrop": {"type": "none", "color": "#111827E6", "size": "12%"},
-    "shadow": {"size": "3%"},
+    "shadow": {"size": "4%"},
     "opacity": "100%"
   },
   "layout": {
@@ -27,11 +27,11 @@
   },
   "animation": {
     "cue": {
-      "text": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
-      "backdrop": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+      "text": {"entrance": {"type": "pop", "duration_ms": 220}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 100}},
+      "backdrop": {"entrance": {"type": "pop", "duration_ms": 220}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 100}}
     },
     "word": {
-      "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
+      "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "bounce", "duration_ms": 240}, "exit": {"type": "none"}},
       "backdrop": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
     }
   }

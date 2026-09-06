@@ -3,35 +3,50 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from numbers import Real
 from pathlib import Path
 from typing import Any
 
+from .animation import (
+    CueAnimationState,
+    WordAnimationTiming,
+    animation_boundaries,
+    normalize_cue_animation,
+    normalize_word_animation,
+    sample_cue_animation,
+    sample_word_animation,
+    word_animation_boundaries,
+)
 from .config import validate_subtitle_config
-from .errors import ArtifactError, ValidationError
+from .errors import ArtifactError
 from .layout import (
+    PositionedVisualLine,
     WrappingMetrics,
+    position_visual_lines,
     resolve_cue_placement,
+    resolve_native_anchor_point,
     resolve_native_layout_region,
     resolve_subtitle_config,
     resolve_wrapping_metrics,
 )
 from .models import (
     AssDrawingEvent,
+    CueAnimationType,
     CuePlacement,
     KaraokeCue,
-    KaraokeMode,
     SubtitleBackdrop,
     SubtitleConfig,
     SubtitleDisplayFragment,
+    SubtitleElementAnimation,
     SubtitleOpacity,
     SubtitlePlacementMode,
     SubtitlePosition,
-    SubtitleVisualLine,
+    SubtitleWordElementAnimation,
     VideoGeometry,
+    WordAnimationMode,
 )
 from .utils import atomic_write_text
 from .wrapping import build_visual_lines
@@ -74,23 +89,32 @@ _ASS_ALIGNMENT_BY_POSITION = {
 
 
 @dataclass(frozen=True)
-class _PositionedLine:
-    """One visual line and its resolved ASS anchor position."""
-
-    line: SubtitleVisualLine
-    anchor: SubtitlePosition
-    position_x: int
-    position_y: int
-    block_bounds: tuple[int, int, int, int]
-
-
-@dataclass(frozen=True)
 class SubtitlePalette:
     """Conventional RGBA colors used by one compiled subtitle composition."""
 
     text_color: str
     backdrop_color: str
+    word_backdrop_color: str
     highlight_color: str | None
+
+
+@dataclass(frozen=True)
+class _DialogueEvent:
+    """One derived ASS event tied to its original logical cue timeline."""
+
+    logical_start: int
+    logical_end: int
+    start: int
+    end: int
+    generated_override: str
+    text: str
+    placement: CuePlacement | None = None
+    animation_origin: CuePlacement | None = None
+    word_timing: WordAnimationTiming | None = None
+    cue_animation: SubtitleElementAnimation = SubtitleElementAnimation()
+    word_animation: SubtitleWordElementAnimation | None = None
+    layer: int = 0
+    style_name: str = "Default"
 
 
 def write_ass(
@@ -103,6 +127,7 @@ def write_ass(
     guide_events: Sequence[AssDrawingEvent] | None = None,
     preserve_line_breaks: bool = False,
     wrapping_metrics: WrappingMetrics | None = None,
+    suppress_animation: bool = False,
 ) -> None:
     """Write safe ASS dialogue on the probed, autorotated video canvas.
 
@@ -125,21 +150,36 @@ def write_ass(
     if explicit_line_height and metrics is None:
         metrics = resolve_wrapping_metrics(config, geometry)
     _, effective_palette = resolve_subtitle_palettes(config)
+    animate_cues = not suppress_animation and _has_cue_animation(config)
+    animate_words = not suppress_animation and _has_positioned_word_animation(config)
     style = _compile_style(config, geometry, palette=effective_palette)
     default_placement = resolve_cue_placement(config, geometry)
     if placements is not None and len(placements) != len(segments):
         raise ArtifactError("ASS cue placements must match the segment count")
-    positioned_lines: list[tuple[_PositionedLine, ...]] = []
+    positioned_lines: list[tuple[PositionedVisualLine, ...]] = []
     backdrop_bounds: list[tuple[int, int, int, int] | None] = []
     for segment in segments:
-        if not explicit_line_height:
+        karaoke_cue = segment.get("_karaoke_cue")
+        karaoke_preview_cue = segment.get("_karaoke_preview_cue")
+        preview_word_box = (
+            suppress_animation
+            and config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+            and isinstance(karaoke_preview_cue, KaraokeCue)
+        )
+        needs_positioned_lines = (
+            explicit_line_height
+            or (animate_words and isinstance(karaoke_cue, KaraokeCue))
+            or preview_word_box
+            or (
+                animate_cues and config.style.backdrop.kind is not SubtitleBackdrop.NONE
+            )
+        )
+        if not needs_positioned_lines:
             backdrop_bounds.append(None)
             positioned_lines.append(())
             continue
         if metrics is None:
-            raise ArtifactError("Explicit line height requires wrapping metrics")
-        karaoke_cue = segment.get("_karaoke_cue")
-        karaoke_preview_cue = segment.get("_karaoke_preview_cue")
+            metrics = resolve_wrapping_metrics(config, geometry)
         fragments = (
             karaoke_cue.fragments
             if isinstance(karaoke_cue, KaraokeCue)
@@ -161,8 +201,12 @@ def write_ass(
             if placements is not None
             else default_placement
         )
-        if explicit_line_height and len(visual_lines) > 1:
-            line_layout = _position_visual_lines(
+        if (
+            (explicit_line_height and len(visual_lines) > 1)
+            or (animate_words and isinstance(karaoke_cue, KaraokeCue))
+            or preview_word_box
+        ):
+            line_layout = position_visual_lines(
                 visual_lines,
                 config,
                 geometry,
@@ -174,12 +218,15 @@ def write_ass(
         else:
             backdrop_bounds.append(None)
             positioned_lines.append(())
-    needs_shared_backdrop = any(positioned_lines) and (
-        config.style.backdrop.kind is SubtitleBackdrop.BOX
+    needs_separate_backdrop = any(positioned_lines) and (
+        config.style.backdrop.kind is not SubtitleBackdrop.NONE
+    )
+    needs_shared_backdrop = (
+        needs_separate_backdrop and config.style.backdrop.kind is SubtitleBackdrop.BOX
     )
     positioned_style_name = "Default"
     positioned_style: dict[str, str | int] | None = None
-    if needs_shared_backdrop:
+    if needs_separate_backdrop:
         # BorderStyle 4 would draw one box per generated line. Keep Default
         # unchanged for single-line cues and neutralize only the generated
         # per-line text style; the vector event owns their complete box.
@@ -187,6 +234,7 @@ def write_ass(
         positioned_style = dict(style)
         positioned_style["border_style"] = 1
         positioned_style["outline_weight"] = 0
+        positioned_style["shadow_weight"] = 0
     style_lines = [_serialize_style_line("Default", style)]
     if positioned_style is not None:
         style_lines.append(
@@ -223,6 +271,45 @@ def write_ass(
             generated_override += r"{\q2}"
         cue_start = quantize_ass_centiseconds(segment["start"])
         cue_end = quantize_ass_centiseconds(segment["end"])
+
+        def append_event(
+            event_start: int,
+            event_end: int,
+            event_override: str,
+            event_text: str,
+            *,
+            event_placement: CuePlacement | None = placement,
+            layer: int = 0,
+            style_name: str = "Default",
+            _logical_start: int = cue_start,
+            _logical_end: int = cue_end,
+            animation_origin: CuePlacement | None = None,
+            word_timing: WordAnimationTiming | None = None,
+            cue_animation: SubtitleElementAnimation = config.animation.cue.text,
+            word_animation: SubtitleWordElementAnimation | None = None,
+        ) -> None:
+            _append_dialogue_event(
+                lines,
+                _DialogueEvent(
+                    logical_start=_logical_start,
+                    logical_end=_logical_end,
+                    start=event_start,
+                    end=event_end,
+                    generated_override=event_override,
+                    text=event_text,
+                    placement=event_placement,
+                    animation_origin=animation_origin,
+                    word_timing=word_timing,
+                    cue_animation=cue_animation,
+                    word_animation=word_animation,
+                    layer=layer,
+                    style_name=style_name,
+                ),
+                config,
+                geometry,
+                animate=not suppress_animation,
+            )
+
         karaoke_cue = segment.get("_karaoke_cue")
         karaoke_preview_cue = segment.get("_karaoke_preview_cue")
         visual_line_events = positioned_lines[index]
@@ -233,29 +320,105 @@ def write_ass(
                 )
             current_backdrop_bounds = backdrop_bounds[index]
             if needs_shared_backdrop and current_backdrop_bounds is not None:
+                backdrop_anchor = visual_line_events[0]
                 _append_shared_backdrop_event(
                     lines,
                     cue_start,
                     cue_end,
                     current_backdrop_bounds,
+                    backdrop_anchor.block_placement,
                     effective_palette.backdrop_color,
                     metrics.shadow_size,
+                    config=config,
+                    geometry=geometry,
+                    animate=animate_cues,
                     style_name=positioned_style_name,
                 )
-            line_overrides = [
-                generated_override
-                + serialize_ass_placement(
-                    CuePlacement(
-                        anchor=item.anchor,
-                        position_x=item.position_x,
-                        position_y=item.position_y,
+            elif config.style.backdrop.kind is SubtitleBackdrop.OUTLINE:
+                if (
+                    config.style.word_backdrop.kind is SubtitleBackdrop.OUTLINE
+                    and isinstance(karaoke_cue, KaraokeCue)
+                ):
+                    _append_cue_outline_around_word_decoration(
+                        append_event,
+                        karaoke_cue,
+                        visual_line_events,
+                        config,
+                        cue_start,
+                        cue_end,
+                        effective_palette.backdrop_color,
+                        style_name=positioned_style_name,
                     )
+                elif (
+                    config.style.word_backdrop.kind is SubtitleBackdrop.OUTLINE
+                    and isinstance(karaoke_preview_cue, KaraokeCue)
+                ):
+                    _append_cue_outline_around_word_decoration(
+                        append_event,
+                        karaoke_preview_cue,
+                        visual_line_events,
+                        config,
+                        cue_start,
+                        cue_end,
+                        effective_palette.backdrop_color,
+                        preview=True,
+                        style_name=positioned_style_name,
+                    )
+                else:
+                    for item in visual_line_events:
+                        _append_cue_outline_event(
+                            append_event,
+                            item.line.text,
+                            CuePlacement(item.anchor, item.position_x, item.position_y),
+                            item.block_placement,
+                            cue_start,
+                            cue_end,
+                            effective_palette.backdrop_color,
+                            config,
+                            style_name=positioned_style_name,
+                        )
+            line_placements = [
+                CuePlacement(
+                    anchor=item.anchor,
+                    position_x=item.position_x,
+                    position_y=item.position_y,
                 )
                 for item in visual_line_events
             ]
+            if animate_words and isinstance(karaoke_cue, KaraokeCue):
+                _append_word_animation_events(
+                    append_event,
+                    karaoke_cue,
+                    visual_line_events,
+                    config,
+                    cue_start,
+                    cue_end,
+                    effective_palette,
+                    metrics,
+                    generated_override=generated_override,
+                    style_name=positioned_style_name,
+                )
+                continue
+            if (
+                config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+                and isinstance(karaoke_preview_cue, KaraokeCue)
+            ):
+                _append_word_box_preview_events(
+                    append_event,
+                    karaoke_preview_cue,
+                    visual_line_events,
+                    config,
+                    cue_start,
+                    cue_end,
+                    effective_palette,
+                    metrics,
+                    generated_override=generated_override,
+                    style_name=positioned_style_name,
+                )
+                continue
             if isinstance(karaoke_preview_cue, KaraokeCue):
-                for line_override, item in zip(
-                    line_overrides, visual_line_events, strict=True
+                for line_placement, item in zip(
+                    line_placements, visual_line_events, strict=True
                 ):
                     preview_text = serialize_karaoke_preview_cue(
                         karaoke_preview_cue,
@@ -265,21 +428,23 @@ def write_ass(
                     )
                     if preview_text is None:
                         preview_text = escape_ass_text(item.line.text)
-                    _append_dialogue_line(
-                        lines,
+                    append_event(
                         cue_start,
                         cue_end,
-                        line_override,
+                        generated_override,
                         preview_text,
+                        event_placement=line_placement,
+                        animation_origin=item.block_placement,
                         layer=1,
                         style_name=positioned_style_name,
                     )
                 continue
-            if config.animation.word.mode is KaraokeMode.ACTIVE_WORD and isinstance(
-                karaoke_cue, KaraokeCue
+            if (
+                config.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD
+                and isinstance(karaoke_cue, KaraokeCue)
             ):
-                for line_override, item in zip(
-                    line_overrides, visual_line_events, strict=True
+                for line_placement, item in zip(
+                    line_placements, visual_line_events, strict=True
                 ):
                     for (
                         event_start,
@@ -293,21 +458,23 @@ def write_ass(
                         cue_end,
                         palette=effective_palette,
                     ):
-                        _append_dialogue_line(
-                            lines,
+                        append_event(
                             event_start,
                             event_end,
-                            line_override,
+                            generated_override,
                             event_text,
+                            event_placement=line_placement,
+                            animation_origin=item.block_placement,
                             layer=1,
                             style_name=positioned_style_name,
                         )
                 continue
-            if config.animation.word.mode is KaraokeMode.PROGRESSIVE and isinstance(
-                karaoke_cue, KaraokeCue
+            if (
+                config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE
+                and isinstance(karaoke_cue, KaraokeCue)
             ):
-                for line_override, item in zip(
-                    line_overrides, visual_line_events, strict=True
+                for line_placement, item in zip(
+                    line_placements, visual_line_events, strict=True
                 ):
                     for (
                         event_start,
@@ -321,48 +488,47 @@ def write_ass(
                         cue_end,
                         palette=effective_palette,
                     ):
-                        _append_dialogue_line(
-                            lines,
+                        append_event(
                             event_start,
                             event_end,
-                            line_override,
+                            generated_override,
                             event_text,
+                            event_placement=line_placement,
+                            animation_origin=item.block_placement,
                             layer=1,
                             style_name=positioned_style_name,
                         )
                 continue
-            for line_override, item in zip(
-                line_overrides, visual_line_events, strict=True
+            for line_placement, item in zip(
+                line_placements, visual_line_events, strict=True
             ):
-                _append_dialogue_line(
-                    lines,
+                append_event(
                     cue_start,
                     cue_end,
-                    line_override,
+                    generated_override,
                     escape_ass_text(item.line.text),
+                    event_placement=line_placement,
+                    animation_origin=item.block_placement,
                     layer=1,
                     style_name=positioned_style_name,
                 )
             continue
-        generated_override += (
-            serialize_ass_placement(placement) if placement is not None else ""
-        )
         preview_text = serialize_karaoke_preview_cue(
             karaoke_preview_cue,
             config,
             palette=effective_palette,
         )
         if preview_text is not None:
-            _append_dialogue_line(
-                lines,
+            append_event(
                 cue_start,
                 cue_end,
                 generated_override,
                 preview_text,
             )
             continue
-        if config.animation.word.mode is KaraokeMode.ACTIVE_WORD and isinstance(
-            karaoke_cue, KaraokeCue
+        if (
+            config.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD
+            and isinstance(karaoke_cue, KaraokeCue)
         ):
             for event_start, event_end, event_text in serialize_active_word_events(
                 karaoke_cue,
@@ -371,8 +537,27 @@ def write_ass(
                 cue_end,
                 palette=effective_palette,
             ):
-                _append_dialogue_line(
-                    lines,
+                append_event(
+                    event_start,
+                    event_end,
+                    generated_override,
+                    event_text,
+                )
+            continue
+        if (
+            animate_cues
+            and config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE
+            and isinstance(karaoke_cue, KaraokeCue)
+        ):
+            for event_start, event_end, event_text in serialize_progressive_line_events(
+                karaoke_cue,
+                karaoke_cue.fragments,
+                config,
+                cue_start,
+                cue_end,
+                palette=effective_palette,
+            ):
+                append_event(
                     event_start,
                     event_end,
                     generated_override,
@@ -385,7 +570,7 @@ def write_ass(
                 config,
                 palette=effective_palette,
             )
-            if config.animation.word.mode is KaraokeMode.PROGRESSIVE
+            if config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE
             else None
         )
         dialogue_text = (
@@ -393,8 +578,7 @@ def write_ass(
             if karaoke_text is not None
             else escape_ass_text(str(segment["text"]))
         )
-        _append_dialogue_line(
-            lines,
+        append_event(
             cue_start,
             cue_end,
             generated_override,
@@ -403,6 +587,632 @@ def write_ass(
     for event in guide_events or ():
         _append_guide_event(lines, event)
     atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+def _append_word_animation_events(
+    append_event: Callable[..., None],
+    cue: KaraokeCue,
+    visual_lines: Sequence[PositionedVisualLine],
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+    palette: SubtitlePalette,
+    metrics: WrappingMetrics,
+    *,
+    generated_override: str,
+    style_name: str,
+) -> None:
+    """Render measured fragments independently for word-local effects."""
+    _validate_karaoke_cue(cue)
+    word = config.animation.word
+    for positioned in visual_lines:
+        for fragment, placement in zip(
+            positioned.line.fragments,
+            positioned.fragment_placements,
+            strict=True,
+        ):
+            if not fragment.text or fragment.text.isspace():
+                continue
+            escaped = escape_ass_text(fragment.text)
+            word_index = fragment.word_index
+            if word_index is None:
+                append_event(
+                    cue_start,
+                    cue_end,
+                    generated_override,
+                    escaped,
+                    event_placement=placement,
+                    animation_origin=positioned.block_placement,
+                    layer=2,
+                    style_name=style_name,
+                )
+                continue
+            if word_index < 0 or word_index >= len(cue.active_intervals):
+                raise ArtifactError("Word animation fragment index is invalid")
+            word_start, word_end = cue.active_intervals[word_index]
+            text_end = (
+                cue_end if word.text.mode is WordAnimationMode.PROGRESSIVE else word_end
+            )
+            text_timing = normalize_word_animation(word_start, text_end, word.text)
+            visible_start = (
+                word_start
+                if word.text.entrance.type is not CueAnimationType.NONE
+                else cue_start
+            )
+            visible_end = (
+                text_end
+                if word.text.exit.type is not CueAnimationType.NONE
+                else cue_end
+            )
+            if visible_end <= visible_start:
+                continue
+            if config.style.word_backdrop.kind is not SubtitleBackdrop.NONE:
+                backdrop_end = (
+                    word_end
+                    if word.backdrop.mode is WordAnimationMode.ACTIVE_WORD
+                    else cue_end
+                )
+                if backdrop_end > word_start:
+                    backdrop_timing = normalize_word_animation(
+                        word_start, backdrop_end, word.backdrop
+                    )
+                    _append_word_backdrop_event(
+                        append_event,
+                        fragment.text,
+                        placement,
+                        positioned.block_placement,
+                        word_start,
+                        backdrop_end,
+                        palette,
+                        metrics,
+                        config,
+                        word_timing=backdrop_timing,
+                        style_name=style_name,
+                    )
+            boundaries = {visible_start, visible_end, word_start, word_end}
+            for boundary in word_animation_boundaries(text_timing, word.text):
+                boundaries.add(boundary)
+            points = sorted(
+                point for point in boundaries if visible_start <= point <= visible_end
+            )
+            for event_start, event_end in zip(points[:-1], points[1:], strict=True):
+                if event_end <= event_start:
+                    continue
+                highlight = _word_is_highlighted(
+                    config,
+                    word_start,
+                    word_end,
+                    event_start,
+                )
+                color_override = _word_color_override(palette, highlight)
+                append_event(
+                    event_start,
+                    event_end,
+                    generated_override + color_override,
+                    escaped,
+                    event_placement=placement,
+                    animation_origin=positioned.block_placement,
+                    layer=2,
+                    style_name=style_name,
+                    word_timing=text_timing,
+                    word_animation=word.text,
+                )
+
+
+def _append_cue_outline_event(
+    append_event: Callable[..., None],
+    text: str,
+    placement: CuePlacement,
+    animation_origin: CuePlacement,
+    start: int,
+    end: int,
+    color: str,
+    config: SubtitleConfig,
+    *,
+    style_name: str,
+) -> None:
+    """Render a cue glyph outline independently below the text layer."""
+    ass_color = rgba_to_ass_color(color)
+    outline_size = _resolved_style_int(config.style.backdrop.size, "backdrop-size")
+    outline = (
+        f"{{\\1a&HFF&\\3c&H{ass_color[4:10]}&\\3a&H{ass_color[2:4]}&"
+        f"\\bord{outline_size}\\shad0}}{escape_ass_text(text)}"
+    )
+    append_event(
+        start,
+        end,
+        "",
+        outline,
+        event_placement=placement,
+        animation_origin=animation_origin,
+        layer=0,
+        style_name=style_name,
+        cue_animation=config.animation.cue.backdrop,
+    )
+
+
+def _append_cue_outline_around_word_decoration(
+    append_event: Callable[..., None],
+    cue: KaraokeCue,
+    visual_lines: Sequence[PositionedVisualLine],
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+    color: str,
+    *,
+    preview: bool = False,
+    style_name: str,
+) -> None:
+    """Remove the cue outline only while a word outline replaces it."""
+    _validate_karaoke_cue(cue)
+    preview_indexes = (
+        set(range((len(cue.durations) + 1) // 2))
+        if config.animation.word.backdrop.mode is WordAnimationMode.PROGRESSIVE
+        else {0}
+    )
+    for positioned in visual_lines:
+        for fragment, placement in zip(
+            positioned.line.fragments,
+            positioned.fragment_placements,
+            strict=True,
+        ):
+            if not fragment.text or fragment.text.isspace():
+                continue
+            intervals = [(cue_start, cue_end)]
+            word_index = fragment.word_index
+            if word_index is not None:
+                if word_index < 0 or word_index >= len(cue.active_intervals):
+                    raise ArtifactError("Word outline fragment index is invalid")
+                if preview:
+                    intervals = [] if word_index in preview_indexes else intervals
+                else:
+                    word_start, word_end = cue.active_intervals[word_index]
+                    decoration_end = (
+                        cue_end
+                        if config.animation.word.backdrop.mode
+                        is WordAnimationMode.PROGRESSIVE
+                        else word_end
+                    )
+                    intervals = [
+                        (cue_start, word_start),
+                        (decoration_end, cue_end),
+                    ]
+            for start, end in intervals:
+                if end <= start:
+                    continue
+                _append_cue_outline_event(
+                    append_event,
+                    fragment.text,
+                    placement,
+                    positioned.block_placement,
+                    start,
+                    end,
+                    color,
+                    config,
+                    style_name=style_name,
+                )
+
+
+def _append_word_box_preview_events(
+    append_event: Callable[..., None],
+    cue: KaraokeCue,
+    visual_lines: Sequence[PositionedVisualLine],
+    config: SubtitleConfig,
+    cue_start: int,
+    cue_end: int,
+    palette: SubtitlePalette,
+    metrics: WrappingMetrics,
+    *,
+    generated_override: str,
+    style_name: str,
+) -> None:
+    """Render the documented static representative state for word boxes."""
+    _validate_karaoke_cue(cue)
+    backdrop_indexes = (
+        set(range((len(cue.durations) + 1) // 2))
+        if config.animation.word.backdrop.mode is WordAnimationMode.PROGRESSIVE
+        else {0}
+    )
+    text_indexes: set[int] = set()
+    if config.animation.word.uses_timed_highlight:
+        text_indexes = (
+            set(range((len(cue.durations) + 1) // 2))
+            if config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE
+            else {0}
+        )
+
+    for positioned in visual_lines:
+        for fragment, placement in zip(
+            positioned.line.fragments,
+            positioned.fragment_placements,
+            strict=True,
+        ):
+            if not fragment.text or fragment.text.isspace():
+                continue
+            backdrop_active = fragment.word_index in backdrop_indexes
+            highlighted = fragment.word_index in text_indexes
+            if backdrop_active:
+                _append_word_backdrop_event(
+                    append_event,
+                    fragment.text,
+                    placement,
+                    positioned.block_placement,
+                    cue_start,
+                    cue_end,
+                    palette,
+                    metrics,
+                    config,
+                    word_timing=None,
+                    style_name=style_name,
+                )
+            append_event(
+                cue_start,
+                cue_end,
+                generated_override + _word_color_override(palette, highlighted),
+                escape_ass_text(fragment.text),
+                event_placement=placement,
+                animation_origin=positioned.block_placement,
+                layer=2,
+                style_name=style_name,
+            )
+
+
+def _append_word_backdrop_event(
+    append_event: Callable[..., None],
+    text: str,
+    placement: CuePlacement,
+    animation_origin: CuePlacement,
+    start: int,
+    end: int,
+    palette: SubtitlePalette,
+    metrics: WrappingMetrics,
+    config: SubtitleConfig,
+    *,
+    word_timing: WordAnimationTiming | None,
+    style_name: str,
+) -> None:
+    """Append one measured word box or glyph outline below its text."""
+    padding = _resolved_style_int(
+        config.style.word_backdrop.size,
+        "word-backdrop-size",
+    )
+    fragment_width = metrics.text_measurer.measure(text)
+    left = _round_playres(placement.position_x - fragment_width / 2 - padding)
+    if placement.anchor.value.startswith("top-"):
+        top = placement.position_y - padding
+    elif placement.anchor.value.startswith("bottom-"):
+        top = _round_playres(
+            placement.position_y - metrics.natural_line_height - padding
+        )
+    else:
+        top = _round_playres(
+            placement.position_y - metrics.natural_line_height / 2 - padding
+        )
+    width = _round_playres(fragment_width + 2 * padding)
+    height = _round_playres(metrics.natural_line_height + 2 * padding)
+    ass_color = rgba_to_ass_color(palette.word_backdrop_color)
+    alpha = ass_color[2:4]
+    bgr = ass_color[4:10]
+    if config.style.word_backdrop.kind is SubtitleBackdrop.OUTLINE:
+        drawing = (
+            f"{{\\1a&HFF&\\3c&H{bgr}&\\3a&H{alpha}&\\bord{padding}\\shad0}}"
+            + escape_ass_text(text)
+        )
+        backdrop_placement = placement
+    elif config.style.word_backdrop.kind is SubtitleBackdrop.BOX:
+        drawing = (
+            f"{{\\p1\\1c&H{bgr}&\\1a&H{alpha}&\\3a&HFF&\\4a&HFF&"
+            f"\\bord0\\shad0}}m 0 0 l {width} 0 l {width} {height} "
+            f"l 0 {height} l 0 0{{\\p0}}"
+        )
+        backdrop_placement = CuePlacement(SubtitlePosition.TOP_LEFT, left, top)
+    else:
+        return
+    append_event(
+        start,
+        end,
+        "",
+        drawing,
+        event_placement=backdrop_placement,
+        animation_origin=animation_origin,
+        layer=1,
+        style_name=style_name,
+        word_timing=word_timing,
+        cue_animation=SubtitleElementAnimation(),
+        word_animation=(
+            config.animation.word.backdrop if word_timing is not None else None
+        ),
+    )
+
+
+def _round_playres(value: float) -> int:
+    """Round one measured coordinate consistently with layout resolution."""
+    return int(math.floor(value + 0.5))
+
+
+def _word_is_highlighted(
+    config: SubtitleConfig,
+    word_start: int,
+    word_end: int,
+    at_centiseconds: int,
+) -> bool:
+    if not config.animation.word.uses_timed_highlight:
+        return False
+    if config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE:
+        return at_centiseconds >= word_start
+    if config.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD:
+        return word_start <= at_centiseconds < word_end
+    return False
+
+
+def _word_color_override(palette: SubtitlePalette, highlighted: bool) -> str:
+    if not highlighted:
+        return ""
+    if palette.highlight_color is None:
+        raise ArtifactError("Timed word highlight color is not resolved")
+    return "{" + rgba_to_ass_color_override(palette.highlight_color, 1) + "}"
+
+
+def _append_dialogue_event(
+    lines: list[str],
+    event: _DialogueEvent,
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    *,
+    animate: bool,
+) -> None:
+    """Serialize one typed event, slicing only at cue-global phase boundaries."""
+    if not isinstance(event, _DialogueEvent):
+        raise ArtifactError("ASS dialogue must use the typed event contract")
+    if event.end < event.start:
+        raise ArtifactError("ASS dialogue end must not precede its start")
+    if not animate or (
+        not event.cue_animation.enabled and event.word_animation is None
+    ):
+        placement_override = (
+            serialize_ass_placement(event.placement)
+            if event.placement is not None
+            else ""
+        )
+        _append_dialogue_line(
+            lines,
+            event.start,
+            event.end,
+            event.generated_override + placement_override,
+            event.text,
+            layer=event.layer,
+            style_name=event.style_name,
+        )
+        return
+
+    timing = normalize_cue_animation(
+        event.logical_start,
+        event.logical_end,
+        event.cue_animation,
+    )
+    points = [event.start]
+    points.extend(
+        boundary
+        for boundary in animation_boundaries(timing, event.cue_animation)
+        if event.start < boundary < event.end
+    )
+    if event.word_timing is not None and event.word_animation is not None:
+        points.extend(
+            boundary
+            for boundary in word_animation_boundaries(
+                event.word_timing, event.word_animation
+            )
+            if event.start < boundary < event.end
+        )
+        points.extend(
+            boundary
+            for boundary in (event.word_timing.word_start, event.word_timing.word_end)
+            if event.start < boundary < event.end
+        )
+    points = sorted(set(points))
+    points.append(event.end)
+    font_size = _resolved_style_int(config.style.typography.font_size, "font-size")
+    slide_enabled = _track_has_motion(event.cue_animation) or (
+        event.word_animation is not None and _track_has_motion(event.word_animation)
+    )
+    stable_placement = event.placement
+    if slide_enabled and stable_placement is None:
+        region = resolve_native_layout_region(geometry, config.layout)
+        anchor = config.layout.position
+        anchor_x, anchor_y = resolve_native_anchor_point(anchor, region)
+        stable_placement = CuePlacement(anchor, anchor_x, anchor_y)
+
+    for interval_start, interval_end in zip(points[:-1], points[1:], strict=True):
+        start_state = sample_cue_animation(
+            event.cue_animation,
+            timing,
+            interval_start,
+            font_size=font_size,
+        )
+        end_state = sample_cue_animation(
+            event.cue_animation,
+            timing,
+            interval_end,
+            font_size=font_size,
+        )
+        if stable_placement is not None and event.animation_origin is not None:
+            start_state = _rebase_cue_scale(
+                start_state,
+                placement=stable_placement,
+                origin=event.animation_origin,
+            )
+            end_state = _rebase_cue_scale(
+                end_state,
+                placement=stable_placement,
+                origin=event.animation_origin,
+            )
+        if event.word_timing is not None and event.word_animation is not None:
+            start_state = _combine_animation_states(
+                start_state,
+                sample_word_animation(
+                    event.word_animation,
+                    event.word_timing,
+                    interval_start,
+                    font_size=font_size,
+                ),
+            )
+            end_state = _combine_animation_states(
+                end_state,
+                sample_word_animation(
+                    event.word_animation,
+                    event.word_timing,
+                    interval_end,
+                    font_size=font_size,
+                ),
+            )
+        animation_override = _serialize_animation_override(
+            start_state,
+            end_state,
+            interval_end - interval_start,
+            stable_placement=stable_placement,
+            force_animated_placement=slide_enabled,
+        )
+        if not slide_enabled and event.placement is not None:
+            animation_override = (
+                serialize_ass_placement(event.placement) + animation_override
+            )
+        _append_dialogue_line(
+            lines,
+            interval_start,
+            interval_end,
+            event.generated_override + animation_override,
+            event.text,
+            layer=event.layer,
+            style_name=event.style_name,
+        )
+
+
+def _combine_animation_states(
+    cue: CueAnimationState,
+    word: CueAnimationState,
+) -> CueAnimationState:
+    """Compose cue-global and word-local state exactly once."""
+    cue_visibility = Decimal(255 - cue.fade_alpha) / Decimal(255)
+    word_visibility = Decimal(255 - word.fade_alpha) / Decimal(255)
+    fade_alpha = 255 - int(
+        (cue_visibility * word_visibility * Decimal(255)).quantize(
+            Decimal(1), rounding=ROUND_HALF_UP
+        )
+    )
+    scale = int(
+        (
+            Decimal(cue.scale_percent) * Decimal(word.scale_percent) / Decimal(100)
+        ).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    )
+    return CueAnimationState(
+        fade_alpha=fade_alpha,
+        offset_x=cue.offset_x + word.offset_x,
+        offset_y=cue.offset_y + word.offset_y,
+        scale_percent=scale,
+    )
+
+
+def _rebase_cue_scale(
+    state: CueAnimationState,
+    *,
+    placement: CuePlacement,
+    origin: CuePlacement,
+) -> CueAnimationState:
+    """Move a positioned layer as cue-global scale changes around its origin."""
+    scale_delta = Decimal(state.scale_percent - 100) / Decimal(100)
+    offset_x = int(
+        (Decimal(placement.position_x - origin.position_x) * scale_delta).quantize(
+            Decimal(1), rounding=ROUND_HALF_UP
+        )
+    )
+    offset_y = int(
+        (Decimal(placement.position_y - origin.position_y) * scale_delta).quantize(
+            Decimal(1), rounding=ROUND_HALF_UP
+        )
+    )
+    return CueAnimationState(
+        fade_alpha=state.fade_alpha,
+        offset_x=state.offset_x + offset_x,
+        offset_y=state.offset_y + offset_y,
+        scale_percent=state.scale_percent,
+    )
+
+
+def _serialize_animation_override(
+    start: CueAnimationState,
+    end: CueAnimationState,
+    duration_centiseconds: int,
+    *,
+    stable_placement: CuePlacement | None,
+    force_animated_placement: bool,
+) -> str:
+    duration_ms = max(0, duration_centiseconds * 10)
+    tags = ""
+    if force_animated_placement:
+        if stable_placement is None:
+            raise ArtifactError("Slide animation requires a stable cue placement")
+        alignment = _ass_alignment_for_position(stable_placement.anchor)
+        start_x = stable_placement.position_x + start.offset_x
+        start_y = stable_placement.position_y + start.offset_y
+        end_x = stable_placement.position_x + end.offset_x
+        end_y = stable_placement.position_y + end.offset_y
+        if (start_x, start_y) == (end_x, end_y) or duration_ms == 0:
+            tags += f"{{\\an{alignment}\\pos({start_x},{start_y})}}"
+        else:
+            tags += (
+                f"{{\\an{alignment}\\move({start_x},{start_y},"
+                f"{end_x},{end_y},0,{duration_ms})}}"
+            )
+    if start.scale_percent != 100 or end.scale_percent != 100:
+        scale = f"\\fscx{start.scale_percent}\\fscy{start.scale_percent}"
+        if start.scale_percent != end.scale_percent and duration_ms > 0:
+            scale += (
+                f"\\t(0,{duration_ms},\\fscx{end.scale_percent}"
+                f"\\fscy{end.scale_percent})"
+            )
+        tags += "{" + scale + "}"
+    if start.fade_alpha != 0 or end.fade_alpha != 0:
+        if start.fade_alpha == end.fade_alpha or duration_ms == 0:
+            tags += (
+                f"{{\\fade({start.fade_alpha},{start.fade_alpha},"
+                f"{start.fade_alpha},0,0,{duration_ms},{duration_ms})}}"
+            )
+        else:
+            tags += (
+                f"{{\\fade({start.fade_alpha},{end.fade_alpha},"
+                f"{end.fade_alpha},0,{duration_ms},{duration_ms},{duration_ms})}}"
+            )
+    return tags
+
+
+def _has_cue_animation(config: SubtitleConfig) -> bool:
+    cue = config.animation.cue
+    return cue.text.enabled or cue.backdrop.enabled
+
+
+def _has_positioned_word_animation(config: SubtitleConfig) -> bool:
+    """Return whether aligned words require independent positioned events."""
+    word = config.animation.word
+    return (
+        word.text.enabled
+        or config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+    )
+
+
+def _track_has_motion(animation: SubtitleElementAnimation) -> bool:
+    slide_types = {
+        CueAnimationType.SLIDE_UP,
+        CueAnimationType.SLIDE_DOWN,
+        CueAnimationType.SLIDE_LEFT,
+        CueAnimationType.SLIDE_RIGHT,
+        CueAnimationType.BOUNCE,
+        CueAnimationType.FLOAT,
+        CueAnimationType.SHAKE,
+    }
+    return any(
+        phase.type in slide_types
+        for phase in (animation.entrance, animation.emphasis, animation.exit)
+    )
 
 
 def _append_dialogue_line(
@@ -444,133 +1254,18 @@ def _uses_explicit_line_height(config: SubtitleConfig) -> bool:
     return not (isinstance(requested, str) and requested.casefold() == "auto")
 
 
-def _position_visual_lines(
-    visual_lines: Sequence[SubtitleVisualLine],
-    config: SubtitleConfig,
-    geometry: VideoGeometry,
-    metrics: WrappingMetrics,
-    placement: CuePlacement | None,
-) -> tuple[_PositionedLine, ...]:
-    """Position visual lines around one stable native or explicit anchor."""
-    layout = config.layout
-    if placement is not None:
-        anchor = placement.anchor
-        anchor_x, anchor_y = placement.position_x, placement.position_y
-    else:
-        region = resolve_native_layout_region(geometry, layout)
-        anchor = layout.position
-        anchor_x, anchor_y = _native_anchor_point(anchor, region)
-
-    content_width = max((line.width for line in visual_lines), default=0.0)
-    padding = metrics.backdrop_size
-    shadow = metrics.shadow_size
-    block_width = _round_playres(content_width + 2 * padding + shadow)
-    block_height = _round_playres(
-        metrics.natural_line_height
-        + (len(visual_lines) - 1) * metrics.resolved_line_height
-        + 2 * padding
-        + shadow
-    )
-    if block_width > metrics.max_width:
-        raise ValidationError(
-            "Measured subtitle lines exceed the configured max-width envelope"
-        )
-    if block_height > metrics.max_height:
-        raise ValidationError(
-            "Measured subtitle lines exceed the configured max-height envelope"
-        )
-    block_left, block_top, block_right, block_bottom = _anchor_bounds(
-        anchor_x,
-        anchor_y,
-        block_width,
-        block_height,
-        anchor,
-    )
-    bounds = (block_left, block_top, block_right, block_bottom)
-    content_top = block_top + padding
-    result: list[_PositionedLine] = []
-    for line in visual_lines:
-        if anchor.value.startswith("top-"):
-            line_y = _round_playres(
-                content_top + line.index * metrics.resolved_line_height
-            )
-        elif anchor.value.startswith("bottom-"):
-            line_y = _round_playres(
-                content_top
-                + line.index * metrics.resolved_line_height
-                + metrics.natural_line_height
-            )
-        else:
-            line_y = _round_playres(
-                content_top
-                + line.index * metrics.resolved_line_height
-                + metrics.natural_line_height / 2
-            )
-        result.append(
-            _PositionedLine(
-                line=line,
-                anchor=anchor,
-                position_x=anchor_x,
-                position_y=line_y,
-                block_bounds=bounds,
-            )
-        )
-    return tuple(result)
-
-
-def _native_anchor_point(
-    position: SubtitlePosition,
-    region: Any,
-) -> tuple[int, int]:
-    if position.value.endswith("left"):
-        x = region.left
-    elif position.value.endswith("right"):
-        x = region.right
-    else:
-        x = (region.left + region.right) // 2
-    if position.value.startswith("top-"):
-        y = region.top
-    elif position.value.startswith("bottom-"):
-        y = region.bottom
-    else:
-        y = (region.top + region.bottom) // 2
-    return x, y
-
-
-def _round_playres(value: float) -> int:
-    return int(math.floor(float(value) + 0.5))
-
-
-def _anchor_bounds(
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    anchor: SubtitlePosition,
-) -> tuple[int, int, int, int]:
-    if anchor.value.endswith("left"):
-        left, right = x, x + width
-    elif anchor.value.endswith("right"):
-        left, right = x - width, x
-    else:
-        left, right = x - width // 2, x + (width + 1) // 2
-    if anchor.value.startswith("top-"):
-        top, bottom = y, y + height
-    elif anchor.value.startswith("bottom-"):
-        top, bottom = y - height, y
-    else:
-        top, bottom = y - height // 2, y + (height + 1) // 2
-    return left, top, right, bottom
-
-
 def _append_shared_backdrop_event(
     lines: list[str],
     start_centiseconds: int,
     end_centiseconds: int,
     bounds: tuple[int, int, int, int],
+    animation_origin: CuePlacement,
     color: str,
     shadow_size: int,
     *,
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    animate: bool,
     style_name: str,
 ) -> None:
     """Append one lower-layer vector backdrop for a positioned visual block."""
@@ -586,11 +1281,40 @@ def _append_shared_backdrop_event(
         f"{{\\an7\\pos(0,0)\\p1\\1c&H{bgr}&\\1a&H{alpha}&"
         f"\\3a&HFF&\\4a&HFF&\\bord0\\shad{shadow_size}}}{path}{{\\p0}}"
     )
-    lines.append(
-        "Dialogue: 0,"
-        f"{format_ass_centiseconds(start_centiseconds)},"
-        f"{format_ass_centiseconds(end_centiseconds)},"
-        f"{style_name},,0,0,0,,{text}"
+    if not animate:
+        lines.append(
+            "Dialogue: 0,"
+            f"{format_ass_centiseconds(start_centiseconds)},"
+            f"{format_ass_centiseconds(end_centiseconds)},"
+            f"{style_name},,0,0,0,,{text}"
+        )
+        return
+    width = right - left
+    height = bottom - top
+    local_path = f"m 0 0 l {width} 0 l {width} {height} l 0 {height} l 0 0"
+    animated_text = (
+        f"{{\\p1\\1c&H{bgr}&\\1a&H{alpha}&"
+        f"\\3a&HFF&\\4a&HFF&\\bord0\\shad{shadow_size}}}{local_path}{{\\p0}}"
+    )
+    top_left = CuePlacement(SubtitlePosition.TOP_LEFT, left, top)
+    _append_dialogue_event(
+        lines,
+        _DialogueEvent(
+            logical_start=start_centiseconds,
+            logical_end=end_centiseconds,
+            start=start_centiseconds,
+            end=end_centiseconds,
+            generated_override="",
+            text=animated_text,
+            placement=top_left,
+            animation_origin=animation_origin,
+            cue_animation=config.animation.cue.backdrop,
+            layer=0,
+            style_name=style_name,
+        ),
+        config,
+        geometry,
+        animate=True,
     )
 
 
@@ -695,6 +1419,7 @@ def resolve_subtitle_palettes(
     base = SubtitlePalette(
         text_color=_canonical_rgba(config.style.typography.color),
         backdrop_color=_canonical_rgba(config.style.backdrop.color),
+        word_backdrop_color=_canonical_rgba(config.style.word_backdrop.color),
         highlight_color=(
             _canonical_rgba(config.style.typography.highlight_color)
             if config.style.typography.highlight_color is not None
@@ -705,6 +1430,10 @@ def resolve_subtitle_palettes(
     effective = SubtitlePalette(
         text_color=compose_rgba_opacity(base.text_color, opacity),
         backdrop_color=compose_rgba_opacity(base.backdrop_color, opacity),
+        word_backdrop_color=compose_rgba_opacity(
+            base.word_backdrop_color,
+            opacity,
+        ),
         highlight_color=(
             compose_rgba_opacity(base.highlight_color, opacity)
             if base.highlight_color is not None
@@ -904,7 +1633,7 @@ def serialize_karaoke_cue(
     """Compile one prepared karaoke cue without escaping generated overrides."""
     if (
         not isinstance(cue, KaraokeCue)
-        or config.animation.word.mode is not KaraokeMode.PROGRESSIVE
+        or config.animation.word.text.mode is not WordAnimationMode.PROGRESSIVE
     ):
         return None
     if palette is None:
@@ -922,8 +1651,11 @@ def serialize_karaoke_preview_cue(
     fragments: Sequence[SubtitleDisplayFragment] | None = None,
     palette: SubtitlePalette | None = None,
 ) -> str | None:
-    """Compile a static preview snapshot of the selected karaoke mode."""
-    if not isinstance(cue, KaraokeCue) or not config.animation.word.karaoke:
+    """Compile a static preview snapshot of the selected word-text mode."""
+    if (
+        not isinstance(cue, KaraokeCue)
+        or not config.animation.word.uses_timed_highlight
+    ):
         return None
     _validate_karaoke_cue(cue)
     visible_fragments = cue.fragments if fragments is None else fragments
@@ -933,14 +1665,14 @@ def serialize_karaoke_preview_cue(
         raise ArtifactError("Karaoke preview fragments must use the typed contract")
     if palette is None:
         _, palette = resolve_subtitle_palettes(config)
-    if config.animation.word.mode is KaraokeMode.PROGRESSIVE:
+    if config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE:
         highlighted_words = (len(cue.durations) + 1) // 2
         return _serialize_progressive_state(
             visible_fragments,
             palette,
             highlighted_words,
         )
-    if config.animation.word.mode is KaraokeMode.ACTIVE_WORD:
+    if config.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD:
         return _serialize_active_word_fragments(visible_fragments, palette, 0)
     return None
 
@@ -978,8 +1710,8 @@ def serialize_active_word_events(
     palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Split one cue into stable full-text intervals with one active word."""
-    if config.animation.word.mode is not KaraokeMode.ACTIVE_WORD:
-        raise ArtifactError("Active-word events require active-word karaoke mode")
+    if config.animation.word.text.mode is not WordAnimationMode.ACTIVE_WORD:
+        raise ArtifactError("Active-word events require active-word text mode")
     _validate_karaoke_cue(cue)
     if cue_end < cue_start:
         raise ArtifactError("Karaoke cue timestamps are invalid")
@@ -1035,8 +1767,10 @@ def serialize_progressive_line_events(
     line-height rendering uses stable intervals instead, changing each line's
     color state at the original cue-global word boundaries.
     """
-    if config.animation.word.mode is not KaraokeMode.PROGRESSIVE:
-        raise ArtifactError("Progressive line events require progressive karaoke mode")
+    if config.animation.word.text.mode is not WordAnimationMode.PROGRESSIVE:
+        raise ArtifactError(
+            "Progressive line events require progressive word-text mode"
+        )
     _validate_karaoke_cue(cue)
     if cue_end < cue_start:
         raise ArtifactError("Karaoke line timestamps are invalid")
@@ -1141,8 +1875,8 @@ def serialize_active_word_line_events(
     palette: SubtitlePalette | None = None,
 ) -> tuple[tuple[int, int, str], ...]:
     """Serialize active-word intervals for one visual line of a cue."""
-    if config.animation.word.mode is not KaraokeMode.ACTIVE_WORD:
-        raise ArtifactError("Active-word events require active-word karaoke mode")
+    if config.animation.word.text.mode is not WordAnimationMode.ACTIVE_WORD:
+        raise ArtifactError("Active-word events require active-word text mode")
     _validate_karaoke_cue(cue)
     if cue_end < cue_start or len(cue.active_intervals) != len(cue.durations):
         raise ArtifactError("Karaoke line timestamps are invalid")

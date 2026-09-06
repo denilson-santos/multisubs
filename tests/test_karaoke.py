@@ -15,18 +15,18 @@ from multisubs.ass import (
     write_ass,
 )
 from multisubs.config import (
-    DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
+    DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
     validate_subtitle_config,
 )
 from multisubs.errors import ArtifactError, ValidationError
 from multisubs.layout import resolve_subtitle_config
 from multisubs.models import (
     KaraokeCue,
-    KaraokeMode,
     PreviewRequest,
     SubtitleDisplayFragment,
     TranscriptDocument,
     VideoGeometry,
+    WordAnimationMode,
 )
 from multisubs.subtitler import (
     embed_subtitles,
@@ -57,35 +57,39 @@ def _word(text: str, start: float, end: float):
 
 
 def test_karaoke_config_resolves_default_and_custom_highlight_colors():
-    default = validate_subtitle_config(None, effects_values={"karaoke": True})
+    default = validate_subtitle_config(
+        None, animation_values={"word_text_emphasis": "highlight"}
+    )
     custom = validate_subtitle_config(
         None,
-        effects_values={
-            "karaoke": True,
-            "karaoke_mode": "active-word",
-            "highlight_color": "#abcdef80",
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "active-word",
+            "word_text_highlight_color": "#abcdef80",
         },
     )
 
-    assert default.animation.word.karaoke is True
-    assert default.style.typography.highlight_color == DEFAULT_KARAOKE_HIGHLIGHT_COLOR
-    assert default.animation.word.mode is KaraokeMode.PROGRESSIVE
-    assert custom.animation.word.mode is KaraokeMode.ACTIVE_WORD
+    assert default.animation.word.uses_timed_highlight is True
+    assert (
+        default.style.typography.highlight_color
+        == DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR
+    )
+    assert default.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD
+    assert custom.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD
     assert custom.style.typography.highlight_color == "#ABCDEF80"
 
 
 @pytest.mark.parametrize(
-    "effects",
+    "animation",
     [
-        {"highlight_color": "#FFD54F"},
-        {"karaoke_mode": "active-word"},
-        {"karaoke": True, "highlight_color": "white"},
-        {"karaoke": True, "karaoke_mode": "unknown"},
+        {"word_text_highlight_color": "#FFD54F"},
+        {"word_text_emphasis": "highlight", "word_text_highlight_color": "white"},
+        {"word_text_emphasis": "highlight", "word_text_mode": "unknown"},
     ],
 )
-def test_karaoke_effect_validation_rejects_meaningless_or_invalid_colors(effects):
+def test_word_animation_validation_rejects_meaningless_or_invalid_colors(animation):
     with pytest.raises(ValidationError):
-        validate_subtitle_config(None, effects_values=effects)
+        validate_subtitle_config(None, animation_values=animation)
 
 
 def test_karaoke_cli_request_is_typed_and_translation_is_rejected(tmp_path: Path):
@@ -96,18 +100,22 @@ def test_karaoke_cli_request_is_typed_and_translation_is_rejected(tmp_path: Path
         [
             "-i",
             str(input_path),
-            "--karaoke",
-            "--karaoke-mode",
+            "--animation-word-text-emphasis",
+            "highlight",
+            "--animation-word-text-mode",
             "active-word",
-            "--karaoke-highlight-color",
+            "--animation-word-text-highlight-color",
             "#abcdef80",
         ]
     )
 
     request = cli._build_request(args, parser)
 
-    assert request.subtitle_config.animation.word.karaoke is True
-    assert request.subtitle_config.animation.word.mode is KaraokeMode.ACTIVE_WORD
+    assert request.subtitle_config.animation.word.uses_timed_highlight is True
+    assert (
+        request.subtitle_config.animation.word.text.mode
+        is WordAnimationMode.ACTIVE_WORD
+    )
     assert request.subtitle_config.style.typography.highlight_color == "#ABCDEF80"
 
     with pytest.raises(SystemExit) as error:
@@ -116,7 +124,8 @@ def test_karaoke_cli_request_is_typed_and_translation_is_rejected(tmp_path: Path
                 [
                     "-i",
                     str(input_path),
-                    "--karaoke",
+                    "--animation-word-text-emphasis",
+                    "highlight",
                     "--task",
                     "translate",
                     "--model",
@@ -129,15 +138,14 @@ def test_karaoke_cli_request_is_typed_and_translation_is_rejected(tmp_path: Path
 
 
 @pytest.mark.parametrize(
-    "effect_options",
+    "animation_options",
     [
-        ["--karaoke-highlight-color", "#FFD54F"],
-        ["--karaoke-mode", "active-word"],
+        ["--animation-word-text-highlight-color", "#FFD54F"],
     ],
 )
-def test_karaoke_cli_rejects_effect_options_without_karaoke(
+def test_karaoke_cli_rejects_animation_options_without_karaoke(
     tmp_path: Path,
-    effect_options: list[str],
+    animation_options: list[str],
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
@@ -145,7 +153,7 @@ def test_karaoke_cli_rejects_effect_options_without_karaoke(
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
-            parser.parse_args(["-i", str(input_path), *effect_options]),
+            parser.parse_args(["-i", str(input_path), *animation_options]),
             parser,
         )
 
@@ -158,12 +166,20 @@ def test_karaoke_cli_accepts_transcription_free_preview(tmp_path: Path):
     parser = cli.build_parser()
 
     request = cli._build_request(
-        parser.parse_args(["-i", str(input_path), "--preview-layout", "--karaoke"]),
+        parser.parse_args(
+            [
+                "-i",
+                str(input_path),
+                "--preview-layout",
+                "--animation-word-text-emphasis",
+                "highlight",
+            ]
+        ),
         parser,
     )
 
     assert isinstance(request, PreviewRequest)
-    assert request.subtitle_config.animation.word.karaoke is True
+    assert request.subtitle_config.animation.word.uses_timed_highlight is True
 
 
 def test_karaoke_duration_allocation_conserves_quantized_cue_duration():
@@ -231,7 +247,10 @@ def test_karaoke_text_case_preserves_word_identity_and_timing(
         validate_subtitle_config(
             None,
             appearance_values={"text_case": "uppercase"},
-            effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
+            animation_values={
+                "word_text_emphasis": "highlight",
+                "word_text_mode": karaoke_mode,
+            },
         ),
         GEOMETRY,
     )
@@ -269,7 +288,9 @@ def test_karaoke_text_case_preserves_word_identity_and_timing(
 
 def test_prepare_karaoke_cues_falls_back_without_word_timings():
     config = resolve_subtitle_config(
-        validate_subtitle_config(None, effects_values={"karaoke": True}),
+        validate_subtitle_config(
+            None, animation_values={"word_text_emphasis": "highlight"}
+        ),
         GEOMETRY,
     )
     segments = [{"start": 0.0, "end": 1.0, "text": "ordinary fallback", "words": []}]
@@ -284,7 +305,9 @@ def test_write_ass_compiles_one_timing_block_per_word_and_escapes_text(
     tmp_path: Path,
 ):
     config = resolve_subtitle_config(
-        validate_subtitle_config(None, effects_values={"karaoke": True}),
+        validate_subtitle_config(
+            None, animation_values={"word_text_emphasis": "highlight"}
+        ),
         GEOMETRY,
     )
     fragments = (
@@ -307,8 +330,8 @@ def test_write_ass_compiles_one_timing_block_per_word_and_escapes_text(
     write_ass(path, [segment], config, GEOMETRY)
 
     content = path.read_text(encoding="utf-8")
-    assert r"{\1c&H4FD5FF&\1a&H00&\2c&HFFFFFF&\2a&H00&}" in content
-    assert content.count(r"{\k50}") == 2
+    assert content.count(r"{\1c&H4FD5FF&\1a&H00&}") == 2
+    assert r"{\k" not in content
     assert r"\{world\}" in content
 
 
@@ -318,7 +341,10 @@ def test_active_word_mode_splits_stable_full_cue_events_across_pauses(
     config = resolve_subtitle_config(
         validate_subtitle_config(
             None,
-            effects_values={"karaoke": True, "karaoke_mode": "active-word"},
+            animation_values={
+                "word_text_emphasis": "highlight",
+                "word_text_mode": "active-word",
+            },
         ),
         GEOMETRY,
     )
@@ -346,19 +372,20 @@ def test_active_word_mode_splits_stable_full_cue_events_across_pauses(
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.startswith("Dialogue:")
     ]
-    assert len(dialogue) == 3
-    assert "0:00:00.00,0:00:00.40" in dialogue[0]
-    assert "0:00:00.40,0:00:00.50" in dialogue[1]
-    assert "0:00:00.50,0:00:01.00" in dialogue[2]
+    text_dialogue = [line for line in dialogue if line.startswith("Dialogue: 2,")]
+    assert len(text_dialogue) == 4
+    assert any("0:00:00.00,0:00:00.40" in line for line in text_dialogue)
+    assert any("0:00:00.40,0:00:01.00" in line for line in text_dialogue)
+    assert any("0:00:00.00,0:00:00.50" in line for line in text_dialogue)
+    assert any("0:00:00.50,0:00:01.00" in line for line in text_dialogue)
     assert r"{\k" not in "\n".join(dialogue)
-    assert (
-        r"{\1c&H4FD5FF&\1a&H00&}Hello"
-        r"{\1c&HFFFFFF&\1a&H00&} world" in dialogue[0]
+    assert any(
+        r"{\1c&H4FD5FF&\1a&H00&}" in line and line.endswith("Hello")
+        for line in text_dialogue
     )
-    assert dialogue[1].endswith("Hello world")
-    assert (
-        r"Hello {\1c&H4FD5FF&\1a&H00&}world"
-        r"{\1c&HFFFFFF&\1a&H00&}" in dialogue[2]
+    assert any(
+        r"{\1c&H4FD5FF&\1a&H00&}" in line and line.endswith("world")
+        for line in text_dialogue
     )
 
 
@@ -375,10 +402,10 @@ def test_karaoke_colors_use_once_composed_global_opacity(
     config = validate_subtitle_config(
         None,
         appearance_values={"text_color": "#FFFFFF80", "opacity": "50%"},
-        effects_values={
-            "karaoke": True,
-            "karaoke_mode": karaoke_mode,
-            "highlight_color": "#112233C0",
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": karaoke_mode,
+            "word_text_highlight_color": "#112233C0",
         },
     )
     segment = {
@@ -396,10 +423,7 @@ def test_karaoke_colors_use_once_composed_global_opacity(
 
     content = path.read_text(encoding="utf-8")
     assert r"\1c&H332211&\1a&H9F&" in content
-    if karaoke_mode == "progressive":
-        assert r"\2c&HFFFFFF&\2a&HBF&" in content
-    else:
-        assert r"\1c&HFFFFFF&\1a&HBF&" in content
+    assert "&HBFFFFFFF" in content
 
 
 def test_disabled_karaoke_keeps_plain_ass_output_unchanged(tmp_path: Path):
@@ -410,7 +434,7 @@ def test_disabled_karaoke_keeps_plain_ass_output_unchanged(tmp_path: Path):
     write_ass(
         explicit_disabled_path,
         [segment],
-        validate_subtitle_config(None, effects_values={"karaoke": False}),
+        validate_subtitle_config(None, animation_values={"word_text_emphasis": "none"}),
         GEOMETRY,
     )
 
@@ -424,7 +448,10 @@ def test_karaoke_retains_exact_font_weight(tmp_path: Path, karaoke_mode: str):
         None,
         appearance_values={"font_weight": "800"},
         relative_values={"letter_spacing": "2px"},
-        effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": karaoke_mode,
+        },
     )
     segment = {
         "start": 0.0,
@@ -445,7 +472,7 @@ def test_karaoke_retains_exact_font_weight(tmp_path: Path, karaoke_mode: str):
     assert style_fields[12] == "2"
     dialogue = [line for line in content.splitlines() if line.startswith("Dialogue:")]
     assert dialogue
-    assert all(r"{\b800}" in line for line in dialogue)
+    assert all(r"{\b800}" in line for line in dialogue if "Hello" in line)
     assert "Hello" in content
 
 
@@ -478,19 +505,37 @@ def test_karaoke_artifacts_keep_srt_plain_and_record_fallback_metadata(
         tmp_path / "output",
         validate_subtitle_config(
             None,
-            effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
+            animation_values={
+                "word_text_emphasis": "highlight",
+                "word_text_mode": karaoke_mode,
+            },
         ),
         geometry=GEOMETRY,
         progress=progress.append,
     )
 
     payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
-    karaoke = payload["metadata"]["rendering"]["effects"]["karaoke"]
+    assert payload["schema_version"] == 3
+    assert "effects" not in payload["metadata"]["rendering"]
+    karaoke = payload["metadata"]["rendering"]["animation"]["word"]
     assert karaoke == {
-        "enabled": True,
-        "mode": karaoke_mode,
+        "text": {
+            "active": True,
+            "mode": karaoke_mode,
+            "entrance": {"type": "none"},
+            "emphasis": {"type": "highlight"},
+            "exit": {"type": "none"},
+        },
+        "backdrop": {
+            "active": False,
+            "mode": "active-word",
+            "entrance": {"type": "none"},
+            "emphasis": {"type": "none"},
+            "exit": {"type": "none"},
+        },
         "normal_color": "#FFFFFF",
-        "highlight_color": DEFAULT_KARAOKE_HIGHLIGHT_COLOR,
+        "highlight_color": DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
+        "shortened_words": {"text": 0, "backdrop": 0},
         "fallback_cues": 1,
     }
     assert "Warning: 1 subtitle cue(s)" in "\n".join(progress)
@@ -498,11 +543,8 @@ def test_karaoke_artifacts_keep_srt_plain_and_record_fallback_metadata(
     assert "{\\k" not in srt
     assert "Hello world." in srt
     ass = Path(paths[2]).read_text(encoding="utf-8")
-    if karaoke_mode == "progressive":
-        assert ass.count(r"{\k") == 2
-    else:
-        assert r"{\k" not in ass
-        assert ass.count("Dialogue:") == 4
+    assert r"{\k" not in ass
+    assert ass.count("Dialogue:") >= 5
     assert "Fallback" in ass
 
 
@@ -568,7 +610,10 @@ def test_ffmpeg_libass_karaoke_changes_word_colors_without_moving_layout(
             "max_width": "150px",
             "max_height": "80px",
         },
-        effects_values={"karaoke": True, "karaoke_mode": karaoke_mode},
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": karaoke_mode,
+        },
     )
     resolved = resolve_subtitle_config(karaoke_config, geometry)
     words = [

@@ -12,10 +12,14 @@ from typing import Any
 
 from .config import parse_relative_length, validate_subtitle_config
 from .errors import TemplateError, ValidationError
-from .models import SubtitleConfig
+from .models import (
+    CueAnimationType,
+    SubtitleConfig,
+    WordAnimationMode,
+)
 
 DEFAULT_SUBTITLE_TEMPLATE = "default"
-_TEMPLATE_SCHEMA_VERSION = 1
+_TEMPLATE_SCHEMA_VERSION = 4
 _INDEX_RESOURCE = "index.json"
 _RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.json$")
 
@@ -123,7 +127,7 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
     style = _expect_object(data["style"], context=f"{context}.style")
     _expect_keys(
         style,
-        {"typography", "backdrop", "shadow", "opacity"},
+        {"typography", "backdrop", "word_backdrop", "shadow", "opacity"},
         context=f"{context}.style",
     )
     typography = _expect_object(
@@ -169,6 +173,19 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
     for field in ("type", "color", "size"):
         _expect_string(backdrop[field], context=f"{context}.style.backdrop.{field}")
 
+    word_backdrop = _expect_object(
+        style["word_backdrop"], context=f"{context}.style.word_backdrop"
+    )
+    _expect_keys(
+        word_backdrop,
+        {"type", "color", "size"},
+        context=f"{context}.style.word_backdrop",
+    )
+    for field in ("type", "color", "size"):
+        _expect_string(
+            word_backdrop[field], context=f"{context}.style.word_backdrop.{field}"
+        )
+
     shadow = _expect_object(style["shadow"], context=f"{context}.style.shadow")
     _expect_keys(shadow, {"size"}, context=f"{context}.style.shadow")
     _expect_string(shadow["size"], context=f"{context}.style.shadow.size")
@@ -195,41 +212,55 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
     animation = _expect_object(data["animation"], context=f"{context}.animation")
     _expect_keys(animation, {"cue", "word"}, context=f"{context}.animation")
     cue = _expect_object(animation["cue"], context=f"{context}.animation.cue")
-    _expect_keys(cue, {"entrance", "exit"}, context=f"{context}.animation.cue")
-    for phase_name in ("entrance", "exit"):
-        phase = _expect_object(
-            cue[phase_name], context=f"{context}.animation.cue.{phase_name}"
-        )
-        _expect_keys(phase, {"type"}, context=f"{context}.animation.cue.{phase_name}")
-        phase_type = _expect_string(
-            phase["type"], context=f"{context}.animation.cue.{phase_name}.type"
-        )
-        if phase_type != "none":
-            raise TemplateError(
-                f"{context}.animation.cue.{phase_name}.type must be none in "
-                f"schema version {_TEMPLATE_SCHEMA_VERSION}"
-            )
-
+    _expect_keys(cue, {"text", "backdrop"}, context=f"{context}.animation.cue")
     word = _expect_object(animation["word"], context=f"{context}.animation.word")
-    _expect_keys(word, {"type", "mode"}, context=f"{context}.animation.word")
-    word_type = _expect_string(word["type"], context=f"{context}.animation.word.type")
-    word_mode = _expect_nullable_string(
-        word["mode"], context=f"{context}.animation.word.mode"
+    _expect_keys(word, {"text", "backdrop"}, context=f"{context}.animation.word")
+    animation_values: dict[str, object] = {}
+    for scope, group in (("cue", cue), ("word", word)):
+        for element in ("text", "backdrop"):
+            track = _expect_object(
+                group[element], context=f"{context}.animation.{scope}.{element}"
+            )
+            expected = {"entrance", "emphasis", "exit"}
+            if scope == "word":
+                expected.add("mode")
+            _expect_keys(
+                track, expected, context=f"{context}.animation.{scope}.{element}"
+            )
+            prefix = f"{scope}_{element}"
+            for phase_name in ("entrance", "emphasis", "exit"):
+                phase_type, duration_ms = _load_animation_phase(
+                    track[phase_name],
+                    context=(f"{context}.animation.{scope}.{element}.{phase_name}"),
+                )
+                animation_values[f"{prefix}_{phase_name}"] = phase_type
+                if duration_ms is not None:
+                    animation_values[f"{prefix}_{phase_name}_duration"] = (
+                        f"{duration_ms}ms"
+                    )
+            if scope == "word":
+                mode_name = _expect_string(
+                    track["mode"],
+                    context=f"{context}.animation.{scope}.{element}.mode",
+                )
+                try:
+                    animation_values[f"{prefix}_mode"] = WordAnimationMode(mode_name)
+                except ValueError as exc:
+                    raise TemplateError(
+                        f"{context}.animation.{scope}.{element}.mode is not supported"
+                    ) from exc
+
+    word_text_highlighted = (
+        animation_values["word_text_emphasis"] == CueAnimationType.HIGHLIGHT.value
     )
-    if word_type not in {"none", "karaoke"}:
-        raise TemplateError(f"{context}.animation.word.type must be none or karaoke")
-    if word_type == "none" and word_mode is not None:
-        raise TemplateError(f"{context}.animation.word.mode must be null for type none")
-    if word_type == "karaoke" and word_mode is None:
-        raise TemplateError(f"{context}.animation.word.mode is required for karaoke")
-    if word_type == "none" and highlight_color is not None:
+    if not word_text_highlighted and highlight_color is not None:
         raise TemplateError(
             f"{context}.style.typography.highlight_color must be null when word "
-            "animation is none"
+            "text emphasis is not highlight"
         )
-    if word_type == "karaoke" and highlight_color is None:
+    if word_text_highlighted and highlight_color is None:
         raise TemplateError(
-            f"{context}.style.typography.highlight_color is required for karaoke"
+            f"{context}.style.typography.highlight_color is required for highlight"
         )
 
     appearance_values: dict[str, object] = {
@@ -240,21 +271,20 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
         "text_case": typography["text_case"],
         "backdrop": backdrop["type"],
         "backdrop_color": backdrop["color"],
+        "word_backdrop": word_backdrop["type"],
+        "word_backdrop_color": word_backdrop["color"],
         "opacity": style["opacity"],
     }
     if name == DEFAULT_SUBTITLE_TEMPLATE and typography["font_weight"] == "regular":
         appearance_values.pop("font_weight")
-    effects_values: dict[str, object] = {"karaoke": word_type == "karaoke"}
-    if word_type == "karaoke":
-        effects_values.update(
-            karaoke_mode=word_mode,
-            highlight_color=highlight_color,
-        )
+    if word_text_highlighted:
+        animation_values["word_text_highlight_color"] = highlight_color
     relative_values = {
         "font_size": typography["font_size"],
         "letter_spacing": typography["letter_spacing"],
         "line_height": typography["line_height"],
         "outline_weight": backdrop["size"],
+        "word_backdrop_size": word_backdrop["size"],
         "shadow_weight": shadow["size"],
         "margin_left": margins["left"],
         "margin_right": margins["right"],
@@ -281,7 +311,7 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
             appearance_values=appearance_values,
             position=position,
             relative_values=relative_values,
-            effects_values=effects_values,
+            animation_values=animation_values,
         )
         config = replace(
             config,
@@ -297,6 +327,32 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
     except ValidationError as exc:
         raise TemplateError(f"{context} is semantically invalid: {exc}") from exc
     return SubtitleTemplate(name=name, description=description, config=config)
+
+
+def _load_animation_phase(value: Any, *, context: str) -> tuple[str, int | None]:
+    phase = _expect_object(value, context=context)
+    phase_type_name = _expect_string(phase.get("type"), context=f"{context}.type")
+    try:
+        phase_type = CueAnimationType(phase_type_name)
+    except ValueError as exc:
+        raise TemplateError(f"{context}.type is not supported") from exc
+    if phase_type is CueAnimationType.NONE:
+        _expect_keys(phase, {"type"}, context=context)
+        return phase_type.value, None
+    if phase_type is CueAnimationType.HIGHLIGHT:
+        _expect_keys(phase, {"type"}, context=context)
+        return phase_type.value, None
+    unknown = set(phase).difference({"type", "duration_ms"})
+    if unknown:
+        raise TemplateError(
+            f"{context} contains unknown field(s): {', '.join(sorted(unknown))}"
+        )
+    duration_ms = phase.get("duration_ms")
+    if duration_ms is not None and (
+        type(duration_ms) is not int or duration_ms < 10 or duration_ms > 5000
+    ):
+        raise TemplateError(f"{context}.duration_ms must be from 10 through 5000")
+    return phase_type.value, duration_ms
 
 
 def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:

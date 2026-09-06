@@ -15,7 +15,6 @@ from multisubs.font_catalog import find_bundled_font_family
 from multisubs.layout import resolve_subtitle_config
 from multisubs.models import (
     FontWeight,
-    KaraokeMode,
     PreviewRequest,
     RelativeLength,
     SubtitleBackdrop,
@@ -23,6 +22,7 @@ from multisubs.models import (
     TextCase,
     TranscriptDocument,
     VideoGeometry,
+    WordAnimationMode,
 )
 from multisubs.templates import (
     DEFAULT_SUBTITLE_TEMPLATE,
@@ -225,8 +225,220 @@ EXPECTED_TEMPLATES = {
         "3%",
         "100%",
         "20%",
-        KaraokeMode.PROGRESSIVE,
+        WordAnimationMode.PROGRESSIVE,
         "#00F5D4",
+    ),
+    "cinematic-fade": (
+        "Lora",
+        FontWeight.SEMI_BOLD,
+        True,
+        "4.2%",
+        "#FFF4E6",
+        "95%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111111D9",
+        "4%",
+        "2%",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "15%",
+        "15%",
+        "0%",
+        "3%",
+        "100%",
+        "16%",
+        None,
+        None,
+    ),
+    "impact-yellow": (
+        "Montserrat",
+        FontWeight.BLACK,
+        False,
+        "5.2%",
+        "#FFD60A",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.OUTLINE,
+        "#000000E6",
+        "8%",
+        "4%",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "8%",
+        "8%",
+        "0%",
+        "3%",
+        "100%",
+        "22%",
+        None,
+        None,
+    ),
+    "lower-third-slide": (
+        "Oswald",
+        FontWeight.SEMI_BOLD,
+        False,
+        "4.1%",
+        "#FFFFFF",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.BOX,
+        "#0B1F3AE6",
+        "7%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_LEFT,
+        "5%",
+        "38%",
+        "0%",
+        "3%",
+        "100%",
+        "16%",
+        None,
+        None,
+    ),
+    "soft-zoom": (
+        "Inter",
+        FontWeight.MEDIUM,
+        False,
+        "4.3%",
+        "#F8FAFC",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827CC",
+        "4%",
+        "2%",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "14%",
+        "14%",
+        "0%",
+        "3%",
+        "100%",
+        "16%",
+        None,
+        None,
+    ),
+    "word-focus": (
+        "Atkinson Hyperlegible Next",
+        FontWeight.BOLD,
+        False,
+        "4.5%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.BOX,
+        "#111827D9",
+        "8%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "18%",
+        WordAnimationMode.ACTIVE_WORD,
+        "#111827",
+    ),
+}
+
+EXPECTED_ANIMATIONS = {
+    **{
+        name: ("none", 0, "none", 0, "none", 0, "none", 0, "none", 0, None, "none", 0)
+        for name in tuple(EXPECTED_TEMPLATES)[:7]
+    },
+    "neon-karaoke": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.PROGRESSIVE,
+        "none",
+        0,
+    ),
+    "cinematic-fade": (
+        "fade",
+        220,
+        "none",
+        0,
+        "fade",
+        180,
+        "none",
+        0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "impact-yellow": (
+        "pop",
+        220,
+        "none",
+        0,
+        "fade",
+        100,
+        "none",
+        0,
+        "bounce",
+        240,
+        None,
+        "none",
+        0,
+    ),
+    "lower-third-slide": (
+        "slide-right",
+        220,
+        "none",
+        0,
+        "fade",
+        100,
+        "none",
+        0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "soft-zoom": (
+        "zoom",
+        220,
+        "float",
+        900,
+        "fade",
+        120,
+        "none",
+        0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "word-focus": (
+        "fade",
+        160,
+        "none",
+        0,
+        "fade",
+        120,
+        "pop",
+        160,
+        "highlight",
+        0,
+        WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
     ),
 }
 
@@ -264,7 +476,11 @@ def _template_snapshot(name: str):
         _relative_original(layout.margin_bottom),
         _relative_original(layout.max_width),
         _relative_original(layout.max_height),
-        config.animation.word.mode,
+        (
+            config.animation.word.text.mode
+            if config.animation.word.text.emphasis.type.value == "highlight"
+            else None
+        ),
         config.style.typography.highlight_color,
     )
 
@@ -300,7 +516,7 @@ def test_packaged_catalog_has_complete_deterministic_inventory():
     index = json.loads((root / "index.json").read_text(encoding="utf-8"))
 
     assert index == {
-        "schema_version": 1,
+        "schema_version": 4,
         "templates": [f"{name}.json" for name in EXPECTED_TEMPLATES],
     }
     assert {path.name for path in root.glob("*.json")} == {
@@ -319,10 +535,8 @@ def test_packaged_catalog_has_complete_deterministic_inventory():
             "unknown field",
         ),
         (
-            lambda payload: payload["animation"]["cue"]["entrance"].update(
-                {"type": "fade"}
-            ),
-            "must be none",
+            lambda payload: payload["animation"]["cue"]["text"].pop("exit"),
+            "missing field",
         ),
         (
             lambda payload: payload["style"]["typography"].update(
@@ -364,7 +578,7 @@ def test_catalog_rejects_unindexed_resources(tmp_path: Path):
 def test_catalog_rejects_duplicate_json_keys(tmp_path: Path):
     root = _copy_template_catalog(tmp_path)
     (root / "index.json").write_text(
-        '{"schema_version": 1, "schema_version": 1, "templates": []}',
+        '{"schema_version": 4, "schema_version": 4, "templates": []}',
         encoding="utf-8",
     )
 
@@ -385,6 +599,39 @@ def test_template_has_exact_documented_baseline_and_bundled_face(name: str):
     assert _template_snapshot(name) == EXPECTED_TEMPLATES[name]
 
     config = get_subtitle_template(name).config
+    cue = config.animation.cue.text
+    word = config.animation.word.text
+    assert (
+        cue.entrance.type.value,
+        cue.entrance.duration_ms,
+        cue.emphasis.type.value,
+        cue.emphasis.duration_ms,
+        cue.exit.type.value,
+        cue.exit.duration_ms,
+        word.entrance.type.value,
+        word.entrance.duration_ms,
+        word.emphasis.type.value,
+        word.emphasis.duration_ms,
+        word.mode if word.emphasis.type.value == "highlight" else None,
+        word.exit.type.value,
+        word.exit.duration_ms,
+    ) == EXPECTED_ANIMATIONS[name]
+    if cue.enabled:
+        assert config.animation.cue.backdrop == cue
+    expected_word_backdrop = (
+        ("box", "#FFD54F", "12%")
+        if name == "word-focus"
+        else (
+            "none",
+            "#111827E6",
+            "20px" if name == "default" else "12%",
+        )
+    )
+    assert (
+        config.style.word_backdrop.kind.value,
+        config.style.word_backdrop.color,
+        _relative_original(config.style.word_backdrop.size),
+    ) == expected_word_backdrop
     family = find_bundled_font_family(config.style.typography.font)
     assert family is not None
     assert any(
@@ -493,6 +740,10 @@ def test_explicit_appearance_and_layout_fields_override_only_their_fields(
         "#ABCDEF",
         "--backdrop-size",
         "9%",
+        "--word-backdrop-color",
+        "#FEDCBA",
+        "--word-backdrop-size",
+        "11%",
         "--shadow-size",
         "2%",
         "--letter-spacing",
@@ -526,6 +777,8 @@ def test_explicit_appearance_and_layout_fields_override_only_their_fields(
     assert style.backdrop.kind is SubtitleBackdrop.BOX
     assert style.backdrop.color == "#ABCDEF"
     assert style.backdrop.size == parse_relative_length("9%")
+    assert style.word_backdrop.color == "#FEDCBA"
+    assert style.word_backdrop.size == parse_relative_length("11%")
     assert style.shadow.size == parse_relative_length("2%")
     assert typography.letter_spacing == parse_relative_length("3%")
     assert typography.line_height == parse_relative_length("120%")
@@ -641,39 +894,39 @@ def test_neon_template_effects_can_be_overridden_or_disabled(tmp_path: Path):
         tmp_path,
         "--template",
         "neon-karaoke",
-        "--karaoke-mode",
+        "--animation-word-text-mode",
         "active-word",
-        "--karaoke-highlight-color",
+        "--animation-word-text-highlight-color",
         "#FF00FF",
     )
     disabled = _build_request(
         tmp_path,
         "--template",
         "neon-karaoke",
-        "--no-karaoke",
+        "--animation-word-text-emphasis",
+        "none",
     )
 
-    assert active.subtitle_config.animation.word.mode is KaraokeMode.ACTIVE_WORD
+    assert (
+        active.subtitle_config.animation.word.text.mode is WordAnimationMode.ACTIVE_WORD
+    )
     assert active.subtitle_config.style.typography.highlight_color == "#FF00FF"
-    assert disabled.subtitle_config.animation.word.karaoke is False
+    assert disabled.subtitle_config.animation.word.uses_timed_highlight is False
     assert disabled.subtitle_config.style.typography == replace(
         active.subtitle_config.style.typography, highlight_color=None
     )
     assert disabled.subtitle_config.layout == active.subtitle_config.layout
 
 
-@pytest.mark.parametrize(
-    "option",
-    ["--karaoke-mode=active-word", "--karaoke-highlight-color=#FF00FF"],
-)
-def test_explicit_effect_value_is_invalid_with_no_karaoke(tmp_path: Path, option: str):
+def test_highlight_color_is_invalid_when_emphasis_is_disabled(tmp_path: Path):
     with pytest.raises(SystemExit) as error:
         _build_request(
             tmp_path,
             "--template",
             "neon-karaoke",
-            "--no-karaoke",
-            option,
+            "--animation-word-text-emphasis",
+            "none",
+            "--animation-word-text-highlight-color=#FF00FF",
         )
 
     assert error.value.code == 2
@@ -703,22 +956,25 @@ def test_neon_karaoke_is_valid_for_preview(tmp_path: Path):
     )
 
     assert isinstance(request, PreviewRequest)
-    assert request.subtitle_config.animation.word.karaoke is True
+    assert request.subtitle_config.animation.word.uses_timed_highlight is True
 
 
-def test_no_karaoke_makes_neon_template_valid_for_translation(tmp_path: Path):
+def test_disabling_word_emphasis_makes_neon_template_valid_for_translation(
+    tmp_path: Path,
+):
     request = _build_request(
         tmp_path,
         "--template",
         "neon-karaoke",
-        "--no-karaoke",
+        "--animation-word-text-emphasis",
+        "none",
         "--task",
         "translate",
         "--model",
         "medium",
     )
 
-    assert request.subtitle_config.animation.word.karaoke is False
+    assert request.subtitle_config.animation.word.uses_timed_highlight is False
 
 
 def test_preview_request_records_template_identity(tmp_path: Path):
@@ -757,7 +1013,7 @@ def test_json_records_template_identity_without_registry_or_asset_paths(tmp_path
     )
 
     payload = json.loads(Path(json_path).read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     rendering = payload["metadata"]["rendering"]
     assert rendering["template"] == {
         "requested": "classic-yellow",

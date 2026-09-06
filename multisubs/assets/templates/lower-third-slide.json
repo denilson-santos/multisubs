@@ -1,34 +1,34 @@
 {
   "schema_version": 4,
-  "name": "newsroom",
-  "description": "Compact left-aligned treatment for reports and factual updates.",
+  "name": "lower-third-slide",
+  "description": "Compact report captions that slide right into a lower-third box and fade out; aligned words are not required.",
   "style": {
     "typography": {
       "font_family": "Oswald",
       "font_weight": "semi-bold",
-      "font_size": "4.2%",
+      "font_size": "4.1%",
       "italic": false,
-      "letter_spacing": "1%",
+      "letter_spacing": "0px",
       "line_height": "auto",
       "text_case": "uppercase",
       "color": "#FFFFFF",
       "highlight_color": null
     },
-    "backdrop": {"type": "box", "color": "#0B1F3ACC", "size": "8%"},
+    "backdrop": {"type": "box", "color": "#0B1F3AE6", "size": "7%"},
     "word_backdrop": {"type": "none", "color": "#111827E6", "size": "12%"},
     "shadow": {"size": "0px"},
     "opacity": "100%"
   },
   "layout": {
     "position": "bottom-left",
-    "margins": {"left": "5%", "right": "35%", "top": "0%", "bottom": "3%"},
+    "margins": {"left": "5%", "right": "38%", "top": "0%", "bottom": "3%"},
     "max_width": "100%",
     "max_height": "16%"
   },
   "animation": {
     "cue": {
-      "text": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
-      "backdrop": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
+      "text": {"entrance": {"type": "slide-right", "duration_ms": 220}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 100}},
+      "backdrop": {"entrance": {"type": "slide-right", "duration_ms": 220}, "emphasis": {"type": "none"}, "exit": {"type": "fade", "duration_ms": 100}}
     },
     "word": {
       "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},

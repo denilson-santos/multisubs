@@ -221,10 +221,10 @@ def test_preview_ass_shows_representative_static_karaoke_state(
 ):
     config = validate_subtitle_config(
         None,
-        effects_values={
-            "karaoke": True,
-            "karaoke_mode": mode,
-            "highlight_color": "#00F5D4",
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": mode,
+            "word_text_highlight_color": "#00F5D4",
         },
     )
     path = tmp_path / f"preview-{mode}.ass"
@@ -248,6 +248,50 @@ def test_preview_ass_shows_representative_static_karaoke_state(
     assert all(word in content for word in ("one", "two", "three", "four"))
 
 
+@pytest.mark.parametrize(
+    ("mode", "boxed_word_count"),
+    [("progressive", 2), ("active-word", 1)],
+)
+def test_preview_ass_shows_representative_static_word_boxes(
+    tmp_path: Path,
+    mode: str,
+    boxed_word_count: int,
+):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "backdrop": "none",
+            "word_backdrop": "box",
+            "word_backdrop_color": "#FF0000",
+        },
+        animation_values={
+            "word_backdrop_mode": mode,
+        },
+    )
+    path = tmp_path / f"preview-box-{mode}.ass"
+
+    build_preview_ass(
+        path,
+        _request(
+            tmp_path,
+            subtitle_config=config,
+            preview_at=0.0,
+            preview_text="one two three four",
+        ),
+        GEOMETRY,
+        0.0,
+    )
+
+    content = path.read_text(encoding="utf-8")
+    assert content.count(r"\1c&H0000FF&") == boxed_word_count
+    assert content.count(r"\p1") == boxed_word_count
+    assert r"\1c&H000000&" not in content
+    assert r"\move(" not in content
+    assert r"\fade(" not in content
+    assert r"\fsc" not in content
+    assert all(word in content for word in ("one", "two", "three", "four"))
+
+
 def test_karaoke_preview_preserves_escaping_and_explicit_line_height(tmp_path: Path):
     config = validate_subtitle_config(
         None,
@@ -259,7 +303,10 @@ def test_karaoke_preview_preserves_escaping_and_explicit_line_height(tmp_path: P
             "max_width": "240px",
             "max_height": "30%",
         },
-        effects_values={"karaoke": True, "karaoke_mode": "progressive"},
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "progressive",
+        },
     )
     path = tmp_path / "preview-karaoke-lines.ass"
 
