@@ -54,8 +54,8 @@ EXPECTED_TEMPLATES = {
         TextCase.ORIGINAL,
         SubtitleBackdrop.BOX,
         "#00000099",
+        "10px",
         "0px",
-        "4%",
         "0px",
         SubtitlePosition.BOTTOM_CENTER,
         "18%",
@@ -432,8 +432,8 @@ EXPECTED_ANIMATIONS = {
         0,
         "fade",
         120,
-        "pop",
-        160,
+        "none",
+        0,
         "highlight",
         0,
         WordAnimationMode.ACTIVE_WORD,
@@ -624,7 +624,7 @@ def test_template_has_exact_documented_baseline_and_bundled_face(name: str):
         else (
             "none",
             "#111827E6",
-            "20px" if name == "default" else "12%",
+            "10px" if name == "default" else "12%",
         )
     )
     assert (

@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from PIL import ImageFont
 
 from multisubs import text_measurement
 from multisubs.models import (
@@ -64,6 +65,17 @@ def test_unicode_fallback_distinguishes_narrow_and_wide_glyphs():
         "MMMM", 40
     )
     assert estimate_unicode_text_width("字幕", 40) == pytest.approx(80)
+
+
+def test_ass_metric_size_uses_sfnt_windows_metrics_for_bundled_fonts():
+    fonts_root = Path(text_measurement.__file__).parent / "assets" / "fonts"
+    montserrat = ImageFont.truetype(
+        str(fonts_root / "montserrat" / "Montserrat-Black.ttf"), 19
+    )
+    roboto = ImageFont.truetype(str(fonts_root / "roboto" / "Roboto-Regular.ttf"), 43)
+
+    assert text_measurement._ass_metric_size(montserrat, 19) == 12
+    assert text_measurement._ass_metric_size(roboto, 43) == 36
 
 
 @pytest.mark.parametrize(

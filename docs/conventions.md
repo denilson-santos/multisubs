@@ -252,9 +252,10 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
 - Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
 - Must keep generated ASS overrides (placement, colors, and aligned-word timing) on a trusted compiler path separate from independently escaped transcript fragments. Never parse or re-escape a completed generated override string as ordinary user text.
-- When explicit line height expands an ordinary cue into per-line events, each
-  event must use the same cue timing and stable anchor while a `backdrop=box`
-  is one lower-layer vector drawing for the complete measured block. Karaoke
+- When a multi-line box or explicit line height expands an ordinary cue into
+  per-line events, each event must use the same cue timing and stable anchor
+  while `backdrop=box` is one lower-layer vector drawing for the complete
+  measured block. Karaoke
   may instead use adjacent cue-relative intervals at validated word boundaries.
   Text events must not duplicate the box for every visual line; generated
   drawing coordinates remain separate from escaped transcript fragments.
@@ -284,8 +285,15 @@ Update a higher-level document when a proposed change intentionally modifies the
   fragment and its measured word-decoration event also receive its word-local state.
   Cue backdrops use layer 0, timed word boxes layer 1, and text layer 2 whenever
   those elements coexist.
+- When word text uses measured fragment placement, a glyph-shaped cue outline
+  must use those same fragments and placements. Do not combine a whole-line
+  libass-shaped outline with independently positioned word text. A cue outline
+  must sample the same cue-text and word-text motion as its glyph fragment;
+  preview and final rendering must retain the same event topology at the stable
+  state.
 - Must preserve ordinary static ASS event structure when all twelve resolved
-  phases are `none` and no timed word decoration is active. A PNG preview
+  phases are `none`, no timed word decoration is active, and a multi-line box
+  does not require one shared vector backdrop. A PNG preview
   suppresses all motion at the stable final state while retaining the documented
   representative state for each word track.
 - Must compose global opacity in conventional alpha space (`00` transparent,
@@ -324,6 +332,10 @@ Update a higher-level document when a proposed change intentionally modifies the
   to reconstruct aligned-word timing.
 - Must apply letter spacing in the shared measurement layer used by both
   concrete-font and Unicode-estimate modes before wrapping or cue splitting.
+- Concrete-font measurement must translate ASS real-dimension sizing from the
+  selected SFNT face's OS/2 Windows metrics, with Pillow ascent/descent as the
+  fallback. Fragment placement must not introduce synthetic tracking because
+  the renderer and measurer used different font-size conventions.
 - Must count one tracking gap between consecutive rendered grapheme clusters on
   each visual line. Combining marks and zero-width joiner sequences stay with
   their base cluster, while spaces and punctuation remain measurable clusters.
@@ -331,9 +343,10 @@ Update a higher-level document when a proposed change intentionally modifies the
   not valid substitutes.
 - Must expose natural ascent/descent metrics to the layout boundary and derive
   multi-line capacity from the first natural line plus the resolved baseline
-  advance. `auto` preserves the existing single-event ASS path; explicit line
-  height cannot be below the natural metric and must use one deterministic
-  PlayRes rounding policy.
+  advance. `auto` preserves the existing single-event ASS path for a one-line
+  cue, while a multi-line box uses positioned lines around one shared vector
+  backdrop. Explicit line height cannot be below the natural metric and must
+  use one deterministic PlayRes rounding policy.
 - Must keep the visual-line model shared by preview, ordinary cues, progressive
   word behavior, and active-word behavior. Synchronized per-line events may overlap in
   time only across distinct visual lines; they must never duplicate a line's

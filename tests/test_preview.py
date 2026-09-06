@@ -1,4 +1,5 @@
 import builtins
+import re
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
@@ -248,6 +249,65 @@ def test_preview_ass_shows_representative_static_karaoke_state(
     assert all(word in content for word in ("one", "two", "three", "four"))
 
 
+def test_preview_outline_reuses_word_fragment_positions(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={
+            "font": "DejaVu Sans",
+            "backdrop": "outline",
+            "backdrop_color": "#000000",
+        },
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "4px",
+            "shadow_weight": "0px",
+        },
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "progressive",
+        },
+    )
+    path = tmp_path / "preview-fragmented-outline.ass"
+
+    build_preview_ass(
+        path,
+        _request(
+            tmp_path,
+            subtitle_config=config,
+            preview_at=0.0,
+            preview_text="Ele tem...",
+        ),
+        GEOMETRY,
+        0.0,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert not any(
+        line.startswith("Dialogue: 0,") and line.endswith("Ele tem...")
+        for line in dialogue
+    )
+    for word in ("Ele", "tem..."):
+        outline = next(
+            line
+            for line in dialogue
+            if line.startswith("Dialogue: 0,") and line.endswith(word)
+        )
+        text = next(
+            line
+            for line in dialogue
+            if line.startswith("Dialogue: 2,") and line.endswith(word)
+        )
+        outline_position = re.search(r"\\pos\((\d+),(\d+)\)", outline)
+        text_position = re.search(r"\\pos\((\d+),(\d+)\)", text)
+        assert outline_position is not None
+        assert text_position is not None
+        assert outline_position.groups() == text_position.groups()
+
+
 @pytest.mark.parametrize(
     ("mode", "boxed_word_count"),
     [("progressive", 2), ("active-word", 1)],
@@ -341,6 +401,7 @@ def test_preview_renders_only_the_first_segment_that_fits_the_envelope(
     )
     compact_config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "margin_left": "0px",
             "margin_right": "0px",
@@ -350,6 +411,7 @@ def test_preview_renders_only_the_first_segment_that_fits_the_envelope(
     )
     spacious_config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "margin_left": "0px",
             "margin_right": "0px",
@@ -387,6 +449,7 @@ def test_preview_segment_preserves_compact_text_without_inventing_spaces(
     text = "这是一个没有空格的字幕句子"
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={"max_width": "50px", "max_height": "54px"},
     )
     path = tmp_path / "compact-text.ass"
@@ -440,7 +503,7 @@ def test_preview_applies_text_case_before_wrapping_and_ass_escaping(tmp_path: Pa
 def test_preview_text_case_expansion_still_respects_cue_capacity(tmp_path: Path):
     config = validate_subtitle_config(
         None,
-        appearance_values={"text_case": "uppercase"},
+        appearance_values={"backdrop": "none", "text_case": "uppercase"},
         relative_values={"max_width": "180px", "max_height": "54px"},
     )
     source_text = "Straße erneut später"

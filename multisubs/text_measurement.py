@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import struct
 import subprocess
 import unicodedata
 from collections import OrderedDict
@@ -550,6 +552,9 @@ def _load_face(
 
 def _ass_metric_size(font: Any, ass_font_size: int) -> int:
     """Approximate libass's FreeType real-dimension size request in Pillow."""
+    windows_metric_size = _windows_metric_size(font, ass_font_size)
+    if windows_metric_size is not None:
+        return windows_metric_size
     try:
         ascent, descent = font.getmetrics()
     except (AttributeError, OSError, TypeError, ValueError):
@@ -559,6 +564,69 @@ def _ass_metric_size(font: Any, ass_font_size: int) -> int:
         return ass_font_size
     scaled = ass_font_size * ass_font_size / metric_height
     return max(1, int(scaled + 0.5))
+
+
+def _windows_metric_size(font: Any, ass_font_size: int) -> int | None:
+    """Match libass's real-dimension sizing from the face's Win metrics."""
+    raw_path = getattr(font, "path", None)
+    raw_index = getattr(font, "index", 0)
+    if isinstance(raw_path, bytes):
+        raw_path = os.fsdecode(raw_path)
+    if not isinstance(raw_path, (str, Path)):
+        return None
+    if isinstance(raw_index, bool) or not isinstance(raw_index, int) or raw_index < 0:
+        return None
+    try:
+        path = Path(raw_path)
+        with path.open("rb") as stream:
+            signature = stream.read(4)
+            sfnt_offset = 0
+            if signature == b"ttcf":
+                stream.seek(8)
+                face_count = _read_sfnt_uint(stream, 4)
+                if raw_index >= face_count or face_count > _FONT_COLLECTION_LIMIT:
+                    return None
+                stream.seek(12 + raw_index * 4)
+                sfnt_offset = _read_sfnt_uint(stream, 4)
+
+            stream.seek(sfnt_offset + 4)
+            table_count = _read_sfnt_uint(stream, 2)
+            if table_count <= 0 or table_count > 4096:
+                return None
+            stream.seek(sfnt_offset + 12)
+            tables: dict[bytes, tuple[int, int]] = {}
+            for _ in range(table_count):
+                record = stream.read(16)
+                if len(record) != 16:
+                    return None
+                tag, _checksum, offset, length = struct.unpack(">4sIII", record)
+                if tag in {b"head", b"OS/2"}:
+                    tables[tag] = (offset, length)
+
+            head = tables.get(b"head")
+            os2 = tables.get(b"OS/2")
+            if head is None or os2 is None or head[1] < 20 or os2[1] < 78:
+                return None
+            stream.seek(head[0] + 18)
+            units_per_em = _read_sfnt_uint(stream, 2)
+            stream.seek(os2[0] + 74)
+            win_ascent = _read_sfnt_uint(stream, 2)
+            win_descent = _read_sfnt_uint(stream, 2)
+    except (OSError, OverflowError, struct.error, ValueError):
+        return None
+
+    windows_height = win_ascent + win_descent
+    if units_per_em <= 0 or windows_height <= 0:
+        return None
+    scaled = ass_font_size * units_per_em / windows_height
+    return max(1, int(scaled + 0.5))
+
+
+def _read_sfnt_uint(stream: Any, size: int) -> int:
+    data = stream.read(size)
+    if len(data) != size:
+        raise ValueError("truncated SFNT value")
+    return int.from_bytes(data, "big")
 
 
 def _style_distance(

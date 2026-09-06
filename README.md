@@ -130,13 +130,13 @@ multisubs -i ./video.mp4 -l pt \
 | `impact-yellow` | Reels, Shorts, calls to action | Montserrat Black | Uppercase yellow text with cue pop and aligned-word bounce. |
 | `lower-third-slide` | Reports, names, and concise facts | Oswald SemiBold | A compact lower-third box that slides in from the left. |
 | `soft-zoom` | Courses, interviews, polished social video | Inter Medium | Clean outlined text with restrained zoom and float. |
-| `word-focus` | Accessible word-following captions | Atkinson Hyperlegible Next Bold | High-contrast cue box, word pop, and an active yellow word box. |
+| `word-focus` | Accessible word-following captions | Atkinson Hyperlegible Next Bold | High-contrast cue box, always-visible text, and an active yellow word box. |
 
 The exact template baselines are:
 
 | Template | Size and text | Backdrop | Native layout | Animation |
 | --- | --- | --- | --- | --- |
-| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `0px`, shadow `4%` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
+| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `10px`, shadow `0px` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
 | `clean-outline` | `4%`, `#FFFFFF`, original, `100%` | outline `#000000CC`, `5%`, shadow `0px` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`14%` | none |
 | `social-bold` | `5%`, `#FFFFFF`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `3%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | none |
 | `classic-yellow` | `4.2%`, `#FFD54F`, original, `100%` | outline `#000000E6`, `6%`, shadow `3%` | bottom-center; L/R `12%`, B `3%`, W/H `100%`/`16%` | none |
@@ -148,7 +148,7 @@ The exact template baselines are:
 | `impact-yellow` | `5.2%`, `#FFD60A`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `4%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | pop in, word bounce, fade out |
 | `lower-third-slide` | `4.1%`, `#FFFFFF`, uppercase, `100%` | box `#0B1F3AE6`, `7%`, shadow `0px` | bottom-left; L `5%`, R `38%`, B `3%`, W/H `100%`/`16%` | slide right in, fade out |
 | `soft-zoom` | `4.3%`, `#F8FAFC`, original, `100%` | outline `#111827CC`, `4%`, shadow `2%` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`16%` | zoom in, gentle float, fade out |
-| `word-focus` | `4.5%`, `#FFFFFF`, original, `100%` | cue box `#111827D9`/`8%`; word box `#FFD54F`/`12%`; shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` | cue fade, word pop, active word box |
+| `word-focus` | `4.5%`, `#FFFFFF`, original, `100%` | cue box `#111827D9`/`8%`; word box `#FFD54F`/`12%`; shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` | cue fade, active word highlight and box |
 
 All use `auto` line height and a `0%` top margin. Unlisted letter spacing is
 `0px`. `neon-karaoke` uses highlight color `#00F5D4`; `word-focus` uses dark
@@ -397,12 +397,15 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | `--text-case MODE` | `original` | `original`, `uppercase`, or `lowercase`. |
 | `--backdrop KIND` | `box` | `none`, `outline`, or `box`. |
 | `--backdrop-color COLOR` | `#00000099` | Outline, box, and shadow color. |
-| `--backdrop-size LENGTH` | `0px` | Outline thickness or box padding. |
+| `--backdrop-size LENGTH` | `10px` | Outline thickness or box padding. |
 | `--word-backdrop KIND` | `none` | Timed word decoration: `none`, `outline`, or `box`. |
 | `--word-backdrop-color COLOR` | `#111827E6` | Timed word-decoration color. |
-| `--word-backdrop-size LENGTH` | `20px` | Outline thickness or padding for each timed word decoration. |
-| `--shadow-size LENGTH` | `4%` | Shadow size relative to the resolved font size or in pixels. |
+| `--word-backdrop-size LENGTH` | `10px` | Outline thickness or padding for each timed word decoration. |
+| `--shadow-size LENGTH` | `0px` | Shadow size relative to the resolved font size or in pixels. |
 | `--fonts-dir DIR` | — | Additional `.ttf`, `.otf`, or `.ttc` fonts for this run. |
+
+With `--backdrop box`, a multi-line cue uses one continuous box around the
+complete text block instead of drawing a separate box for each line.
 
 Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
 `semi-bold`, `bold`, `extra-bold`, and `black`. Their numeric equivalents are

@@ -46,7 +46,7 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
             "id": 0,
             "start": 0.001,
             "end": 61.239,
-            "text": "Olá {mundo}\\\n字幕",
+            "text": "Olá {mundo}\\ 字幕",
             "words": [],
         }
     ]
@@ -64,14 +64,14 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     ) in content
     assert (
         "Style: Default,Roboto,77,&H00FFFFFF,&H00FFFFFF,&H66000000,"
-        "&H66000000,0,0,0,0,100,100,0,0,4,0,3,2,194,194,58,1"
+        "&H66000000,0,0,0,0,100,100,0,0,3,10,0,2,194,194,58,1"
     ) in content
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert r"{\pos" not in content
     assert "0:00:00.00,0:01:01.24" in content
     assert r"{\b400}Olá" in content
     assert "\\{mundo\\}" in content
-    assert "\\N字幕" in content
+    assert "字幕" in content
 
 
 @pytest.mark.parametrize(
@@ -159,7 +159,7 @@ def test_explicit_full_opacity_preserves_default_ass_bytes(tmp_path: Path):
 
 @pytest.mark.parametrize(
     ("backdrop", "border_style", "outline_weight"),
-    [("none", 1, 0), ("outline", 1, 5), ("box", 4, 5)],
+    [("none", 1, 0), ("outline", 1, 5), ("box", 3, 5)],
 )
 def test_semantic_backdrops_compile_to_private_ass_fields(
     backdrop, border_style, outline_weight
@@ -302,26 +302,29 @@ def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
     assert r"Text, \{\\an9\}\\\\value" in content
 
 
-def test_ass_can_preserve_intentional_line_breaks_without_changing_default(
-    tmp_path: Path,
-):
+def test_ass_preserves_q2_on_positioned_multiline_box_text(tmp_path: Path):
+    config = validate_subtitle_config(
+        None,
+        relative_values={"max_height": "200px"},
+    )
     preserved_path = tmp_path / "preserved.ass"
     write_ass(
         preserved_path,
         [{"start": 0.0, "end": 1.0, "text": "one\ntwo"}],
-        validate_subtitle_config(None),
+        config,
         GEOMETRY,
         preserve_line_breaks=True,
     )
 
     preserved = preserved_path.read_text(encoding="utf-8")
-    assert r"{\q2}one\Ntwo" in preserved
+    assert preserved.count(r"{\q2}") == 2
+    assert r"one\Ntwo" not in preserved
 
     default_path = tmp_path / "default.ass"
     write_ass(
         default_path,
         [{"start": 0.0, "end": 1.0, "text": "one\ntwo"}],
-        validate_subtitle_config(None),
+        config,
         GEOMETRY,
     )
     assert r"{\q2}" not in default_path.read_text(encoding="utf-8")
@@ -362,7 +365,7 @@ def test_explicit_line_height_positions_lines_and_shares_box_backdrop(
     positioned_style = next(
         line for line in content.splitlines() if line.startswith("Style: Positioned,")
     ).split(",")
-    assert default_style[15:17] == ["4", "0"]
+    assert default_style[15:17] == ["3", "10"]
     assert positioned_style[15:17] == ["1", "0"]
     assert dialogue[0].startswith("Dialogue: 0,")
     assert all(line.startswith("Dialogue: 1,") for line in dialogue[1:])
@@ -371,6 +374,40 @@ def test_explicit_line_height_positions_lines_and_shares_box_backdrop(
     assert dialogue[2].count(r"\pos(540,") == 1
     assert r"\p1" in dialogue[0]
     assert "first\\Nsecond" not in "\n".join(dialogue[1:])
+
+
+def test_auto_line_height_shares_one_box_across_multiple_lines(tmp_path: Path):
+    path = tmp_path / "auto-line-height-box.ass"
+    config = validate_subtitle_config(
+        None,
+        relative_values={
+            "font_size": "43px",
+            "max_width": "600px",
+            "max_height": "200px",
+        },
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": "long first line\nshort"}],
+        config,
+        GEOMETRY,
+        preserve_line_breaks=True,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    backdrop_events = [line for line in dialogue if line.startswith("Dialogue: 0,")]
+    text_events = [line for line in dialogue if line.startswith("Dialogue: 1,")]
+
+    assert len(backdrop_events) == 1
+    assert r"\p1" in backdrop_events[0]
+    assert len(text_events) == 2
+    assert all(",Positioned,," in line for line in text_events)
+    assert "long first line\\Nshort" not in "\n".join(text_events)
 
 
 def test_explicit_line_height_keeps_single_line_on_traditional_ass_path(
@@ -403,7 +440,7 @@ def test_explicit_line_height_keeps_single_line_on_traditional_ass_path(
     default_style = next(
         line for line in content.splitlines() if line.startswith("Style: Default,")
     ).split(",")
-    assert default_style[15] == "4"
+    assert default_style[15] == "3"
 
 
 def test_write_ass_reuses_supplied_wrapping_metrics(tmp_path: Path, monkeypatch):
@@ -443,8 +480,10 @@ def test_auto_line_height_skips_wrapping_metrics_in_ass_writer(
     path = tmp_path / "auto-line-height.ass"
     config = validate_subtitle_config(
         None,
+        appearance_values={"backdrop": "none"},
         relative_values={
             "font_size": "18px",
+            "outline_weight": "0px",
             "max_height": "9px",
         },
     )

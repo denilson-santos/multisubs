@@ -39,6 +39,7 @@ from .models import (
     KaraokeCue,
     RelativeLength,
     SubtitleAnimationPhase,
+    SubtitleBackdrop,
     SubtitleConfig,
     SubtitleDisplayFragment,
     SubtitleElementAnimation,
@@ -1336,9 +1337,12 @@ def _line_height_render_strategy(
     if requested is None:
         requested = config.style.typography.line_height
     explicit = not (isinstance(requested, str) and requested.casefold() == "auto")
-    positioned = explicit and any(
+    multiple_lines = any(
         _wrapping_has_multiple_visual_lines(str(segment.get("text", "")))
         for segment in segments
+    )
+    positioned = multiple_lines and (
+        explicit or config.style.backdrop.kind is SubtitleBackdrop.BOX
     )
     return "positioned-lines" if positioned else "single-event"
 

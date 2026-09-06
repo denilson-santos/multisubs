@@ -77,7 +77,7 @@ option is omitted.
 | --- | --- |
 | Font | Roboto, regular 400, upright, `4%` |
 | Text | `#FFFFFF`, original case, `100%` opacity |
-| Backdrop | box, `#00000099`, `0px` padding, `4%` shadow |
+| Backdrop | box, `#00000099`, `10px` padding, `0px` shadow |
 | Typography | `0px` letter spacing, `auto` line height |
 | Placement | bottom-center; left/right `18%`, top `0%`, bottom `3%` |
 | Envelope | max width `100%`, max height `10%` |

@@ -1,6 +1,6 @@
 # Subtitle templates roadmap
 
-Status: In review
+Status: Done
 
 This package adds reproducible bundled fonts, named subtitle templates, and a
 declarative animation layer on top of the completed
@@ -62,8 +62,8 @@ alignment requirements.
 Preview remains one image, suppressing motion and representing each word
 track's selected mode independently. Internal schema-4 template resources
 remain packaged implementation data rather than a user extension surface.
-The revised four-track contract is implemented and locally verified on the
-current task branch; Git delivery remains pending.
+The revised four-track contract was implemented, verified, and delivered in
+[PR #65](https://github.com/denilson-santos/multisubs/pull/65).
 
 ## Bundled font families
 
@@ -99,10 +99,9 @@ This table is the source of truth for the package. Status values follow the
 | 0 | [Bundled OFL font catalog](00-bundled-ofl-font-catalog.md) | Done | Completed positioning and typography packages | [#60](https://github.com/denilson-santos/multisubs/pull/60) |
 | 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | Done | 0 and completed karaoke package | [#61](https://github.com/denilson-santos/multisubs/pull/61) |
 | 2 | [Declarative template schema](02-declarative-template-schema.md) | Done | 1 | [#64](https://github.com/denilson-santos/multisubs/pull/64) |
-| 3 | [Independent subtitle element animations](03-cue-animations-and-animated-templates.md) | In review | 2 and completed karaoke/preview contracts | `feat/subtitle-animations` |
+| 3 | [Independent subtitle element animations](03-cue-animations-and-animated-templates.md) | Done | 2 and completed karaoke/preview contracts | [#65](https://github.com/denilson-santos/multisubs/pull/65) |
 
-Package progress: 3 of 4 plans done. Plan 3 is complete locally on
-`feat/subtitle-animations` and is ready for review.
+Package progress: 4 of 4 plans done. The package is complete.
 
 ## Dependencies and delivery order
 
