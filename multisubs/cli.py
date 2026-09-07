@@ -65,6 +65,7 @@ from .layout import (
     resolve_wrapping_metrics,
 )
 from .models import (
+    PreviewMode,
     PreviewRequest,
     RelativeLength,
     RunArtifacts,
@@ -75,7 +76,12 @@ from .models import (
     TextCase,
     TranscriptionPaths,
 )
-from .preview import DEFAULT_PREVIEW_TEXT, parse_preview_timestamp
+from .preview import (
+    DEFAULT_PREVIEW_DURATION_MS,
+    DEFAULT_PREVIEW_TEXT,
+    parse_preview_duration,
+    parse_preview_timestamp,
+)
 from .templates import (
     DEFAULT_SUBTITLE_TEMPLATE,
     TEMPLATE_CHOICES,
@@ -167,13 +173,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     preview_group = parser.add_argument_group(
-        "Subtitle layout preview",
-        "Render one frame without transcription or a final subtitle video.",
+        "Subtitle preview",
+        "Render a transcription-free static frame or animated clip.",
     )
-    preview_group.add_argument(
+    preview_mode_group = preview_group.add_mutually_exclusive_group()
+    preview_mode_group.add_argument(
         "--preview-layout",
         action="store_true",
         help="Render a transcription-free subtitle layout preview PNG.",
+    )
+    preview_mode_group.add_argument(
+        "--preview-animation",
+        action="store_true",
+        help="Render a silent MP4 with deterministic simulated word timing.",
     )
     preview_group.add_argument(
         "--preview-at",
@@ -195,6 +207,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--preview-guides",
         action="store_true",
         help="Draw non-production placement, envelope, and canvas guides.",
+    )
+    preview_group.add_argument(
+        "--preview-duration",
+        type=_preview_duration_argument_type,
+        default=None,
+        metavar="DURATION",
+        help=(
+            "Animated preview cue duration in ms or s, from 1s through 15s "
+            f"(default: {DEFAULT_PREVIEW_DURATION_MS / 1000:g}s)."
+        ),
     )
     parser.add_argument(
         "--position",
@@ -525,7 +547,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if isinstance(request, PreviewRequest):
-        print(f"Preview saved to: {result_path}")
+        label = (
+            "Animated preview saved to"
+            if request.preview_mode is PreviewMode.ANIMATION
+            else "Preview saved to"
+        )
+        print(f"{label}: {result_path}")
     elif request.keep_transcriptions:
         print(f"Files saved in: {result_path}")
     else:
@@ -568,21 +595,35 @@ def _preview_timestamp_argument_type(raw_value: str) -> float:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _preview_duration_argument_type(raw_value: str) -> int:
+    try:
+        return parse_preview_duration(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _build_request(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> RunRequest | PreviewRequest:
+    preview_mode_requested = args.preview_layout or args.preview_animation
     preview_options_used = (
         args.preview_at is not None
         or args.preview_text is not None
         or args.preview_guides
+        or args.preview_duration is not None
     )
-    if preview_options_used and not args.preview_layout:
+    if preview_options_used and not preview_mode_requested:
         parser.error(
-            "--preview-at, --preview-text, and --preview-guides require "
-            "--preview-layout"
+            "--preview-at, --preview-text, --preview-guides, and "
+            "--preview-duration require --preview-layout or --preview-animation"
         )
-    if args.preview_layout and args.keep_transcriptions:
-        parser.error("--keep-transcriptions cannot be used with --preview-layout")
+    if args.preview_duration is not None and not args.preview_animation:
+        parser.error("--preview-duration can only be used with --preview-animation")
+    if preview_mode_requested and args.keep_transcriptions:
+        parser.error(
+            "--keep-transcriptions cannot be used with --preview-layout or "
+            "--preview-animation"
+        )
     appearance_values = {
         key: value
         for key, value in {
@@ -652,12 +693,12 @@ def _build_request(
     except ValidationError as exc:
         parser.error(str(exc))
 
-    _validate_animation_request(
-        subtitle_config,
-        task=args.task,
-        parser=parser,
-    )
-    if not args.preview_layout:
+    if not preview_mode_requested:
+        _validate_animation_request(
+            subtitle_config,
+            task=args.task,
+            parser=parser,
+        )
         _validate_translation_request(args.task, args.model, parser)
 
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
@@ -670,7 +711,7 @@ def _build_request(
             f"Output path '{args.output_dir}' is a file; provide a directory instead"
         )
 
-    if args.preview_layout:
+    if preview_mode_requested:
         return PreviewRequest(
             input_path=input_path,
             output_dir=output_dir,
@@ -682,6 +723,14 @@ def _build_request(
             guides=args.preview_guides,
             subtitle_template_requested=args.template,
             subtitle_template_resolved=template.name,
+            preview_mode=(
+                PreviewMode.ANIMATION if args.preview_animation else PreviewMode.LAYOUT
+            ),
+            preview_duration_ms=(
+                DEFAULT_PREVIEW_DURATION_MS
+                if args.preview_duration is None
+                else args.preview_duration
+            ),
         )
 
     return RunRequest(
@@ -881,15 +930,25 @@ def _run_preview_request(
     *,
     bundled_fonts_dir: Path | None = None,
 ) -> Path:
-    """Render a single preview frame before any transcription runtime import."""
-    from .preview import build_preview_ass, resolve_preview_timestamp
+    """Render a transcription-free PNG or animated clip."""
+    from .preview import (
+        build_animation_preview_ass,
+        build_preview_ass,
+        normalise_preview_text,
+        resolve_preview_timestamp,
+    )
     from .subtitler import (
         probe_video_geometry,
+        render_subtitle_animation_preview,
         render_subtitle_preview,
+        validate_animation_preview_support,
         validate_ffmpeg_support,
     )
+    from .wrapping import transform_display_text
 
     validate_ffmpeg_support()
+    if request.preview_mode is PreviewMode.ANIMATION:
+        validate_animation_preview_support()
     geometry = probe_video_geometry(request.input_path)
     timestamp = resolve_preview_timestamp(request.preview_at, geometry)
     resolved_config = resolve_subtitle_config(
@@ -912,6 +971,44 @@ def _run_preview_request(
     work_dir = create_work_dir(request.output_dir)
     try:
         ass_path = work_dir / "subtitle-preview.ass"
+        if request.preview_mode is PreviewMode.ANIMATION:
+            _, display_text = build_animation_preview_ass(
+                ass_path,
+                request,
+                geometry,
+                timestamp,
+                resolved_config=resolved_config,
+                wrapping_metrics=wrapping_metrics,
+            )
+            source_text = transform_display_text(
+                normalise_preview_text(request.preview_text),
+                resolved_config.style.typography.text_case,
+            )
+            if normalise_preview_text(display_text) != normalise_preview_text(
+                source_text
+            ):
+                progress(
+                    "Animated preview sample was shortened to the first fitting "
+                    "cue; simulated word timings are not speech-synchronized."
+                )
+            else:
+                progress(
+                    "Animated preview uses deterministic simulated word timings; "
+                    "it is not synchronized to source speech."
+                )
+            return Path(
+                render_subtitle_animation_preview(
+                    request.input_path,
+                    ass_path,
+                    request.output_dir,
+                    timestamp=timestamp,
+                    duration_ms=request.preview_duration_ms,
+                    geometry=geometry,
+                    fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
+                    progress=progress,
+                )
+            )
+
         build_preview_ass(
             ass_path,
             request,

@@ -1,14 +1,14 @@
 # Use multiline capacity when selecting preview text
 
-Status: In review
+Status: Done
 
 Depends on:
 
 - [Layout preview](../subtitle-positioning/08-layout-preview.md).
 - [Unified vector box](../subtitle-backdrops/00-unified-vector-box.md).
 
-Active branch: `fix/preview-multiline-capacity`, based on updated `origin/main`
-after PR 67.
+Delivery: [PR #68](https://github.com/denilson-santos/multisubs/pull/68), merged
+into `main`.
 
 ## Objective and evidence
 

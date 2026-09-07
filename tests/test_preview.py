@@ -13,15 +13,20 @@ from multisubs.config import validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import (
+    PreviewMode,
     PreviewRequest,
     SubtitlePosition,
     VideoGeometry,
 )
 from multisubs.preview import (
+    DEFAULT_PREVIEW_DURATION_MS,
     DEFAULT_PREVIEW_TEXT,
+    build_animation_preview_ass,
     build_preview_ass,
     build_preview_guide_events,
+    build_simulated_karaoke_cue,
     normalise_preview_text,
+    parse_preview_duration,
     parse_preview_timestamp,
     resolve_preview_timestamp,
 )
@@ -80,6 +85,43 @@ def test_parse_preview_timestamp_rejects_ambiguous_values(value):
         parse_preview_timestamp(value)
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("1s", 1000), ("4s", 4000), ("1500ms", 1500), ("1.005s", 1005)],
+)
+def test_parse_preview_duration(value, expected):
+    assert parse_preview_duration(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["0.5s", "15001ms", "4", "1.5", "nan", "-1s", "1.0015s"],
+)
+def test_parse_preview_duration_rejects_values_outside_whole_ms_bounds(value):
+    with pytest.raises(ValidationError, match="preview-duration"):
+        parse_preview_duration(value)
+
+
+def test_simulated_karaoke_cue_is_exact_repeatable_and_reserves_punctuation_gaps():
+    first = build_simulated_karaoke_cue("One, two. three", 50, 450)
+    second = build_simulated_karaoke_cue("One, two. three", 50, 450)
+
+    assert first == second
+    assert sum(first.durations) == 400
+    assert first.active_intervals[-1][1] == 450
+    assert first.active_intervals[1][0] - first.active_intervals[0][1] == 8
+    assert first.active_intervals[2][0] - first.active_intervals[1][1] == 15
+    assert all(start < end for start, end in first.active_intervals)
+
+
+@pytest.mark.parametrize("text", ["你好世界", "e\u0301lan", "👩‍💻 works"])
+def test_simulated_karaoke_cue_preserves_unicode_fragment_reconstruction(text):
+    cue = build_simulated_karaoke_cue(text, 0, 400)
+
+    assert "".join(fragment.text for fragment in cue.fragments) == text
+    assert len(cue.active_intervals) == len(cue.durations)
+
+
 def test_preview_timestamp_defaults_to_midpoint_or_zero():
     assert resolve_preview_timestamp(None, GEOMETRY) == 5.0
     unknown_duration = replace(GEOMETRY, duration_seconds=None)
@@ -113,6 +155,51 @@ def test_preview_request_is_built_without_transcription_options(tmp_path: Path):
     assert request.preview_at == 1.25
     assert request.preview_text == DEFAULT_PREVIEW_TEXT
     assert request.guides is True
+
+
+def test_animation_preview_request_uses_typed_mode_and_default_duration(
+    tmp_path: Path,
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--preview-animation",
+            "--task",
+            "translate",
+            "--model",
+            "turbo",
+        ]
+    )
+
+    request = cli._build_request(args, parser)
+    assert isinstance(request, PreviewRequest)
+
+    assert request.preview_mode.value == "animation"
+    assert request.preview_duration_ms == DEFAULT_PREVIEW_DURATION_MS
+
+
+def test_preview_duration_requires_animation_mode(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "-i",
+            str(input_path),
+            "--preview-layout",
+            "--preview-duration",
+            "2s",
+        ]
+    )
+
+    with pytest.raises(SystemExit) as error:
+        cli._build_request(args, parser)
+
+    assert error.value.code == 2
 
 
 def test_preview_rejects_retained_transcriptions_and_orphan_options(tmp_path: Path):
@@ -160,6 +247,33 @@ def test_build_preview_ass_reuses_resolved_height_and_wrapping(tmp_path: Path):
     content = path.read_text(encoding="utf-8")
     assert "one two" in content
     assert "0:00:00.00,0:00:03.00" in content
+
+
+def test_build_animation_preview_ass_uses_production_timeline_and_phases(
+    tmp_path: Path,
+):
+    config = validate_subtitle_config(
+        None,
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "active-word",
+            "word_text_highlight_color": "#FFD54F",
+        },
+    )
+    request = _request(
+        tmp_path,
+        subtitle_config=config,
+        preview_duration_ms=2_000,
+    )
+    path = tmp_path / "animation-preview.ass"
+
+    build_animation_preview_ass(path, request, GEOMETRY, 2.0)
+
+    content = path.read_text(encoding="utf-8")
+    assert "0:00:00.50" in content
+    assert "0:00:02.50" in content
+    assert "\\k" not in content
+    assert "_karaoke_preview_cue" not in content
 
 
 def test_preview_ass_uses_the_same_exact_font_weight_as_normal_output(
@@ -777,4 +891,59 @@ def test_preview_run_branches_before_whisper_runtime_import(
     result = cli._run_request(request, lambda message: None)
 
     assert result == output_dir / "video-subtitle-preview.png"
+    assert not list(output_dir.glob(".multisubs-*"))
+
+
+def test_animation_preview_branches_before_whisper_runtime_import(
+    tmp_path: Path, monkeypatch
+):
+    input_path = tmp_path / "video.mp4"
+    output_dir = tmp_path / "output"
+    input_path.write_bytes(b"input")
+    request = _request(input_path.parent)
+    request = replace(
+        request,
+        input_path=input_path,
+        output_dir=output_dir,
+        preview_mode=PreviewMode.ANIMATION,
+        preview_duration_ms=1_000,
+    )
+
+    monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
+    monkeypatch.setattr(
+        "multisubs.subtitler.validate_animation_preview_support", lambda: None
+    )
+    monkeypatch.setattr(
+        "multisubs.subtitler.probe_video_geometry", lambda path: GEOMETRY
+    )
+
+    def fake_render(source, subtitle, destination, **kwargs):
+        assert Path(subtitle).exists()
+        preview = Path(destination) / "video-subtitle-animation-preview.mp4"
+        preview.parent.mkdir(parents=True, exist_ok=True)
+        preview.write_bytes(b"mp4")
+        return str(preview)
+
+    monkeypatch.setattr(
+        "multisubs.subtitler.render_subtitle_animation_preview", fake_render
+    )
+    original_import = builtins.__import__
+
+    def guarded_import(
+        name: str,
+        globals: dict[str, Any] | None = None,
+        locals: dict[str, Any] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ):
+        if name.split(".", 1)[0] in {"torch", "whisperx", "torchaudio", "torchvision"}:
+            raise AssertionError(f"preview imported runtime dependency {name}")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    progress: list[str] = []
+    result = cli._run_request(request, progress.append)
+
+    assert result == output_dir / "video-subtitle-animation-preview.mp4"
+    assert any("simulated word timings" in message for message in progress)
     assert not list(output_dir.glob(".multisubs-*"))

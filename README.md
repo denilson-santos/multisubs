@@ -37,7 +37,8 @@ WhisperX must download model assets that are not already cached.
 
 - Python 3.10 through 3.13. WhisperX 3.8.6 does not support Python 3.14.
 - FFmpeg and ffprobe available on `PATH`.
-- An FFmpeg build with the `subtitles` filter; libass support is recommended.
+- An FFmpeg build with the `subtitles` filter and libass support; animated
+  previews additionally require the `libx264` H.264 encoder.
 - Enough CPU or GPU memory for the selected Whisper model.
 
 CUDA with float16 is selected automatically when PyTorch reports an available
@@ -152,10 +153,12 @@ The exact template baselines are:
 
 All use `auto` line height and a `0%` top margin. Unlisted letter spacing is
 `0px`. `neon-karaoke` uses highlight color `#00F5D4`; `word-focus` uses dark
-text `#111827` over its active yellow word box. Preview suppresses motion and
-shows a deterministic representative state. `progressive` word tracks affect
-the first half of the cue, while `active-word` tracks affect only its first
-word. Disable one inherited phase without changing the other tracks:
+text `#111827` over its active yellow word box. The static layout preview
+suppresses motion and shows a deterministic representative state; the animated
+preview clip runs the same phases with simulated word times. `progressive` word
+tracks affect the first half of the cue in the static preview, while
+`active-word` tracks affect only its first word. Disable one inherited phase
+without changing the other tracks:
 
 ```bash
 multisubs -i ./video.mp4 --preview-layout \
@@ -201,6 +204,30 @@ among equivalent boundaries, the longest fitting prefix is retained. Words
 that would belong to later hypothetical cues are omitted from this static
 frame. Font metrics, backdrop/shadow allowances, and `--max-height` therefore
 determine both the line breaks and how much sample text is visible.
+
+### Preview subtitle animation
+
+Generate a silent MP4 without loading WhisperX or transcribing speech:
+
+```bash
+multisubs -i ./video.mp4 -o ./previews \
+  --preview-animation \
+  --preview-duration 4s \
+  --preview-at 00:00:10.500 \
+  --template word-focus \
+  --preview-text "This is how the word animation will look"
+```
+
+The selected frame is captured once and frozen as the background. `--preview-at`
+therefore chooses the background frame only; the subtitle cue starts at 500 ms,
+and the clip adds 500 ms before and after it. Duration accepts whole `ms` or `s`
+values from 1 to 15 seconds, defaults to `4s`, and the total clip is one second
+longer. Word times are deterministic demonstrations, not synchronization with
+source speech. The output is saved as
+`<video-stem>-subtitle-animation-preview.mp4`, with a numeric suffix on
+collision. `--preview-guides` remains available and labels the timing as
+simulated. No JSON, SRT, ASS, audio, or transcription directory is published;
+`--keep-transcriptions` is rejected in both preview modes.
 
 ### Add subtitle animations
 
@@ -378,6 +405,8 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 | Option | Default | Description |
 | --- | --- | --- |
 | `--preview-layout` | off | Render one layout preview PNG without transcription. |
+| `--preview-animation` | off | Render a silent H.264 MP4 with simulated word timing; mutually exclusive with `--preview-layout`. |
+| `--preview-duration DURATION` | `4s` | Animated cue duration from `1s` through `15s`, using whole `ms` or `s`; requires `--preview-animation`. |
 | `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
 | `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
 | `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
@@ -536,6 +565,10 @@ output/
         ├── video-pt.json
         ├── video-pt.srt
         └── video-pt.ass
+
+# With --preview-animation: one silent frozen-background clip
+output/
+└── video-subtitle-animation-preview.mp4
 ```
 
 Existing paths are never overwritten. multisubs adds suffixes such as `(1)` to
@@ -603,8 +636,9 @@ and system tools retain their own licenses.
 
 - One local input video is processed per invocation.
 - Translation output is fixed to English.
-- Aligned-word behavior is unavailable for translation; previews suppress all
-  motion and show one representative state for each configured word track.
+- Aligned-word behavior is unavailable for translated transcription output;
+  static PNG previews suppress all motion and show one representative state for
+  each configured word track, while animated MP4 previews use simulated timing.
 - A static preview shows only the first fitting sample cue; later hypothetical
   cues are not rendered in the same frame.
 - Animation distance, scale, and easing are fixed per semantic type; phase
@@ -613,6 +647,8 @@ and system tools retain their own licenses.
 - Speaker diarization and speaker-specific styling are not supported.
 - The output uses hard subtitles; selectable soft subtitle tracks are not
   created.
-- FFmpeg, ffprobe, and the selected model must be available on the host.
+- FFmpeg and ffprobe must be available on the host; animated MP4 previews also
+  need the `libx264` encoder. The selected Whisper model is required only for
+  normal transcription.
 - Font families outside the six bundled families require `--fonts-dir` or a
   compatible system font provider.

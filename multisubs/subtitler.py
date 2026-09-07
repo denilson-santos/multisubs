@@ -22,6 +22,8 @@ MAX_VIDEO_DIMENSION = 32_768
 MAX_ASPECT_RATIO_COMPONENT = 1_000_000
 FFPROBE_TIMEOUT_SECONDS = 30
 MAX_PREVIEW_TIMESTAMP_SECONDS = 86_400.0
+MIN_ANIMATION_PREVIEW_DURATION_MS = 1_000
+MAX_ANIMATION_PREVIEW_DURATION_MS = 15_000
 
 
 def validate_ffmpeg_support() -> None:
@@ -56,6 +58,33 @@ def validate_ffmpeg_support() -> None:
         raise DependencyError(
             "FFmpeg does not provide the required subtitles filter; install "
             "a build with libass support."
+        )
+
+
+def validate_animation_preview_support() -> None:
+    """Ensure the installed FFmpeg exposes the H.264 encoder used by clips."""
+    executable = shutil.which("ffmpeg")
+    if executable is None:
+        raise DependencyError(
+            "FFmpeg is not available on PATH. Install FFmpeg with libx264 support."
+        )
+    try:
+        completed = subprocess.run(
+            [executable, "-hide_banner", "-encoders"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise DependencyError(f"Could not run FFmpeg at '{executable}': {exc}") from exc
+    if completed.returncode != 0:
+        details = _short_output(completed.stderr or completed.stdout)
+        raise DependencyError(f"FFmpeg could not list video encoders: {details}")
+    encoders = f"{completed.stdout}\n{completed.stderr}"
+    if not any("libx264" in line.split() for line in encoders.splitlines()):
+        raise DependencyError(
+            "FFmpeg does not provide the libx264 encoder required for animated "
+            "previews; install an FFmpeg build with H.264 encoding support."
         )
 
 
@@ -420,6 +449,138 @@ def render_subtitle_preview(
                 pass
 
 
+def render_subtitle_animation_preview(
+    input_path: str | Path,
+    ass_path: str | Path,
+    output_dir: str | Path,
+    *,
+    timestamp: float,
+    duration_ms: int,
+    geometry: VideoGeometry | None = None,
+    fonts_dir: str | Path | None = None,
+    progress: ProgressReporter = None,
+) -> str:
+    """Render one frozen-background, silent animated subtitle preview clip."""
+    source_path = _require_file(input_path, "Input video")
+    subtitle_path = _require_file(ass_path, "ASS subtitle file")
+    _validate_animation_preview_duration(duration_ms)
+    resolved_geometry = geometry or probe_video_geometry(source_path)
+    _validate_preview_timestamp(timestamp, resolved_geometry)
+    resolved_fonts_dir = _require_directory(fonts_dir, "Fonts directory")
+    destination_dir = _normalise_output_dir(output_dir)
+    final_path = Path(
+        get_unique_path(
+            destination_dir / f"{source_path.stem}-subtitle-animation-preview.mp4"
+        )
+    )
+    temporary_path = _temporary_media_path(final_path)
+    total_duration_seconds = (duration_ms + 1_000) / 1_000
+    try:
+        ffmpeg = _load_ffmpeg_python()
+        with tempfile.TemporaryDirectory(
+            prefix=".multisubs-animation-",
+            dir=destination_dir,
+        ) as temporary_dir:
+            frame_path = Path(temporary_dir) / "background.png"
+            _report(
+                progress,
+                f"Capturing frozen preview frame at {timestamp:.3f}s...",
+            )
+            try:
+                frame_stream = _build_animation_frame_stream(
+                    ffmpeg,
+                    source_path,
+                    frame_path,
+                    resolved_geometry,
+                    timestamp,
+                )
+                frame_stream.run(
+                    overwrite_output=True,
+                    capture_stdout=True,
+                    capture_stderr=True,
+                )
+            except ffmpeg.Error as exc:
+                raise RenderingError(
+                    f"FFmpeg could not decode a frame at {timestamp:.3f}s from "
+                    f"'{source_path}': {_short_output(_error_output(exc))}"
+                ) from exc
+            except OSError as exc:
+                raise RenderingError(
+                    f"FFmpeg could not capture a preview frame from '{source_path}': "
+                    f"{exc}"
+                ) from exc
+            if not frame_path.exists() or frame_path.stat().st_size == 0:
+                raise RenderingError(
+                    f"FFmpeg did not produce a preview frame at {timestamp:.3f}s."
+                )
+
+            _report(
+                progress,
+                "Rendering animated preview with simulated word timings "
+                f"into '{final_path.name}'...",
+            )
+            try:
+                output_stream = _build_animation_preview_stream(
+                    ffmpeg,
+                    frame_path,
+                    subtitle_path,
+                    temporary_path,
+                    resolved_geometry,
+                    total_duration_seconds,
+                    resolved_fonts_dir,
+                )
+                output_stream.run(
+                    overwrite_output=True,
+                    capture_stdout=True,
+                    capture_stderr=True,
+                )
+            except ffmpeg.Error as exc:
+                raise RenderingError(
+                    f"FFmpeg could not render animated subtitle preview "
+                    f"'{final_path}': {_short_output(_error_output(exc))}"
+                ) from exc
+            except OSError as exc:
+                raise RenderingError(
+                    f"FFmpeg could not encode animated subtitle preview for "
+                    f"'{source_path}': {exc}"
+                ) from exc
+            if not temporary_path.exists() or temporary_path.stat().st_size == 0:
+                raise RenderingError(
+                    f"FFmpeg did not produce animated subtitle preview '{final_path}'."
+                )
+
+        try:
+            if os.path.lexists(final_path):
+                final_path = Path(get_unique_path(final_path))
+            os.replace(temporary_path, final_path)
+        except OSError as exc:
+            raise ArtifactError(
+                f"Could not publish animated subtitle preview '{final_path}': {exc}"
+            ) from exc
+        _report(progress, "Animated subtitle preview rendered successfully.")
+        return str(final_path)
+    finally:
+        if temporary_path.exists():
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+
+
+def _validate_animation_preview_duration(duration_ms: object) -> int:
+    if isinstance(duration_ms, bool) or not isinstance(duration_ms, int):
+        raise ValidationError("Animation preview duration must be whole milliseconds")
+    if not (
+        MIN_ANIMATION_PREVIEW_DURATION_MS
+        <= duration_ms
+        <= MAX_ANIMATION_PREVIEW_DURATION_MS
+    ):
+        raise ValidationError(
+            "Animation preview duration must be from 1000ms through 15000ms"
+        )
+    return duration_ms
+
+
 def _validate_preview_timestamp(timestamp: object, geometry: VideoGeometry) -> float:
     if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
         raise ValidationError("Preview timestamp must be a finite, non-negative number")
@@ -561,6 +722,65 @@ def _build_preview_stream(
         format="image2",
         vcodec="png",
         vframes=1,
+    )
+
+
+def _build_animation_frame_stream(
+    ffmpeg: Any,
+    input_path: Path,
+    output_path: Path,
+    geometry: VideoGeometry,
+    timestamp: float,
+) -> Any:
+    """Build the uncaptioned one-frame source graph for animation previews."""
+    input_stream = ffmpeg.input(str(input_path), ss=timestamp, autorotate=1)
+    return ffmpeg.output(
+        input_stream[str(geometry.stream_index)],
+        str(output_path),
+        format="image2",
+        vcodec="png",
+        vframes=1,
+    )
+
+
+def _build_animation_preview_stream(
+    ffmpeg: Any,
+    frame_path: Path,
+    ass_path: Path,
+    output_path: Path,
+    geometry: VideoGeometry,
+    duration_seconds: float,
+    fonts_dir: Path | None = None,
+) -> Any:
+    """Build a repeated-frame graph with the normal ASS subtitle renderer."""
+    input_stream = ffmpeg.input(
+        str(frame_path),
+        loop=1,
+        framerate=30,
+        t=duration_seconds,
+    )
+    filter_options = {
+        "filename": str(ass_path),
+        "original_size": geometry.original_size,
+    }
+    if fonts_dir is not None:
+        filter_options["fontsdir"] = str(fonts_dir)
+    video_stream = input_stream.filter("subtitles", **filter_options)
+    pixel_format = (
+        "yuv420p"
+        if geometry.render_width % 2 == 0 and geometry.render_height % 2 == 0
+        else "yuv444p"
+    )
+    return ffmpeg.output(
+        video_stream,
+        str(output_path),
+        format="mp4",
+        vcodec="libx264",
+        pix_fmt=pixel_format,
+        r=30,
+        t=duration_seconds,
+        movflags="+faststart",
+        an=None,
     )
 
 

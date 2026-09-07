@@ -9,12 +9,14 @@ import pytest
 from multisubs.errors import DependencyError, RenderingError, ValidationError
 from multisubs.models import VideoGeometry
 from multisubs.subtitler import (
+    _build_animation_preview_stream,
     _build_output_stream,
     _build_preview_stream,
     _parse_probe_payload,
     _short_output,
     embed_subtitles,
     probe_video_geometry,
+    render_subtitle_animation_preview,
     render_subtitle_preview,
     validate_ffmpeg_support,
 )
@@ -121,6 +123,124 @@ def test_preview_filter_is_one_frame_and_uses_structured_subtitle_options(
     assert "-vframes" in command and command[command.index("-vframes") + 1] == "1"
     assert "-f" in command and command[command.index("-f") + 1] == "image2"
     assert "-vcodec" in command and command[command.index("-vcodec") + 1] == "png"
+
+
+def test_animation_preview_stream_repeats_frame_without_audio_and_handles_odd_canvas(
+    tmp_path: Path,
+):
+    frame = tmp_path / "background.png"
+    subtitle = tmp_path / "caption.ass"
+    output = tmp_path / "preview.mp4"
+    command = [
+        str(argument)
+        for argument in ffmpeg.compile(
+            _build_animation_preview_stream(
+                ffmpeg,
+                frame,
+                subtitle,
+                output,
+                _geometry(render_width=641, render_height=361),
+                5.0,
+            )
+        )
+    ]
+    command_text = " ".join(command)
+
+    assert "-loop 1" in command_text
+    assert "-framerate 30" in command_text
+    assert "-an" in command
+    assert "-vcodec" in command and command[command.index("-vcodec") + 1] == "libx264"
+    assert "-pix_fmt" in command and command[command.index("-pix_fmt") + 1] == "yuv444p"
+    assert "-r" in command and command[command.index("-r") + 1] == "30"
+    assert (
+        "-movflags" in command
+        and command[command.index("-movflags") + 1] == "+faststart"
+    )
+
+
+def test_render_animation_preview_publishes_collision_safe_mp4_and_cleans_temp(
+    tmp_path: Path, monkeypatch
+):
+    source = tmp_path / "video.mp4"
+    subtitle = tmp_path / "subtitle.ass"
+    output_dir = tmp_path / "output"
+    source.write_bytes(b"input")
+    subtitle.write_text("ASS", encoding="utf-8")
+    output_dir.mkdir()
+    (output_dir / "video-subtitle-animation-preview.mp4").write_bytes(b"existing")
+
+    class FakeOutput:
+        def __init__(self, output_path: Path, content: bytes):
+            self.output_path = output_path
+            self.content = content
+
+        def run(self, **kwargs):
+            self.output_path.write_bytes(self.content)
+
+    fake_ffmpeg = SimpleNamespace(Error=RuntimeError)
+    monkeypatch.setattr("multisubs.subtitler._load_ffmpeg_python", lambda: fake_ffmpeg)
+    monkeypatch.setattr(
+        "multisubs.subtitler._build_animation_frame_stream",
+        lambda _ffmpeg, _source, frame_path, *_args: FakeOutput(frame_path, b"png"),
+    )
+    monkeypatch.setattr(
+        "multisubs.subtitler._build_animation_preview_stream",
+        lambda _ffmpeg, _frame, _subtitle, output_path, *_args: FakeOutput(
+            output_path, b"mp4"
+        ),
+    )
+
+    result = Path(
+        render_subtitle_animation_preview(
+            source,
+            subtitle,
+            output_dir,
+            timestamp=2.0,
+            duration_ms=4_000,
+            geometry=_geometry(),
+        )
+    )
+
+    assert result.name == "video-subtitle-animation-preview (1).mp4"
+    assert result.read_bytes() == b"mp4"
+    assert list(output_dir.glob(".*")) == []
+
+
+def test_render_animation_preview_frame_failure_cleans_partial_media(
+    tmp_path: Path, monkeypatch
+):
+    source = tmp_path / "video.mp4"
+    subtitle = tmp_path / "subtitle.ass"
+    output_dir = tmp_path / "output"
+    source.write_bytes(b"input")
+    subtitle.write_text("ASS", encoding="utf-8")
+
+    class FakeFfmpegError(Exception):
+        stderr = "frame failed"
+
+    class FakeOutput:
+        def run(self, **kwargs):
+            raise FakeFfmpegError()
+
+    fake_ffmpeg = SimpleNamespace(Error=FakeFfmpegError)
+    monkeypatch.setattr("multisubs.subtitler._load_ffmpeg_python", lambda: fake_ffmpeg)
+    monkeypatch.setattr(
+        "multisubs.subtitler._build_animation_frame_stream",
+        lambda *_args: FakeOutput(),
+    )
+
+    with pytest.raises(RenderingError, match="frame failed"):
+        render_subtitle_animation_preview(
+            source,
+            subtitle,
+            output_dir,
+            timestamp=2.0,
+            duration_ms=4_000,
+            geometry=_geometry(),
+        )
+
+    assert not list(output_dir.glob("*.mp4"))
+    assert not list(output_dir.glob(".*"))
 
 
 def test_render_preview_publishes_collision_safe_png_and_cleans_temp(

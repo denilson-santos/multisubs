@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from .ass import (
@@ -33,7 +35,11 @@ from .models import (
 )
 from .wrapping import (
     build_display_fragments,
+    ends_clause,
+    ends_sentence,
     fit_first_text_segment,
+    grapheme_clusters,
+    is_cjk_or_emoji,
     normalise_display_text,
     transform_display_text,
 )
@@ -43,9 +49,15 @@ DEFAULT_PREVIEW_TEXT = (
     "caption on your selected video layout before final rendering"
 )
 MAX_PREVIEW_TIMESTAMP_SECONDS = 86_400.0
+DEFAULT_PREVIEW_DURATION_MS = 4_000
+MIN_PREVIEW_DURATION_MS = 1_000
+MAX_PREVIEW_DURATION_MS = 15_000
 _TIMESTAMP_PATTERN = re.compile(
     r"^(?P<hours>\d{2,}):(?P<minutes>[0-5]\d):"
     r"(?P<seconds>[0-5]\d)\.(?P<milliseconds>\d{1,3})$"
+)
+_DURATION_PATTERN = re.compile(
+    r"^(?P<number>(?:0|[1-9]\d{0,4})(?:\.\d{1,3})?)(?P<unit>ms|s)$"
 )
 _GUIDE_COLOR = rgba_to_ass_color("#00D8FF")
 _GUIDE_OUTLINE = rgba_to_ass_color("#001018")
@@ -73,6 +85,28 @@ def parse_preview_timestamp(raw_value: str) -> float:
             f"preview-at must not exceed {MAX_PREVIEW_TIMESTAMP_SECONDS:g} seconds"
         )
     return value
+
+
+def parse_preview_duration(raw_value: object) -> int:
+    """Parse an animation-preview duration into whole milliseconds."""
+    if not isinstance(raw_value, str):
+        raise ValidationError("preview-duration must end in ms or s")
+    match = _DURATION_PATTERN.fullmatch(raw_value.strip().casefold())
+    if match is None:
+        raise ValidationError(
+            "preview-duration must use ms or s (for example 4000ms or 4s)"
+        )
+    try:
+        number = Decimal(match.group("number"))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValidationError("preview-duration must be finite") from exc
+    milliseconds = number * (1000 if match.group("unit") == "s" else 1)
+    if not milliseconds.is_finite() or milliseconds != milliseconds.to_integral_value():
+        raise ValidationError("preview-duration must resolve to whole milliseconds")
+    result = int(milliseconds)
+    if result < MIN_PREVIEW_DURATION_MS or result > MAX_PREVIEW_DURATION_MS:
+        raise ValidationError("preview-duration must be from 1s through 15s")
+    return result
 
 
 def resolve_preview_timestamp(
@@ -116,6 +150,161 @@ def normalise_preview_text(text: str) -> str:
     return normalised
 
 
+def build_simulated_karaoke_cue(
+    display_text: str,
+    cue_start: int,
+    cue_end: int,
+) -> KaraokeCue:
+    """Build deterministic word intervals for one preview-only cue.
+
+    Timings are ASS centiseconds. ``durations`` include the reserved pause after
+    each non-final unit so the production progressive serializer still conserves
+    the complete cue duration, while ``active_intervals`` retain the exact
+    positive interval during which each unit is active.
+    """
+    if not isinstance(display_text, str) or not display_text:
+        raise ValidationError("preview text must contain at least one character")
+    if (
+        isinstance(cue_start, bool)
+        or not isinstance(cue_start, int)
+        or isinstance(cue_end, bool)
+        or not isinstance(cue_end, int)
+        or cue_start < 0
+        or cue_end <= cue_start
+    ):
+        raise ValidationError("preview cue timestamps must be ordered centiseconds")
+
+    units = _preview_timing_units(display_text)
+    if not units:
+        raise ValidationError("preview text must contain at least one timing unit")
+    duration = cue_end - cue_start
+    if duration < len(units):
+        raise ValidationError(
+            f"preview text needs at least {len(units)} centiseconds for its "
+            f"{len(units)} timing units; increase --preview-duration or shorten "
+            "--preview-text"
+        )
+
+    weights = tuple(_preview_unit_weight(unit) for unit in units)
+    gaps = tuple(
+        _preview_gap_centiseconds(unit) if index < len(units) - 1 else 0
+        for index, unit in enumerate(units)
+    )
+    gap_total = sum(gaps)
+    maximum_gap_total = duration * 20 // 100
+    if gap_total > maximum_gap_total:
+        gaps = _scale_integer_values(gaps, maximum_gap_total)
+        gap_total = sum(gaps)
+
+    word_duration_total = duration - gap_total
+    word_durations = _allocate_weighted_centiseconds(word_duration_total, weights)
+    durations = tuple(
+        word_duration + gap
+        for word_duration, gap in zip(word_durations, gaps, strict=True)
+    )
+    fragments = build_display_fragments(
+        display_text,
+        [{"word": unit} for unit in units],
+    )
+    if fragments is None:
+        raise ValidationError(
+            "preview text could not be reconstructed into deterministic timing units"
+        )
+
+    active_intervals: list[tuple[int, int]] = []
+    cursor = cue_start
+    for word_duration, gap in zip(word_durations, gaps, strict=True):
+        end = cursor + word_duration
+        active_intervals.append((cursor, end))
+        cursor = end + gap
+    if cursor != cue_end or any(start >= end for start, end in active_intervals):
+        raise ValidationError("preview timing could not conserve the cue duration")
+    return KaraokeCue(
+        fragments=fragments,
+        durations=durations,
+        active_intervals=tuple(active_intervals),
+    )
+
+
+def _preview_timing_units(display_text: str) -> tuple[str, ...]:
+    if any(character.isspace() for character in display_text):
+        return tuple(match.group() for match in re.finditer(r"\S+", display_text))
+    clusters = grapheme_clusters(display_text)
+    if len(clusters) > 1 and any(is_cjk_or_emoji(cluster[0]) for cluster in clusters):
+        units: list[str] = []
+        for cluster in clusters:
+            if units and _is_punctuation_cluster(cluster):
+                units[-1] += cluster
+            else:
+                units.append(cluster)
+        return tuple(units)
+    return (display_text,)
+
+
+def _is_punctuation_cluster(cluster: str) -> bool:
+    return bool(cluster) and unicodedata.category(cluster[0]).startswith("P")
+
+
+def _preview_unit_weight(unit: str) -> int:
+    non_punctuation = sum(
+        not unicodedata.category(cluster[0]).startswith("P")
+        for cluster in grapheme_clusters(unit)
+    )
+    return max(1, non_punctuation)
+
+
+def _preview_gap_centiseconds(unit: str) -> int:
+    if ends_sentence(unit):
+        return 15
+    if ends_clause(unit):
+        return 8
+    return 4
+
+
+def _scale_integer_values(values: tuple[int, ...], target: int) -> tuple[int, ...]:
+    total = sum(values)
+    if total <= 0 or target >= total:
+        return values
+    if target <= 0:
+        return (0,) * len(values)
+    floors = [value * target // total for value in values]
+    remainders = [
+        value * target - floor * total
+        for value, floor in zip(values, floors, strict=True)
+    ]
+    for index in sorted(
+        range(len(values)),
+        key=lambda item: (-remainders[item], item),
+    )[: target - sum(floors)]:
+        floors[index] += 1
+    return tuple(floors)
+
+
+def _allocate_weighted_centiseconds(
+    total: int,
+    weights: tuple[int, ...],
+) -> tuple[int, ...]:
+    if total < len(weights):
+        raise ValidationError(
+            "preview duration is too short for the selected text; increase "
+            "--preview-duration or shorten --preview-text"
+        )
+    minimum = [1] * len(weights)
+    remaining = total - len(weights)
+    weight_total = sum(weights)
+    floors = [remaining * weight // weight_total for weight in weights]
+    remainders = [
+        remaining * weight - floor * weight_total
+        for weight, floor in zip(weights, floors, strict=True)
+    ]
+    for index in sorted(
+        range(len(weights)),
+        key=lambda item: (-remainders[item], item),
+    )[: remaining - sum(floors)]:
+        floors[index] += 1
+    return tuple(base + extra for base, extra in zip(minimum, floors, strict=True))
+
+
 def build_preview_ass(
     path: Path,
     request: PreviewRequest,
@@ -131,11 +320,7 @@ def build_preview_ass(
         request.subtitle_config, geometry
     )
     metrics = wrapping_metrics or resolve_wrapping_metrics(resolved_config, geometry)
-    transformed_text = transform_display_text(
-        normalise_preview_text(request.preview_text),
-        resolved_config.style.typography.text_case,
-    )
-    display_text = fit_first_text_segment(transformed_text, metrics=metrics)
+    display_text = _prepare_preview_display_text(request, resolved_config, metrics)
     end = max(1.0, timestamp + 1.0)
     guide_events = (
         build_preview_guide_events(
@@ -174,6 +359,89 @@ def build_preview_ass(
     return resolved_config, display_text
 
 
+def build_animation_preview_ass(
+    path: Path,
+    request: PreviewRequest,
+    geometry: VideoGeometry,
+    timestamp: float,
+    *,
+    resolved_config: SubtitleConfig | None = None,
+    wrapping_metrics: WrappingMetrics | None = None,
+) -> tuple[SubtitleConfig, str]:
+    """Write one zero-based animated preview cue over a frozen-frame timeline."""
+    timestamp = resolve_preview_timestamp(timestamp, geometry)
+    resolved_config = resolved_config or resolve_subtitle_config(
+        request.subtitle_config, geometry
+    )
+    metrics = wrapping_metrics or resolve_wrapping_metrics(resolved_config, geometry)
+    display_text = _prepare_preview_display_text(request, resolved_config, metrics)
+    duration_ms = _validate_preview_duration_ms(request.preview_duration_ms)
+    cue_start = 50
+    cue_end = cue_start + _milliseconds_to_centiseconds(duration_ms)
+    karaoke_cue = build_simulated_karaoke_cue(display_text, cue_start, cue_end)
+    total_duration_seconds = (duration_ms + 1_000) / 1_000
+    guide_events = (
+        build_preview_guide_events(
+            resolved_config,
+            geometry,
+            metrics,
+            timestamp,
+            display_text=display_text,
+            requested_config=request.subtitle_config,
+            guide_end=total_duration_seconds,
+            simulation=True,
+            karaoke_cue=karaoke_cue,
+        )
+        if request.guides
+        else ()
+    )
+    segment: dict[str, object] = {
+        "start": cue_start / 100,
+        "end": cue_end / 100,
+        "text": display_text,
+    }
+    if (
+        resolved_config.animation.word.text.enabled
+        or resolved_config.style.word_backdrop.kind.value != "none"
+    ):
+        segment["_karaoke_cue"] = karaoke_cue
+    write_ass(
+        path,
+        [segment],
+        request.subtitle_config,
+        geometry,
+        guide_events=guide_events,
+        preserve_line_breaks=True,
+        wrapping_metrics=metrics,
+    )
+    return resolved_config, display_text
+
+
+def _prepare_preview_display_text(
+    request: PreviewRequest,
+    resolved_config: SubtitleConfig,
+    metrics: WrappingMetrics,
+) -> str:
+    transformed_text = transform_display_text(
+        normalise_preview_text(request.preview_text),
+        resolved_config.style.typography.text_case,
+    )
+    return fit_first_text_segment(transformed_text, metrics=metrics)
+
+
+def _validate_preview_duration_ms(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError("preview-duration must be a whole number of milliseconds")
+    if value < MIN_PREVIEW_DURATION_MS or value > MAX_PREVIEW_DURATION_MS:
+        raise ValidationError("preview-duration must be from 1s through 15s")
+    return value
+
+
+def _milliseconds_to_centiseconds(milliseconds: int) -> int:
+    """Round CLI milliseconds to ASS centiseconds with half-up integer math."""
+    return (milliseconds + 5) // 10
+
+
 def _build_preview_word_cue(display_text: str) -> KaraokeCue | None:
     """Map sample words for a static, representative timed-emphasis snapshot."""
     words = [{"word": match.group()} for match in re.finditer(r"\S+", display_text)]
@@ -195,10 +463,13 @@ def build_preview_guide_events(
     *,
     display_text: str,
     requested_config: SubtitleConfig | None = None,
+    guide_end: float | None = None,
+    simulation: bool = False,
+    karaoke_cue: KaraokeCue | None = None,
 ) -> tuple[AssDrawingEvent, ...]:
     """Build generated ASS diagnostics for the resolved placement and envelope."""
     timestamp = resolve_preview_timestamp(timestamp, geometry)
-    end = max(1.0, timestamp + 1.0)
+    end = max(1.0, timestamp + 1.0) if guide_end is None else guide_end
     layout = config.layout
     if layout.placement_mode is SubtitlePlacementMode.NATIVE_STYLE:
         region = resolve_native_layout_region(geometry, layout)
@@ -254,7 +525,9 @@ def build_preview_guide_events(
         else f"{int(metrics.resolved_line_height)}px"
     )
     preview_segment: dict[str, object] = {"text": display_text}
-    if (
+    if karaoke_cue is not None:
+        preview_segment["_karaoke_cue"] = karaoke_cue
+    elif (
         config.animation.word.text.enabled
         or config.style.word_backdrop.kind.value != "none"
     ):
@@ -264,7 +537,12 @@ def build_preview_guide_events(
     render_strategy = _render_strategy_for_segments(
         config,
         [preview_segment],
-        suppress_animation=True,
+        suppress_animation=not simulation,
+    )
+    simulation_detail = (
+        r"\NTiming: simulated word times (not speech-synchronized)"
+        if simulation
+        else ""
     )
     label = (
         f"{{\\an7\\pos(12,12)\\fs{_GUIDE_FONT_SIZE}\\bord2\\shad0"
@@ -279,6 +557,7 @@ def build_preview_guide_events(
         f"\\NLine capacity: {metrics.line_capacity}"
         f"\\NOpacity: {config.style.opacity.original}"
         f"\\NText case: {config.style.typography.text_case.value}"
+        f"{simulation_detail}"
         f"\\NRender strategy: {render_strategy}"
         f"\\NPlayRes: {geometry.render_width}x{geometry.render_height}"
     )

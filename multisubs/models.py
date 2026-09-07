@@ -84,6 +84,13 @@ class WordAnimationMode(str, Enum):
     ACTIVE_WORD = "active-word"
 
 
+class PreviewMode(str, Enum):
+    """Supported transcription-free preview outputs."""
+
+    LAYOUT = "layout"
+    ANIMATION = "animation"
+
+
 @dataclass(frozen=True)
 class SubtitleTypography:
     """Validated semantic typography values passed through the pipeline."""
@@ -412,7 +419,7 @@ class RunRequest:
 
 @dataclass(frozen=True)
 class PreviewRequest:
-    """Validated request for a transcription-free subtitle layout preview."""
+    """Validated request for a transcription-free subtitle preview."""
 
     input_path: Path
     output_dir: Path
@@ -422,3 +429,5 @@ class PreviewRequest:
     guides: bool
     subtitle_template_requested: str | None = None
     subtitle_template_resolved: str = "default"
+    preview_mode: PreviewMode = PreviewMode.LAYOUT
+    preview_duration_ms: int = 4_000

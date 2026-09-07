@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -109,6 +110,91 @@ def test_preview_png_matches_probe_geometry_for_named_and_custom_layouts(
         assert image.size == (geometry.render_width, geometry.render_height)
         assert image.format == "PNG"
     assert not list(output_dir.glob(".*.png"))
+
+
+@pytest.mark.integration
+def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
+    tmp_path: Path,
+):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("FFmpeg and ffprobe are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    input_path = tmp_path / "animated input-é.mp4"
+    output_dir = tmp_path / "animated output"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=#203040:s=320x180:d=1.2",
+            "-frames:v",
+            "36",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    parser = cli.build_parser()
+    arguments = [
+        "-i",
+        str(input_path),
+        "-o",
+        str(output_dir),
+        "--preview-animation",
+        "--preview-at",
+        "00:00:00.400",
+        "--preview-duration",
+        "2s",
+        "--preview-text",
+        "One, two, three four",
+        "--template",
+        "word-focus",
+    ]
+    request = cli._build_request(parser.parse_args(arguments), parser)
+
+    preview_path = cli._run_request(request, lambda _message: None)
+    second_preview_path = cli._run_request(request, lambda _message: None)
+
+    assert preview_path.name == "animated input-é-subtitle-animation-preview.mp4"
+    assert second_preview_path.name == (
+        "animated input-é-subtitle-animation-preview (1).mp4"
+    )
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_streams",
+            "-show_format",
+            "-of",
+            "json",
+            str(preview_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(probe.stdout)
+    streams = payload["streams"]
+    assert len(streams) == 1
+    assert streams[0]["codec_type"] == "video"
+    assert streams[0]["codec_name"] == "h264"
+    assert streams[0]["width"] == 320
+    assert streams[0]["height"] == 180
+    assert streams[0]["r_frame_rate"] == "30/1"
+    assert streams[0]["pix_fmt"] == "yuv420p"
+    assert abs(float(payload["format"]["duration"]) - 3.0) <= 1 / 30
+    assert not list(output_dir.glob(".*"))
 
 
 @pytest.mark.integration

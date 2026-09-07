@@ -1,12 +1,15 @@
 # Animated preview clip with simulated word timing
 
-Status: Planned
+Status: In review
 
 Depends on:
 
 - [Multiline capacity](00-multiline-capacity.md).
 - [Independent animations](../subtitle-templates/03-cue-animations-and-animated-templates.md).
 - [Unified vector box](../subtitle-backdrops/00-unified-vector-box.md).
+
+Active branch: `feat/animation-preview-clip`, based on updated `origin/main`
+after PR 68.
 
 ## Objective and scope
 
@@ -92,27 +95,27 @@ these two modes when this feature is delivered.
 
 ## Component responsibilities and tasks
 
-- [ ] `config.py`/`models.py`: typed preview mode, duration defaults/validation,
+- [x] `config.py`/`models.py`: typed preview mode, duration defaults/validation,
   and a pure simulated timeline contract distinct from speech alignment.
-- [ ] `cli.py`: explicit mode conflicts, early preview dispatch, progress,
+- [x] `cli.py`: explicit mode conflicts, early preview dispatch, progress,
   collision-safe output lifecycle, and no transcription-runtime imports.
-- [ ] `preview.py`: share text preparation with PNG; build the selected cue's
+- [x] `preview.py`: share text preparation with PNG; build the selected cue's
   simulated timing and clip ASS without `_karaoke_preview_cue` static behavior.
-- [ ] Reuse `animation.py` normalization and `ass.py` events unchanged where
+- [x] Reuse `animation.py` normalization and `ass.py` events unchanged where
   possible. Extract pure helpers if needed; do not import model runtime to
   synthesize a demonstration timeline or create a second effects renderer.
-- [ ] `subtitler.py`: extract an uncaptioned frame, generate a zero-based
+- [x] `subtitler.py`: extract an uncaptioned frame, generate a zero-based
   repeated-frame timeline, then apply production subtitles/font/geometry options
   and encode MP4. Freezing must happen before subtitles so effects still move.
-- [ ] Validate scalar errors before probing; validate geometry/frame/encoder
+- [x] Validate scalar errors before probing; validate geometry/frame/encoder
   prerequisites before rendering. Keep structured FFmpeg arguments, bounded
   diagnostics, and actionable RenderingError/ArtifactError boundaries.
-- [ ] Publish only a complete clip, retry collision naming at publication,
+- [x] Publish only a complete clip, retry collision naming at publication,
   preserve existing media, and clean temporary frame/ASS/partial MP4 on all
   success/failure paths. Keep filenames and transcript text out of filter code.
-- [ ] Bound input/timeline/event work with existing renderer budgets and the
+- [x] Bound input/timeline/event work with existing renderer budgets and the
   duration limit; no per-frame ASS events or model/cache downloads.
-- [ ] Add tests and update current docs and roadmap before Git delivery.
+- [x] Add tests and update current docs and roadmap before Git delivery.
 
 ## Verification and acceptance criteria
 
@@ -122,6 +125,15 @@ timestamp independence, positive exact-sum intervals, repeatability, punctuation
 gaps, short/long/Unicode samples, both independent word modes, shortened phases,
 no speech imports, collision handling, and cleanup after every failing stage.
 PNG remains one motion-suppressed image with its existing naming and semantics.
+
+Automated verification completed locally on 2026-09-07:
+
+- `python3 -m pytest`: 730 passed, 54 deselected (integration marker excluded).
+- `python3 -m pytest -m integration tests/test_preview_integration.py -q`: 7 passed.
+- `python3 -m ruff check multisubs tests` and `python3 -m ruff format --check multisubs tests`: passed.
+- `python3 -m pyright`, `python3 -m compileall -q multisubs`, `multisubs --help`, and `git diff --check`: passed.
+- The real FFmpeg clip probe verified one H.264 video stream, no audio, 30 fps,
+  `yuv420p`, expected duration, Unicode/path-safe collision naming, and cleanup.
 
 Real FFmpeg tests in `test_preview_integration.py` must probe duration, stream
 count, codec, frame rate, geometry, and no audio. Use synthetic non-sensitive
