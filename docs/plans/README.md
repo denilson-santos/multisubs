@@ -14,7 +14,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Subtitle typography | Done | 5/5 | Complete | [Open dashboard](subtitle-typography/README.md) |
 | Subtitle templates | Done | 4/4 | Complete | [Open dashboard](subtitle-templates/README.md) |
 | Subtitle backdrops | Done | 1/1 | Complete | [Open dashboard](subtitle-backdrops/README.md) |
-| Subtitle preview | In review | 0/2 | Plan 0 — Multiline capacity | [Open dashboard](subtitle-preview/README.md) |
+| Subtitle preview | In review | 1/2 | Plan 1 — Animated preview clip | [Open dashboard](subtitle-preview/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

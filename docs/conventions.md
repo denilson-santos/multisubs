@@ -285,6 +285,12 @@ Update a higher-level document when a proposed change intentionally modifies the
   fragment and its measured word-decoration event also receive its word-local state.
   Cue backdrops use layer 0, timed word boxes layer 1, and text layer 2 whenever
   those elements coexist.
+- Animated subtitle previews must remain a transcription-free demonstration:
+  capture one uncaptioned frame, freeze it before applying the production ASS
+  compiler, and label simulated word timing in progress or guide output. The
+  simulation must be deterministic in ASS centiseconds, preserve typed display
+  fragments and Unicode grapheme identity, conserve the cue interval, and never
+  be reused as invented timing for normal transcription or translation.
 - When word text uses measured fragment placement, a glyph-shaped cue outline
   must use those same fragments and placements. Do not combine a whole-line
   libass-shaped outline with independently positioned word text. A cue outline

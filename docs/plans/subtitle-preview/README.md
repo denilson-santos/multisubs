@@ -10,20 +10,19 @@ Retain the static PNG preview for layout inspection.
 
 ## Plans and progress
 
-Progress: 0/2 plans complete. Current plan: Plan 0. Plan 1 depends on Plan 0;
+Progress: 1/2 plans complete. Current plan: Plan 1. Plan 1 depends on Plan 0;
 there are no external blockers.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
-| [0 — Multiline capacity](00-multiline-capacity.md) | In review | Completed preview and vector-box foundations | `fix/preview-multiline-capacity` |
-| [1 — Animated preview clip](01-animation-clip.md) | Planned | Plan 0; completed independent animations | — |
+| [0 — Multiline capacity](00-multiline-capacity.md) | Done | Completed preview and vector-box foundations | [PR #68](https://github.com/denilson-santos/multisubs/pull/68) |
+| [1 — Animated preview clip](01-animation-clip.md) | In review | Plan 0; completed independent animations | `feat/animation-preview-clip` |
 
 ## Delivery order and strategy
 
 Deliver Plan 0 first, then Plan 1, as separate focused draft PRs against `main`.
-The active branch for Plan 0 is `fix/preview-multiline-capacity`, based on the
-merged PR 67 commit in `origin/main`. The suggested Plan 1 branch remains
-`feat/animation-preview-clip`. Keep behavior and tests together, followed by
+The active branch for Plan 1 is `feat/animation-preview-clip`, based on the
+merged PR 68 commit in `origin/main`. Keep behavior and tests together, followed by
 current documentation and roadmap updates. Branch names are implementation
 instructions, not requests to create branches during planning.
 
