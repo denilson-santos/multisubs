@@ -667,7 +667,11 @@ def _build_wrapping_metrics(
 
 
 def estimate_text_width(text: str, metrics: WrappingMetrics) -> float:
-    """Measure a line's PlayRes width including its visual decorations."""
+    """Measure a line's complete PlayRes width including decorations.
+
+    Adaptive wrapping compares raw content with ``metrics.width_budget``
+    instead; this helper is for callers that need the final visual envelope.
+    """
     return metrics.text_measurer.measure(text) + metrics.decoration_width
 
 

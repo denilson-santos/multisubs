@@ -1,6 +1,6 @@
 # Subtitle backdrops roadmap
 
-Status: In review
+Status: Done
 
 ## Objective and scope
 
@@ -10,17 +10,17 @@ rules. Preserve glyph outlines and the existing word-decoration contract.
 
 ## Plans and progress
 
-Progress: 0/1 plans complete. Current plan: Plan 0. No blocking dependencies.
+Progress: 1/1 plans complete. Current plan: Complete. No blocking dependencies.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
-| [0 — Unified vector box](00-unified-vector-box.md) | In review | Completed line-height and independent-animation foundations | `refactor/unify-box-backdrop` |
+| [0 — Unified vector box](00-unified-vector-box.md) | Done | Completed line-height and independent-animation foundations | [PR #67](https://github.com/denilson-santos/multisubs/pull/67) |
 
 ## Delivery order and strategy
 
-Implement Plan 0 as one focused pull request against `main`, with behavior and
-regression tests together and a final documentation commit. The active delivery
-branch is `refactor/unify-box-backdrop`.
+Plan 0 was delivered against `main` through PR #67. The user confirmed its
+merge and successful Actions runs. The following delivery rules remain the
+historical strategy for this package.
 
 Complete local implementation and verification before requesting explicit Git
 delivery confirmation under [AGENTS.md](../../../AGENTS.md). After confirmation,

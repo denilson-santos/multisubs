@@ -101,6 +101,9 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   `natural_line_height + (line_count - 1) * resolved_line_height`. The fixed
   `10%` native maximum-height default can derive different capacities from
   different video geometries; there is no fixed max-lines input.
+- Wrapping compares measured text content with the already decoration-reduced
+  width budget. Backdrop and shadow allowances are counted once while deriving
+  that budget and are added only when the final visual envelope is positioned.
 - It applies `original`, Unicode `upper()`, or Unicode `lower()` to plain-text
   display words before width measurement. Transformed word fragments retain
   their original ordered word indexes, timestamps, and metadata; locale-specific
@@ -115,6 +118,11 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   required multi-line break searches no more partitions than both the derived
   line capacity and the number of text units, then scores semantic class,
   overflow, avoidable orphan lines, raggedness, and deterministic source order.
+- When a preview or aligned-word split must choose among fitting cue prefixes,
+  it stops once the ordered prefix no longer fits, preserves sentence, clause,
+  and pause priorities, avoids a one-word tail when possible, and otherwise
+  retains the longest fitting prefix. This lets a multi-line envelope consume
+  its available visual capacity without changing source timing or word order.
 - It prefers a new timed cue over exceeding the derived visual line capacity
   when aligned word boundaries are available. Semantic sentence, clause, and
   pause priorities remain higher than line balancing.
@@ -129,11 +137,12 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   one-line cues without a cue box; a box always uses one shared vector
   rectangle regardless of line count.
 - Preview models one frame of that sequence: it keeps only the first lexical
-  group that fits the resolved width and line capacity, omits the groups that
-  would appear in later cues, and prevents libass from wrapping that first
-  group again. Its guide and retained JSON report the same `positioned-lines`
-  strategy that ASS uses for a nonempty box, positioned word behavior, or
-  multiple visual lines.
+  group that fits the resolved width and line capacity, selecting the longest
+  fitting prefix when semantic and orphan priorities are equivalent. It omits
+  the groups that would appear in later cues and prevents libass from wrapping
+  that first group again. Its guide and retained JSON report the same
+  `positioned-lines` strategy that ASS uses for a nonempty box, positioned word
+  behavior, or multiple visual lines.
 - A long indivisible display token remains intact and may overflow the
   approximate width budget; original transcript content is never removed or
   replaced by its display transformation.

@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from functools import cache
 from typing import Any
 
-from .layout import WrappingMetrics, estimate_text_width
+from .layout import WrappingMetrics
 from .models import SubtitleDisplayFragment, SubtitleVisualLine, TextCase
 
 PAUSE_BREAK_THRESHOLD = 0.45
@@ -46,7 +46,7 @@ def wrap_subtitle_text(
 
 
 def fit_first_text_segment(text: str, *, metrics: WrappingMetrics) -> str:
-    """Return the first lexical segment that fits the resolved visual budget.
+    """Return the longest first lexical segment that fits the visual budget.
 
     Preview text has no timestamps, but it can still model the first timed cue
     that normal aligned transcription would create. The remaining text is left
@@ -277,24 +277,23 @@ def _find_best_layout_break(
     words: Sequence[Mapping[str, Any]],
     metrics: WrappingMetrics,
 ) -> int:
-    candidates = [
-        index
-        for index in range(1, len(words))
-        if line_count(words_to_text(words[:index]), words[:index], metrics)
-        <= metrics.line_capacity
-    ]
+    candidates: list[int] = []
+    for index in range(1, len(words)):
+        _, fits = _layout_text_lines(
+            words_to_text(words[:index]), words[:index], metrics
+        )
+        # For a multi-unit prefix, adding ordered text cannot make it fit again.
+        if not fits:
+            break
+        candidates.append(index)
     if not candidates:
         return 1
 
-    def key(index: int) -> tuple[int, int, float, int]:
-        prefix = words[:index]
-        width = estimate_text_width(words_to_text(prefix), metrics)
+    def key(index: int) -> tuple[int, int, int]:
         return _layout_break_key(
             index=index,
             unit_count=len(words),
             priority=boundary_priority(words, index),
-            width=width,
-            metrics=metrics,
         )
 
     return max(candidates, key=key)
@@ -306,22 +305,21 @@ def _find_best_text_layout_break(
     metrics: WrappingMetrics,
 ) -> int:
     """Choose the first preview-cue boundary with normal layout priorities."""
-    candidates = [
-        index
-        for index in range(1, len(units))
-        if line_count(join(units[:index]), None, metrics) <= metrics.line_capacity
-    ]
+    candidates: list[int] = []
+    for index in range(1, len(units)):
+        _, fits = _layout_text_lines(join(units[:index]), None, metrics)
+        # For a multi-unit prefix, adding ordered text cannot make it fit again.
+        if not fits:
+            break
+        candidates.append(index)
     if not candidates:
         return 1
 
-    def key(index: int) -> tuple[int, int, float, int]:
-        prefix = join(units[:index])
+    def key(index: int) -> tuple[int, int, int]:
         return _layout_break_key(
             index=index,
             unit_count=len(units),
             priority=_display_boundary_priority(units, None, index),
-            width=estimate_text_width(prefix, metrics),
-            metrics=metrics,
         )
 
     return max(candidates, key=key)
@@ -332,15 +330,12 @@ def _layout_break_key(
     index: int,
     unit_count: int,
     priority: int,
-    width: float,
-    metrics: WrappingMetrics,
-) -> tuple[int, int, float, int]:
-    """Rank a cue boundary consistently for aligned and preview text."""
+) -> tuple[int, int, int]:
+    """Rank boundaries by semantics, orphan avoidance, then retained text."""
     orphan_penalty = int(index == 1 or unit_count - index == 1)
     return (
         priority,
         -orphan_penalty,
-        -abs(metrics.width_budget - width),
         index,
     )
 
@@ -360,7 +355,7 @@ def _layout_text_lines(
     def join(parts: Sequence[str]) -> str:
         return "".join(parts) if compact else join_text_parts(parts)
 
-    if estimate_text_width(join(units), metrics) <= metrics.width_budget:
+    if _content_width(join(units), metrics) <= metrics.width_budget:
         return [normalised], True
     if metrics.line_capacity <= 1:
         return [normalised], False
@@ -399,7 +394,7 @@ def _partition_text_units(
     @cache
     def line(start: int, end: int) -> tuple[str, float]:
         value = join(units[start:end])
-        return value, estimate_text_width(value, metrics)
+        return value, _content_width(value, metrics)
 
     @cache
     def partitions(
@@ -466,6 +461,11 @@ def _partition_text_units(
 
 def _line_fits(width: float, *, unit_count: int, budget: int) -> bool:
     return width <= budget or unit_count == 1
+
+
+def _content_width(text: str, metrics: WrappingMetrics) -> float:
+    """Measure text content against the budget after decoration allowance."""
+    return metrics.text_measurer.measure(text)
 
 
 def _partition_lines(
