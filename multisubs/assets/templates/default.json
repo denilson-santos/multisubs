@@ -1,38 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "name": "default",
-  "description": "Current general-purpose white captions on a translucent black box.",
-  "style": {
-    "typography": {
-      "font_family": "Roboto",
-      "font_weight": "regular",
-      "font_size": "4%",
-      "italic": false,
-      "letter_spacing": "0px",
-      "line_height": "auto",
-      "text_case": "original",
-      "color": "#FFFFFF",
-      "highlight_color": null
-    },
-    "backdrop": {"type": "box", "color": "#00000099", "size": "25%"},
-    "word_backdrop": {"type": "none", "color": "#111827E6", "size": "25%"},
-    "shadow": {"size": "0px"},
-    "opacity": "100%"
-  },
-  "layout": {
-    "position": "bottom-center",
-    "margins": {"left": "18%", "right": "18%", "top": "0%", "bottom": "3%"},
-    "max_width": "100%",
-    "max_height": "10%"
-  },
-  "animation": {
-    "cue": {
-      "text": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
-      "backdrop": {"entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
-    },
-    "word": {
-      "text": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}},
-      "backdrop": {"mode": "active-word", "entrance": {"type": "none"}, "emphasis": {"type": "none"}, "exit": {"type": "none"}}
-    }
-  }
+  "description": "Current general-purpose white captions on a translucent black box."
 }

@@ -1,0 +1,51 @@
+{
+  "schema_version": 5,
+  "name": "headline-bounce",
+  "description": "Punchy yellow headlines with a bounded active-word bounce for energetic cuts.",
+  "style": {
+    "typography": {
+      "font_family": "Oswald",
+      "font_weight": "semi-bold",
+      "font_size": "3.5%",
+      "text_case": "uppercase",
+      "color": "#FDE68A"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "6%"
+    }
+  },
+  "layout": {
+    "position": "bottom-right",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 120
+        },
+        "exit": {
+          "type": "slide-down",
+          "duration_ms": 160
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "bounce",
+          "duration_ms": 420
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": 5,
+  "name": "coral-marker",
+  "description": "Interview-ready captions with a coral marker that follows the spoken word.",
+  "style": {
+    "typography": {
+      "font_family": "Roboto",
+      "font_weight": "semi-bold",
+      "font_size": "3.3%",
+      "highlight_color": "#111827"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "4%"
+    },
+    "word_backdrop": {
+      "type": "box",
+      "color": "#FDA4AFFF",
+      "size": "14%"
+    }
+  },
+  "layout": {
+    "position": "bottom-left",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 140
+        },
+        "exit": {
+          "type": "fade"
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "highlight"
+        }
+      },
+      "backdrop": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 70
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 70
+        }
+      }
+    }
+  }
+}

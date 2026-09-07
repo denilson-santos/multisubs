@@ -1,0 +1,48 @@
+{
+  "schema_version": 5,
+  "name": "kinetic-lime",
+  "description": "Fast kinetic captions with a lime active-word accent for explainers and tutorials.",
+  "style": {
+    "typography": {
+      "font_family": "Montserrat",
+      "font_weight": "bold",
+      "font_size": "3.4%",
+      "highlight_color": "#D9F99D"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    }
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "slide-up",
+          "duration_ms": 180
+        },
+        "exit": {
+          "type": "fade"
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  }
+}

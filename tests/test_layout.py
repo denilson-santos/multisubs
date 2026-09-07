@@ -112,6 +112,73 @@ def test_positioned_visual_line_uses_measured_fragment_advances():
     )
 
 
+@pytest.mark.parametrize(
+    "position",
+    [
+        "top-left",
+        "top-center",
+        "top-right",
+        "bottom-left",
+        "bottom-center",
+        "bottom-right",
+    ],
+)
+def test_boxed_visual_line_uses_middle_anchor_inside_metric_cell(
+    position: str,
+):
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="basic",
+        metric_size=40,
+    )
+    measurer = TextMeasurer(info, lambda text: len(text) * 10, line_height=40)
+    requested = validate_subtitle_config(
+        None,
+        position=position,
+        relative_values={
+            "font_size": "40px",
+            "outline_weight": "8px",
+            "shadow_weight": "0px",
+            "max_width": "400px",
+            "max_height": "100px",
+        },
+    )
+    resolved = resolve_subtitle_config(requested, GEOMETRY, text_measurer=measurer)
+    metrics = resolve_wrapping_metrics(
+        resolved,
+        GEOMETRY,
+        text_measurer=measurer,
+    )
+    line = SubtitleVisualLine(
+        text="sample",
+        fragments=(SubtitleDisplayFragment("sample"),),
+        width=60,
+        index=0,
+    )
+
+    positioned = position_visual_lines(
+        (line,),
+        resolved,
+        GEOMETRY,
+        metrics,
+        placement=None,
+    )[0]
+
+    assert positioned.block_placement.anchor.value == position
+    assert positioned.anchor is SubtitlePosition.CENTER
+    assert positioned.fragment_placements[0].anchor is SubtitlePosition.CENTER
+    content_top = positioned.backdrop_bounds[1] + metrics.backdrop_size
+    assert positioned.position_y == round(content_top + metrics.natural_line_height / 2)
+    expected_x = round(
+        (positioned.backdrop_bounds[0] + positioned.backdrop_bounds[2]) / 2
+    )
+    assert positioned.position_x == expected_x
+
+
 def test_positioned_visual_line_separates_filled_box_from_shadow_envelope():
     info = TextMeasurementInfo(
         mode="font-metrics",

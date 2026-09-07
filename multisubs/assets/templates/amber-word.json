@@ -1,0 +1,35 @@
+{
+  "schema_version": 5,
+  "name": "amber-word",
+  "description": "Legible outlined captions that highlight each spoken word in amber.",
+  "style": {
+    "typography": {
+      "font_family": "Inter",
+      "font_weight": "semi-bold",
+      "font_size": "3.4%",
+      "highlight_color": "#FFD54F"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    }
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "6%"
+  },
+  "animation": {
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": 5,
+  "name": "serif-quote",
+  "description": "Warm italic serif captions for reflective quotes and documentary stories.",
+  "style": {
+    "typography": {
+      "font_family": "Lora",
+      "font_weight": "medium",
+      "font_size": "3.4%",
+      "italic": true,
+      "color": "#FFF8ED"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "4%"
+    }
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "9%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 180
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 140
+        }
+      }
+    }
+  }
+}

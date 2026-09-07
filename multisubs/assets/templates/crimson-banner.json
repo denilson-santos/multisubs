@@ -1,0 +1,48 @@
+{
+  "schema_version": 5,
+  "name": "crimson-banner",
+  "description": "Strong white captions on a compact crimson banner for podcast takeaways.",
+  "style": {
+    "typography": {
+      "font_family": "Oswald",
+      "font_weight": "medium",
+      "font_size": "3.3%"
+    },
+    "backdrop": {
+      "color": "#991B1BFF",
+      "size": "18%"
+    }
+  },
+  "layout": {
+    "position": "bottom-right",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 140
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 100
+        }
+      },
+      "backdrop": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 140
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 100
+        }
+      }
+    }
+  }
+}

@@ -427,10 +427,47 @@ def position_visual_lines(
         bounds[3] - shadow,
     )
     block_placement = CuePlacement(anchor, anchor_x, anchor_y)
-    content_top = bounds[1] + padding
+    centers_box_content = (
+        config.style.backdrop.kind is SubtitleBackdrop.BOX
+        or config.style.word_backdrop.kind is SubtitleBackdrop.BOX
+    )
+    centers_single_line_cue_box = (
+        config.style.backdrop.kind is SubtitleBackdrop.BOX and len(visual_lines) == 1
+    )
+    if centers_single_line_cue_box:
+        line_anchor = SubtitlePosition.CENTER
+    elif centers_box_content:
+        line_anchor = _middle_row_anchor(anchor)
+    else:
+        line_anchor = anchor
+    content_left = backdrop_bounds[0] + padding
+    content_right = backdrop_bounds[2] - padding
+    content_top = backdrop_bounds[1] + padding
+    if centers_single_line_cue_box:
+        line_x = _round_playres((backdrop_bounds[0] + backdrop_bounds[2]) / 2)
+    elif anchor.value.endswith("left"):
+        line_x = content_left
+    elif anchor.value.endswith("right"):
+        line_x = content_right
+    else:
+        line_x = anchor_x - _round_playres(shadow / 2)
+    vertical_center_offset = (
+        metrics.text_measurer.vertical_center_offset(
+            " ".join(line.text for line in visual_lines)
+        )
+        if centers_box_content
+        else 0.0
+    )
     result: list[PositionedVisualLine] = []
     for line in visual_lines:
-        if anchor.value.startswith("top-"):
+        if centers_box_content:
+            line_y = _round_playres(
+                content_top
+                + line.index * metrics.resolved_line_height
+                + metrics.natural_line_height / 2
+                + vertical_center_offset
+            )
+        elif anchor.value.startswith("top-"):
             line_y = _round_playres(
                 content_top + line.index * metrics.resolved_line_height
             )
@@ -448,16 +485,16 @@ def position_visual_lines(
             )
         fragment_placements = _position_line_fragments(
             line,
-            anchor=anchor,
-            line_x=anchor_x,
+            anchor=line_anchor,
+            line_x=line_x,
             line_y=line_y,
             metrics=metrics,
         )
         result.append(
             PositionedVisualLine(
                 line=line,
-                anchor=anchor,
-                position_x=anchor_x,
+                anchor=line_anchor,
+                position_x=line_x,
                 position_y=line_y,
                 block_bounds=bounds,
                 backdrop_bounds=backdrop_bounds,
@@ -466,6 +503,15 @@ def position_visual_lines(
             )
         )
     return tuple(result)
+
+
+def _middle_row_anchor(position: SubtitlePosition) -> SubtitlePosition:
+    """Preserve horizontal alignment while centering text in its metric cell."""
+    if position.value.endswith("left"):
+        return SubtitlePosition.MIDDLE_LEFT
+    if position.value.endswith("right"):
+        return SubtitlePosition.MIDDLE_RIGHT
+    return SubtitlePosition.CENTER
 
 
 def resolve_native_anchor_point(

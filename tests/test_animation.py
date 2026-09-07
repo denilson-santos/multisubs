@@ -71,7 +71,7 @@ def test_animation_duration_rejects_ambiguous_or_out_of_range_values(value: obje
 
 
 def test_explicit_duration_precedence_preserves_or_overrides_template_duration():
-    template = get_subtitle_template("cinematic-fade").config
+    template = get_subtitle_template("serif-quote").config
 
     inherited = validate_subtitle_config(None, defaults=template)
     same_type = validate_subtitle_config(
@@ -90,8 +90,8 @@ def test_explicit_duration_precedence_preserves_or_overrides_template_duration()
         animation_values={"cue_text_exit": "zoom"},
     )
 
-    assert inherited.animation.cue.text.entrance.duration_ms == 220
-    assert same_type.animation.cue.text.entrance.duration_ms == 220
+    assert inherited.animation.cue.text.entrance.duration_ms == 180
+    assert same_type.animation.cue.text.entrance.duration_ms == 180
     assert explicit.animation.cue.text.entrance.duration_ms == 350
     assert changed_type.animation.cue.text.exit.duration_ms == 160
 
@@ -513,7 +513,7 @@ def test_animation_cli_replaces_removed_karaoke_flags(tmp_path: Path):
 
 
 def test_animation_template_branches_can_be_disabled_independently():
-    template = get_subtitle_template("word-focus").config
+    template = get_subtitle_template("focus-marker").config
 
     without_word_emphasis = validate_subtitle_config(
         None,
@@ -552,10 +552,10 @@ def test_animation_template_branches_can_be_disabled_independently():
     "options",
     [
         ["--animation-cue-text-entrance", "pop"],
-        ["--template", "cinematic-fade"],
+        ["--template", "serif-quote"],
         [
             "--template",
-            "word-focus",
+            "focus-marker",
             "--animation-word-text-entrance",
             "none",
             "--animation-word-text-emphasis",
@@ -1193,7 +1193,7 @@ def test_slide_events_have_at_most_one_positioning_tag(tmp_path: Path):
 
 
 @pytest.mark.parametrize("position", list(SubtitlePosition))
-def test_slide_animation_uses_each_resolved_native_anchor_once(
+def test_slide_animation_centers_boxed_text_in_each_native_anchor(
     tmp_path: Path,
     position: SubtitlePosition,
 ):
@@ -1220,12 +1220,10 @@ def test_slide_animation_uses_each_resolved_native_anchor_once(
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.startswith("Dialogue:")
     ]
-    position_index = list(SubtitlePosition).index(position)
-    expected_alignment = 7 - 3 * (position_index // 3) + position_index % 3
     assert dialogue
     assert all(line.count(r"\move(") + line.count(r"\pos(") == 1 for line in dialogue)
     text_events = [line for line in dialogue if r"\p1" not in line]
-    assert all(rf"\an{expected_alignment}" in line for line in text_events)
+    assert all(r"\an5" in line for line in text_events)
 
 
 def test_shared_box_and_visual_lines_use_the_same_pop_state(tmp_path: Path):
@@ -1280,8 +1278,8 @@ def test_shared_box_and_visual_lines_use_the_same_pop_state(tmp_path: Path):
     assert "m 0 0 l " in backdrop
 
 
-def test_word_focus_animated_box_uses_local_top_left_geometry(tmp_path: Path):
-    config = get_subtitle_template("word-focus").config
+def test_focus_marker_animated_box_uses_local_top_left_geometry(tmp_path: Path):
+    config = get_subtitle_template("focus-marker").config
     cue = KaraokeCue(
         fragments=(
             SubtitleDisplayFragment("Ele", 0),
@@ -1291,7 +1289,7 @@ def test_word_focus_animated_box_uses_local_top_left_geometry(tmp_path: Path):
         durations=(40, 60),
         active_intervals=((0, 40), (40, 100)),
     )
-    path = tmp_path / "word-focus.ass"
+    path = tmp_path / "focus-marker.ass"
 
     write_ass(
         path,
@@ -1310,7 +1308,7 @@ def test_word_focus_animated_box_uses_local_top_left_geometry(tmp_path: Path):
     backdrops = [
         line
         for line in path.read_text(encoding="utf-8").splitlines()
-        if line.startswith("Dialogue: 0,") and r"\p1" in line
+        if line.startswith("Dialogue: 1,") and r"\p1" in line
     ]
     assert backdrops
     assert all(r"\an7\pos(" in line for line in backdrops)
@@ -1319,7 +1317,7 @@ def test_word_focus_animated_box_uses_local_top_left_geometry(tmp_path: Path):
 
 
 def test_preview_suppresses_cue_motion_but_keeps_template_identity(tmp_path: Path):
-    config = get_subtitle_template("impact-yellow").config
+    config = get_subtitle_template("bold-headline").config
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     request = PreviewRequest(
@@ -1329,8 +1327,8 @@ def test_preview_suppresses_cue_motion_but_keeps_template_identity(tmp_path: Pat
         preview_at=0.0,
         preview_text="Static preview",
         guides=False,
-        subtitle_template_requested="impact-yellow",
-        subtitle_template_resolved="impact-yellow",
+        subtitle_template_requested="bold-headline",
+        subtitle_template_resolved="bold-headline",
     )
     path = tmp_path / "preview.ass"
 
@@ -1817,9 +1815,10 @@ def test_word_focus_box_contains_animated_words_in_both_orientations(
     )
     config = validate_subtitle_config(
         None,
-        defaults=get_subtitle_template("word-focus").config,
+        defaults=get_subtitle_template("focus-marker").config,
         appearance_values={
             "font": "DejaVu Sans",
+            "backdrop": "box",
             "backdrop_color": "#FF0000",
             "text_color": "#FFFFFF",
         },
@@ -1846,7 +1845,7 @@ def test_word_focus_box_contains_animated_words_in_both_orientations(
         durations=(40, 60),
         active_intervals=((0, 40), (40, 100)),
     )
-    ass_path = tmp_path / f"word-focus-{width}x{height}.ass"
+    ass_path = tmp_path / f"focus-marker-{width}x{height}.ass"
     write_ass(
         ass_path,
         [

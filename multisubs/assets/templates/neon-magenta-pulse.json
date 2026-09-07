@@ -1,0 +1,39 @@
+{
+  "schema_version": 5,
+  "name": "neon-magenta-pulse",
+  "description": "Neon-magenta active-word pulses for bold reactions, cuts, and creator commentary.",
+  "style": {
+    "typography": {
+      "font_family": "Roboto",
+      "font_weight": "bold",
+      "font_size": "3.4%",
+      "text_case": "uppercase",
+      "color": "#FF4FD8"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    }
+  },
+  "layout": {
+    "position": "bottom-right",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "pulse",
+          "duration_ms": 400
+        }
+      }
+    }
+  }
+}

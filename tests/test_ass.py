@@ -69,7 +69,7 @@ def test_write_ass_compiles_semantic_style_and_escapes_dialogue(tmp_path: Path):
     assert content.split("Style: Default,", 1)[1].split(",")[17] == "2"
     assert r"{\an7\pos(0,0)" in content
     assert "0:00:00.00,0:01:01.24" in content
-    assert r"{\b400}{\an2\pos(" in content
+    assert r"{\b400}{\an5\pos(" in content
     assert r"Olá \{mundo\}\\ 字幕" in content
     assert "\\{mundo\\}" in content
     assert "字幕" in content
@@ -198,7 +198,7 @@ def test_letter_spacing_compiles_to_ass_style_spacing_without_event_tag(
     assert style["spacing"] == 2
     content = path.read_text(encoding="utf-8")
     assert r"{\fsp" not in content
-    assert r"{\b400}{\an2\pos(" in content
+    assert r"{\b400}{\an5\pos(" in content
 
 
 @pytest.mark.parametrize("font_weight", list(FontWeight))
@@ -220,7 +220,7 @@ def test_all_font_weights_compile_to_exact_event_override(
     )
 
     assert style["bold"] == 0
-    assert rf"{{\b{font_weight.rank}}}{{\an2\pos(" in path.read_text(encoding="utf-8")
+    assert rf"{{\b{font_weight.rank}}}{{\an5\pos(" in path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("value", [-1, float("nan"), float("inf"), True, "1"])
@@ -298,7 +298,7 @@ def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
     )
 
     content = path.read_text(encoding="utf-8")
-    assert content.count(r"{\an2\pos(540,1632)}") == 2
+    assert content.count(r"{\an5\pos(") == 2
     assert r"{\an9}" not in content
     assert r"Text, \{\\an9\}\\\\value" in content
 
@@ -439,7 +439,7 @@ def test_single_line_box_uses_one_measured_shared_backdrop(
     assert r"\p1" in dialogue[0]
     assert dialogue[1].startswith("Dialogue: 2,")
     assert ",Positioned,," in dialogue[1]
-    assert r"\an2\pos(" in dialogue[1]
+    assert r"\an5\pos(" in dialogue[1]
     assert "Style: Positioned," in content
     default_style = next(
         line for line in content.splitlines() if line.startswith("Style: Default,")

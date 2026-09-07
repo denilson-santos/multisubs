@@ -1,0 +1,38 @@
+{
+  "schema_version": 5,
+  "name": "sage-serif",
+  "description": "Soft green serif captions with a gentle fade for wellness and reflective narration.",
+  "style": {
+    "typography": {
+      "font_family": "Lora",
+      "font_size": "3.4%",
+      "color": "#BBF7D0"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    }
+  },
+  "layout": {
+    "position": "top-right",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "top": "12%"
+    },
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "fade"
+        },
+        "exit": {
+          "type": "fade"
+        }
+      }
+    }
+  }
+}

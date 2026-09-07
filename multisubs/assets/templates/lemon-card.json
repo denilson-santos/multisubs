@@ -1,0 +1,26 @@
+{
+  "schema_version": 5,
+  "name": "lemon-card",
+  "description": "Dark readable tips on a soft yellow card for practical reminders.",
+  "style": {
+    "typography": {
+      "font_family": "Inter",
+      "font_weight": "semi-bold",
+      "font_size": "3.2%",
+      "color": "#111827"
+    },
+    "backdrop": {
+      "color": "#FDE68AFF",
+      "size": "20%"
+    }
+  },
+  "layout": {
+    "position": "top-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "top": "12%"
+    },
+    "max_height": "6%"
+  }
+}
