@@ -1,6 +1,8 @@
 # Unified vector box backdrop
 
-Status: In review
+Status: Done
+
+Delivered in [PR #67](https://github.com/denilson-santos/multisubs/pull/67).
 
 Depends on completed foundations:
 

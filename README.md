@@ -194,6 +194,13 @@ multisubs -i ./video.mp4 -o ./previews \
 Without `--preview-at`, the video midpoint is used. Preview styling, wrapping,
 placement, coordinates, and custom fonts match the final render path. Output is
 saved as `<video-stem>-subtitle-preview.png` with a numeric suffix when needed.
+When the sample is larger than the resolved envelope, the preview keeps the
+first prospective cue and uses all visual lines that fit before choosing its
+next cue boundary. Sentence, clause, and pause boundaries still take priority;
+among equivalent boundaries, the longest fitting prefix is retained. Words
+that would belong to later hypothetical cues are omitted from this static
+frame. Font metrics, backdrop/shadow allowances, and `--max-height` therefore
+determine both the line breaks and how much sample text is visible.
 
 ### Add subtitle animations
 
@@ -598,6 +605,8 @@ and system tools retain their own licenses.
 - Translation output is fixed to English.
 - Aligned-word behavior is unavailable for translation; previews suppress all
   motion and show one representative state for each configured word track.
+- A static preview shows only the first fitting sample cue; later hypothetical
+  cues are not rendered in the same frame.
 - Animation distance, scale, and easing are fixed per semantic type; phase
   duration can be customized from `10ms` through `5000ms`.
 - There is no interactive subtitle editor or graphical interface.
