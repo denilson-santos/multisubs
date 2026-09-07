@@ -5,7 +5,11 @@ import pytest
 from multisubs.config import validate_subtitle_config
 from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import TextCase, VideoGeometry
-from multisubs.text_measurement import build_unicode_text_measurer
+from multisubs.text_measurement import (
+    TextMeasurementInfo,
+    TextMeasurer,
+    build_unicode_text_measurer,
+)
 from multisubs.wrapping import (
     build_display_fragments,
     build_visual_lines,
@@ -50,6 +54,39 @@ def _metrics(*, letter_spacing: str = "0px", max_height: str = "100px"):
         letter_spacing=resolved.style.typography.letter_spacing,
     )
     return resolve_wrapping_metrics(resolved, GEOMETRY, text_measurer=measurer)
+
+
+def _box_metrics(*, max_height: str):
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="basic",
+        metric_size=43,
+    )
+    measurer = TextMeasurer(
+        info,
+        lambda text: len(text) * 10,
+        line_height=43,
+    )
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"backdrop": "box"},
+        relative_values={
+            "font_size": "43px",
+            "outline_weight": "11px",
+            "max_width": "152px",
+            "max_height": max_height,
+        },
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY, text_measurer=measurer)
+    return resolve_wrapping_metrics(
+        resolved,
+        GEOMETRY,
+        text_measurer=measurer,
+    )
 
 
 def test_shared_wrapping_accounts_for_letter_spacing():
@@ -97,6 +134,59 @@ def test_preview_first_segment_uses_the_same_spacing_adjusted_budget():
     metrics = _metrics(letter_spacing="10px")
 
     assert fit_first_text_segment("aa bb", metrics=metrics) == "aa\nbb"
+
+
+def test_wrapping_counts_backdrop_decoration_once_at_width_boundary():
+    metrics = _box_metrics(max_height="190px")
+
+    assert metrics.width_budget == 130
+    assert wrap_subtitle_text("one two three", metrics=metrics) == "one two three"
+
+
+def test_preview_first_segment_uses_available_lines_before_cutting_prefix():
+    text = "one two three four five six seven eight nine ten eleven twelve"
+
+    three_line = fit_first_text_segment(
+        text,
+        metrics=_box_metrics(max_height="190px"),
+    )
+    four_line = fit_first_text_segment(
+        text,
+        metrics=_box_metrics(max_height="195px"),
+    )
+
+    assert three_line == "one two three\nfour five six\nseven eight"
+    assert four_line == "one two three\nfour five six\nseven eight\nnine ten"
+    assert three_line.count("\n") == 2
+    assert four_line.count("\n") == 3
+
+
+def test_timed_word_break_uses_available_visual_lines():
+    metrics = _box_metrics(max_height="190px")
+    words = [
+        {"word": f"w{index}", "start": index, "end": index + 0.1} for index in range(13)
+    ]
+
+    groups = split_words_for_layout(words, metrics)
+
+    assert [[word["word"] for word in group] for group in groups] == [
+        [f"w{index}" for index in range(11)],
+        ["w11", "w12"],
+    ]
+
+
+def test_timed_word_break_keeps_sentence_priority_over_longer_prefixes():
+    metrics = _box_metrics(max_height="190px")
+    words = [
+        {"word": word, "start": index, "end": index + 0.1}
+        for index, word in enumerate(
+            ["one", "two.", *[f"word{index}" for index in range(11)]]
+        )
+    ]
+
+    groups = split_words_for_layout(words, metrics)
+
+    assert [word["word"] for word in groups[0]] == ["one", "two."]
 
 
 def test_visual_lines_preserve_word_fragments_and_measure_each_line():
