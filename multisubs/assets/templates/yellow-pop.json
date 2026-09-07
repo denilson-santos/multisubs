@@ -1,0 +1,42 @@
+{
+  "schema_version": 5,
+  "name": "yellow-pop",
+  "description": "Punchy yellow active-word captions with a quick pop for hooks and reactions.",
+  "style": {
+    "typography": {
+      "font_family": "Montserrat",
+      "font_weight": "extra-bold",
+      "font_size": "3.4%",
+      "text_case": "uppercase",
+      "highlight_color": "#FBE003"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    }
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "word": {
+      "text": {
+        "entrance": {
+          "type": "pop",
+          "duration_ms": 120
+        },
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  }
+}

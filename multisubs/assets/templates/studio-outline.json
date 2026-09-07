@@ -1,0 +1,25 @@
+{
+  "schema_version": 5,
+  "name": "studio-outline",
+  "description": "Clean outlined captions for tutorials, interviews, and demonstrations.",
+  "style": {
+    "typography": {
+      "font_family": "Inter",
+      "font_weight": "medium",
+      "font_size": "3.4%"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "4%"
+    }
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "6%"
+  }
+}

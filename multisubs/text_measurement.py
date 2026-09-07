@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import shutil
 import struct
@@ -94,6 +95,8 @@ class TextMeasurer:
         letter_spacing: float = 0.0,
         ascent: float | None = None,
         descent: float | None = None,
+        measure_vertical_bounds: Callable[[str], tuple[float, float] | None]
+        | None = None,
     ) -> None:
         self.info = info
         self._measure = measure
@@ -130,6 +133,8 @@ class TextMeasurer:
             ),
         )
         self._cache: OrderedDict[str, float] = OrderedDict()
+        self._measure_vertical_bounds = measure_vertical_bounds
+        self._vertical_offset_cache: OrderedDict[str, float] = OrderedDict()
 
     def measure(self, text: str) -> float:
         """Return the measured advance width for one line of text."""
@@ -144,6 +149,26 @@ class TextMeasurer:
         if len(self._cache) > _MEASUREMENT_CACHE_LIMIT:
             self._cache.popitem(last=False)
         return width
+
+    def vertical_center_offset(self, text: str) -> float:
+        """Return the offset that centers visible glyph bounds in the line cell."""
+        cached = self._vertical_offset_cache.get(text)
+        if cached is not None:
+            self._vertical_offset_cache.move_to_end(text)
+            return cached
+        offset = 0.0
+        if text and self._measure_vertical_bounds is not None:
+            bounds = self._measure_vertical_bounds(text)
+            if bounds is not None:
+                top, bottom = bounds
+                if math.isfinite(top) and math.isfinite(bottom) and bottom > top:
+                    offset = (self.natural_line_height - bottom - top) / 2
+                    limit = self.natural_line_height / 2
+                    offset = max(-limit, min(limit, offset))
+        self._vertical_offset_cache[text] = offset
+        if len(self._vertical_offset_cache) > _MEASUREMENT_CACHE_LIMIT:
+            self._vertical_offset_cache.popitem(last=False)
+        return offset
 
     @property
     def diagnostic(self) -> str | None:
@@ -234,6 +259,22 @@ def build_text_measurer(
                     )
                 return float(resolved.font.getlength(text))
 
+            def measure_vertical_bounds(text: str) -> tuple[float, float] | None:
+                try:
+                    if resolved.shaping == "raqm":
+                        bounds = resolved.font.getbbox(
+                            text,
+                            direction=direction(text),
+                            language=language or None,
+                        )
+                    else:
+                        bounds = resolved.font.getbbox(text)
+                except (AttributeError, OSError, TypeError, ValueError):
+                    return None
+                if bounds is None or len(bounds) != 4:
+                    return None
+                return float(bounds[1]), float(bounds[3])
+
             return TextMeasurer(
                 TextMeasurementInfo(
                     mode="font-metrics",
@@ -262,6 +303,7 @@ def build_text_measurer(
                 letter_spacing=letter_spacing,
                 ascent=resolved.ascent,
                 descent=resolved.descent,
+                measure_vertical_bounds=measure_vertical_bounds,
             )
 
     return build_unicode_text_measurer(

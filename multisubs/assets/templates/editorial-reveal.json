@@ -1,0 +1,51 @@
+{
+  "schema_version": 5,
+  "name": "editorial-reveal",
+  "description": "Warm serif captions that reveal each word in order for stories and reflective cuts.",
+  "style": {
+    "typography": {
+      "font_family": "Lora",
+      "font_weight": "semi-bold",
+      "font_size": "3.4%",
+      "italic": true,
+      "color": "#FFF8ED"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "4%"
+    }
+  },
+  "layout": {
+    "position": "bottom-center",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "zoom",
+          "duration_ms": 200
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 160
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "mode": "progressive",
+        "entrance": {
+          "type": "fade"
+        }
+      }
+    }
+  }
+}

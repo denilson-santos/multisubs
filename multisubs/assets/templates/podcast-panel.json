@@ -1,0 +1,24 @@
+{
+  "schema_version": 5,
+  "name": "podcast-panel",
+  "description": "Readable two-line captions on a dark panel for interviews and podcasts.",
+  "style": {
+    "typography": {
+      "font_family": "Atkinson Hyperlegible Next",
+      "font_weight": "medium",
+      "font_size": "3.2%"
+    },
+    "backdrop": {
+      "color": "#111827D9",
+      "size": "18%"
+    }
+  },
+  "layout": {
+    "position": "bottom-left",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "9%"
+  }
+}

@@ -136,9 +136,13 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should preserve the original exception context when a filesystem operation fails and tell the user which path and operation failed.
 - Must write JSON, SRT, and ASS text as UTF-8.
 - Must load packaged declarative resources through `importlib.resources`,
-  validate their version, complete key set, types, names, and inventory before
-  use, and fail with a project-specific diagnostic rather than silently
-  ignoring fields or falling back to another resource.
+  validate their version, recognized sparse key set, types, names, and inventory
+  before use, and fail with a project-specific diagnostic rather than silently
+  ignoring fields or falling back to another resource. Sparse authored values
+  may inherit centralized semantic defaults, but the validated runtime object
+  must remain complete and immutable. Keep a compatibility reader for any
+  previously shipped complete resource schema when a catalog migration changes
+  the internal representation.
 
 ## Command-line interface conventions
 

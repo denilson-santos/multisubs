@@ -1,0 +1,30 @@
+{
+  "schema_version": 5,
+  "name": "emerald-word",
+  "description": "White word-led captions with a deep green active-word marker for explainers.",
+  "style": {
+    "typography": {
+      "font_family": "Roboto",
+      "font_weight": "bold",
+      "font_size": "3.4%"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    },
+    "word_backdrop": {
+      "type": "box",
+      "color": "#166534FF",
+      "size": "12%"
+    }
+  },
+  "layout": {
+    "position": "bottom-right",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "6%"
+  }
+}

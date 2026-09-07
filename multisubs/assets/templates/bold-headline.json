@@ -1,0 +1,40 @@
+{
+  "schema_version": 5,
+  "name": "bold-headline",
+  "description": "Compact uppercase hooks with a measured pop for short-form video.",
+  "style": {
+    "typography": {
+      "font_family": "Montserrat",
+      "font_weight": "extra-bold",
+      "font_size": "3.8%",
+      "text_case": "uppercase"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "7%"
+    }
+  },
+  "layout": {
+    "position": "center",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "6%"
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "pop",
+          "duration_ms": 120
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 100
+        }
+      }
+    }
+  }
+}

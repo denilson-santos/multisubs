@@ -1,0 +1,27 @@
+{
+  "schema_version": 5,
+  "name": "golden-title",
+  "description": "Condensed golden uppercase titles for concise social-video topics.",
+  "style": {
+    "typography": {
+      "font_family": "Oswald",
+      "font_weight": "bold",
+      "font_size": "3.6%",
+      "text_case": "uppercase",
+      "color": "#FACC15"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "6%"
+    }
+  },
+  "layout": {
+    "position": "bottom-left",
+    "margins": {
+      "left": "10%",
+      "right": "10%"
+    },
+    "max_height": "6%"
+  }
+}

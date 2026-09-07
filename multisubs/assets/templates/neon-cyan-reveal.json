@@ -1,0 +1,39 @@
+{
+  "schema_version": 5,
+  "name": "neon-cyan-reveal",
+  "description": "Progressive cyan word reveals for clean, high-energy short-form explainers.",
+  "style": {
+    "typography": {
+      "font_family": "Atkinson Hyperlegible Next",
+      "font_weight": "bold",
+      "font_size": "3.3%",
+      "color": "#00F5FF"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#111827",
+      "size": "5%"
+    }
+  },
+  "layout": {
+    "position": "bottom-left",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "word": {
+      "text": {
+        "mode": "progressive",
+        "entrance": {
+          "type": "slide-up",
+          "duration_ms": 120
+        }
+      }
+    }
+  }
+}

@@ -60,6 +60,34 @@ def test_text_measurer_caches_repeated_text_for_one_run():
     assert calls == ["repeated"]
 
 
+def test_text_measurer_centers_visible_bounds_and_caches_the_offset():
+    calls: list[str] = []
+    measurer = TextMeasurer(
+        TextMeasurementInfo(
+            mode="font-metrics",
+            requested_font="Fixture Sans",
+            resolved_font="Fixture Sans",
+            resolved_style="Regular",
+            font_source="fonts-dir",
+            shaping="raqm",
+            metric_size=40,
+        ),
+        lambda text: 100.0,
+        line_height=50,
+        measure_vertical_bounds=lambda text: calls.append(text) or (7.0, 47.0),
+    )
+
+    assert measurer.vertical_center_offset("Sample") == pytest.approx(-2.0)
+    assert measurer.vertical_center_offset("Sample") == pytest.approx(-2.0)
+    assert calls == ["Sample"]
+
+
+def test_text_measurer_without_visible_bounds_keeps_metric_center():
+    measurer = build_unicode_text_measurer("Unknown", 20)
+
+    assert measurer.vertical_center_offset("Sample") == 0
+
+
 def test_unicode_fallback_distinguishes_narrow_and_wide_glyphs():
     assert estimate_unicode_text_width("iiii", 40) < estimate_unicode_text_width(
         "MMMM", 40

@@ -25,7 +25,7 @@ Read the relevant project documentation before changing behavior:
 | multisubs/layout.py | Geometry-aware relative-unit resolution, native regions, explicit envelopes, and wrapping budgets. |
 | multisubs/font_catalog.py | Bundled OFL manifest validation, package-resource lookup, and selected-family materialization. |
 | multisubs/templates.py | Strict packaged-template catalog loading and immutable semantic baseline lookup. |
-| multisubs/assets/templates/ | Deterministic index and complete internal JSON definitions for built-in templates. |
+| multisubs/assets/templates/ | Deterministic index and validated sparse internal JSON definitions for built-in templates. |
 | multisubs/text_measurement.py | Custom/bundled/fontconfig resolution, Pillow/RAQM measurement, and Unicode fallback estimation. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
 | multisubs/errors.py | User-actionable error types at module boundaries. |

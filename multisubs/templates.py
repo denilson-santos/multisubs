@@ -5,21 +5,26 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from importlib import resources
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 from .config import parse_relative_length, validate_subtitle_config
 from .errors import TemplateError, ValidationError
 from .models import (
     CueAnimationType,
+    SubtitleAnimationPhase,
     SubtitleConfig,
+    SubtitleElementAnimation,
+    SubtitleWordElementAnimation,
     WordAnimationMode,
 )
 
 DEFAULT_SUBTITLE_TEMPLATE = "default"
-_TEMPLATE_SCHEMA_VERSION = 4
+_TEMPLATE_SCHEMA_VERSION = 5
+_LEGACY_TEMPLATE_SCHEMA_VERSION = 4
 _INDEX_RESOURCE = "index.json"
 _RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.json$")
 
@@ -101,22 +106,31 @@ def _expect_boolean(value: Any, *, context: str) -> bool:
     return value
 
 
-def _expect_schema_version(value: Any, *, context: str) -> None:
-    if type(value) is not int or value != _TEMPLATE_SCHEMA_VERSION:
-        raise TemplateError(
-            f"{context} must use schema_version {_TEMPLATE_SCHEMA_VERSION}"
-        )
+def _expect_schema_version(
+    value: Any, *, context: str, expected: int = _TEMPLATE_SCHEMA_VERSION
+) -> None:
+    if type(value) is not int or value != expected:
+        raise TemplateError(f"{context} must use schema_version {expected}")
 
 
-def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
-    data = _read_json(resource)
+def _load_complete_template(
+    resource: Any,
+    expected_name: str,
+    *,
+    schema_version: int,
+    data: dict[str, Any] | None = None,
+) -> SubtitleTemplate:
+    if data is None:
+        data = _read_json(resource)
     context = f"Template '{resource.name}'"
     _expect_keys(
         data,
         {"schema_version", "name", "description", "style", "layout", "animation"},
         context=context,
     )
-    _expect_schema_version(data["schema_version"], context=context)
+    _expect_schema_version(
+        data["schema_version"], context=context, expected=schema_version
+    )
     name = _expect_string(data["name"], context=f"{context}.name")
     if name != expected_name:
         raise TemplateError(
@@ -329,6 +343,292 @@ def _load_template(resource: Any, expected_name: str) -> SubtitleTemplate:
     return SubtitleTemplate(name=name, description=description, config=config)
 
 
+def _expect_allowed_keys(
+    value: Mapping[str, Any], allowed: set[str], *, context: str
+) -> None:
+    unknown = set(value).difference(allowed)
+    if unknown:
+        raise TemplateError(
+            f"{context} contains unknown field(s): {', '.join(sorted(unknown))}"
+        )
+
+
+def _relative_text(value: object) -> str:
+    """Return the source token for one validated relative length."""
+    return getattr(value, "original", str(value))
+
+
+def _default_template_data() -> dict[str, Any]:
+    """Build the sparse-schema inheritance base from semantic config defaults."""
+    config = validate_subtitle_config(None)
+    typography = config.style.typography
+
+    def phase_data(phase: SubtitleAnimationPhase) -> dict[str, Any]:
+        return {"type": phase.type.value}
+
+    def track_data(
+        track: SubtitleElementAnimation, *, include_mode: bool = False
+    ) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "entrance": phase_data(track.entrance),
+            "emphasis": phase_data(track.emphasis),
+            "exit": phase_data(track.exit),
+        }
+        if include_mode:
+            word_track = cast(SubtitleWordElementAnimation, track)
+            value["mode"] = word_track.mode.value
+            value = {
+                "mode": value.pop("mode"),
+                **value,
+            }
+        return value
+
+    return {
+        "schema_version": _TEMPLATE_SCHEMA_VERSION,
+        "name": DEFAULT_SUBTITLE_TEMPLATE,
+        "description": "General-purpose subtitle presentation.",
+        "style": {
+            "typography": {
+                "font_family": typography.font,
+                "font_weight": typography.font_weight.canonical_name,
+                "font_size": _relative_text(typography.font_size),
+                "italic": typography.italic,
+                "letter_spacing": _relative_text(typography.letter_spacing),
+                "line_height": _relative_text(typography.line_height),
+                "text_case": typography.text_case.value,
+                "color": typography.color,
+                "highlight_color": typography.highlight_color,
+            },
+            "backdrop": {
+                "type": config.style.backdrop.kind.value,
+                "color": config.style.backdrop.color,
+                "size": _relative_text(config.style.backdrop.size),
+            },
+            "word_backdrop": {
+                "type": config.style.word_backdrop.kind.value,
+                "color": config.style.word_backdrop.color,
+                "size": _relative_text(config.style.word_backdrop.size),
+            },
+            "shadow": {"size": _relative_text(config.style.shadow.size)},
+            "opacity": config.style.opacity.original,
+        },
+        "layout": {
+            "position": config.layout.position.value,
+            "margins": {
+                "left": _relative_text(config.layout.margin_left),
+                "right": _relative_text(config.layout.margin_right),
+                "top": _relative_text(config.layout.margin_top),
+                "bottom": _relative_text(config.layout.margin_bottom),
+            },
+            "max_width": _relative_text(config.layout.max_width),
+            "max_height": _relative_text(config.layout.max_height),
+        },
+        "animation": {
+            "cue": {
+                "text": track_data(config.animation.cue.text),
+                "backdrop": track_data(config.animation.cue.backdrop),
+            },
+            "word": {
+                "text": track_data(config.animation.word.text, include_mode=True),
+                "backdrop": track_data(
+                    config.animation.word.backdrop, include_mode=True
+                ),
+            },
+        },
+    }
+
+
+def _merge_sparse_object(
+    base: Mapping[str, Any],
+    value: Any,
+    *,
+    allowed: set[str],
+    context: str,
+) -> dict[str, Any]:
+    override = _expect_object(value, context=context)
+    _expect_allowed_keys(override, allowed, context=context)
+    merged = deepcopy(dict(base))
+    merged.update(override)
+    return merged
+
+
+def _merge_sparse_phase(
+    base: Mapping[str, Any], value: Any, *, context: str
+) -> dict[str, Any]:
+    phase = _expect_object(value, context=context)
+    _expect_allowed_keys(phase, {"type", "duration_ms"}, context=context)
+    if "type" not in phase:
+        raise TemplateError(f"{context} is missing field(s): type")
+    merged = deepcopy(dict(base))
+    merged.update(phase)
+    return merged
+
+
+def _expand_sparse_template_data(
+    data: dict[str, Any], *, expected_name: str
+) -> dict[str, Any]:
+    """Expand schema-5 omissions while rejecting unknown authored fields."""
+    context = "Template"
+    _expect_allowed_keys(
+        data,
+        {"schema_version", "name", "description", "style", "layout", "animation"},
+        context=context,
+    )
+    for field in ("schema_version", "name", "description"):
+        if field not in data:
+            raise TemplateError(f"{context} is missing field(s): {field}")
+    _expect_schema_version(data["schema_version"], context=context)
+    name = _expect_string(data["name"], context=f"{context}.name")
+    if name != expected_name:
+        raise TemplateError(
+            f"{context}.name must match its indexed filename stem '{expected_name}'"
+        )
+    _expect_string(data["description"], context=f"{context}.description")
+
+    expanded = _default_template_data()
+    expanded["name"] = name
+    expanded["description"] = data["description"]
+
+    if "style" in data:
+        style = _merge_sparse_object(
+            expanded["style"],
+            data["style"],
+            allowed={"typography", "backdrop", "word_backdrop", "shadow", "opacity"},
+            context="Template.style",
+        )
+        if "typography" in data["style"]:
+            style["typography"] = _merge_sparse_object(
+                expanded["style"]["typography"],
+                data["style"]["typography"],
+                allowed={
+                    "font_family",
+                    "font_weight",
+                    "font_size",
+                    "italic",
+                    "letter_spacing",
+                    "line_height",
+                    "text_case",
+                    "color",
+                    "highlight_color",
+                },
+                context="Template.style.typography",
+            )
+        for element, allowed in (
+            ("backdrop", {"type", "color", "size"}),
+            ("word_backdrop", {"type", "color", "size"}),
+            ("shadow", {"size"}),
+        ):
+            if element in data["style"]:
+                style[element] = _merge_sparse_object(
+                    expanded["style"][element],
+                    data["style"][element],
+                    allowed=allowed,
+                    context=f"Template.style.{element}",
+                )
+        expanded["style"] = style
+
+    if "layout" in data:
+        layout = _merge_sparse_object(
+            expanded["layout"],
+            data["layout"],
+            allowed={"position", "margins", "max_width", "max_height"},
+            context="Template.layout",
+        )
+        if "margins" in data["layout"]:
+            layout["margins"] = _merge_sparse_object(
+                expanded["layout"]["margins"],
+                data["layout"]["margins"],
+                allowed={"left", "right", "top", "bottom"},
+                context="Template.layout.margins",
+            )
+        expanded["layout"] = layout
+
+    if "animation" in data:
+        animation = _merge_sparse_object(
+            expanded["animation"],
+            data["animation"],
+            allowed={"cue", "word"},
+            context="Template.animation",
+        )
+        for scope in ("cue", "word"):
+            if scope not in data["animation"]:
+                continue
+            group = _merge_sparse_object(
+                expanded["animation"][scope],
+                data["animation"][scope],
+                allowed={"text", "backdrop"},
+                context=f"Template.animation.{scope}",
+            )
+            for element in ("text", "backdrop"):
+                if element not in data["animation"][scope]:
+                    continue
+                track_base = expanded["animation"][scope][element]
+                track = _merge_sparse_object(
+                    track_base,
+                    data["animation"][scope][element],
+                    allowed=(
+                        {"mode", "entrance", "emphasis", "exit"}
+                        if scope == "word"
+                        else {"entrance", "emphasis", "exit"}
+                    ),
+                    context=f"Template.animation.{scope}.{element}",
+                )
+                for phase_name in ("entrance", "emphasis", "exit"):
+                    if phase_name in data["animation"][scope][element]:
+                        track[phase_name] = _merge_sparse_phase(
+                            track_base[phase_name],
+                            data["animation"][scope][element][phase_name],
+                            context=(
+                                f"Template.animation.{scope}.{element}.{phase_name}"
+                            ),
+                        )
+                group[element] = track
+            animation[scope] = group
+        expanded["animation"] = animation
+    return expanded
+
+
+def _load_sparse_template(
+    resource: Any, expected_name: str, *, data: dict[str, Any] | None = None
+) -> SubtitleTemplate:
+    if data is None:
+        data = _read_json(resource)
+    expanded = _expand_sparse_template_data(data, expected_name=expected_name)
+    return _load_complete_template(
+        resource,
+        expected_name,
+        schema_version=_TEMPLATE_SCHEMA_VERSION,
+        data=expanded,
+    )
+
+
+def _load_template(
+    resource: Any, expected_name: str, *, schema_version: int | None = None
+) -> SubtitleTemplate:
+    """Load a legacy complete resource or a schema-5 sparse resource."""
+    data = _read_json(resource)
+    version = data.get("schema_version") if schema_version is None else schema_version
+    if schema_version is not None:
+        _expect_schema_version(
+            data.get("schema_version"),
+            context=f"Template '{resource.name}'",
+            expected=schema_version,
+        )
+    if version == _TEMPLATE_SCHEMA_VERSION:
+        return _load_sparse_template(resource, expected_name, data=data)
+    if version == _LEGACY_TEMPLATE_SCHEMA_VERSION:
+        return _load_complete_template(
+            resource,
+            expected_name,
+            schema_version=_LEGACY_TEMPLATE_SCHEMA_VERSION,
+            data=data,
+        )
+    _expect_schema_version(
+        data.get("schema_version"), context=f"Template '{resource.name}'"
+    )
+    raise AssertionError("unreachable")
+
+
 def _load_animation_phase(value: Any, *, context: str) -> tuple[str, int | None]:
     phase = _expect_object(value, context=context)
     phase_type_name = _expect_string(phase.get("type"), context=f"{context}.type")
@@ -360,7 +660,15 @@ def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:
         root = resources.files("multisubs").joinpath("assets").joinpath("templates")
     index = _read_json(root.joinpath(_INDEX_RESOURCE))
     _expect_keys(index, {"schema_version", "templates"}, context="Template index")
-    _expect_schema_version(index["schema_version"], context="Template index")
+    index_version = index["schema_version"]
+    if type(index_version) is not int or index_version not in (
+        _LEGACY_TEMPLATE_SCHEMA_VERSION,
+        _TEMPLATE_SCHEMA_VERSION,
+    ):
+        raise TemplateError(
+            "Template index must use schema_version "
+            f"{_LEGACY_TEMPLATE_SCHEMA_VERSION} or {_TEMPLATE_SCHEMA_VERSION}"
+        )
     filenames = index["templates"]
     if type(filenames) is not list:
         raise TemplateError("Template index.templates must be a JSON array")
@@ -407,7 +715,11 @@ def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:
         )
 
     templates = tuple(
-        _load_template(root.joinpath(filename), filename.removesuffix(".json"))
+        _load_template(
+            root.joinpath(filename),
+            filename.removesuffix(".json"),
+            schema_version=index_version,
+        )
         for filename in checked_filenames
     )
     names = tuple(template.name for template in templates)

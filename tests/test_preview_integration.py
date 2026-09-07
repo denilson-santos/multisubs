@@ -158,7 +158,7 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
         "--preview-text",
         "One, two, three four",
         "--template",
-        "word-focus",
+        "focus-marker",
     ]
     request = cli._build_request(parser.parse_args(arguments), parser)
 
@@ -342,7 +342,7 @@ def test_fragmented_words_preserve_unfragmented_libass_spacing(tmp_path: Path):
         "--preview-text",
         "Example subtitle",
         "--template",
-        "impact-yellow",
+        "golden-title",
     ]
     fragmented_request = cli._build_request(
         parser.parse_args([*common, "-o", str(tmp_path / "fragmented")]), parser
@@ -470,7 +470,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
             assert image.size == canvas
             assert image.format == "PNG"
 
-    active_output_dir = tmp_path / "neon-karaoke-active-word"
+    active_output_dir = tmp_path / "amber-word-active-word"
     active_arguments = [
         "-i",
         str(input_path),
@@ -482,7 +482,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
         "--preview-text",
         "Primeira palavra destacada no modo ativo",
         "--template",
-        "neon-karaoke",
+        "amber-word",
         "--animation-word-text-mode",
         "active-word",
     ]

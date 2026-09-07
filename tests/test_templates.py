@@ -67,270 +67,86 @@ EXPECTED_TEMPLATES = {
         None,
         None,
     ),
-    "clean-outline": (
+    "studio-outline": (
         "Inter",
         FontWeight.MEDIUM,
         False,
-        "4%",
+        "3.4%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
         SubtitleBackdrop.OUTLINE,
-        "#000000CC",
-        "5%",
+        "#111827",
+        "4%",
         "0px",
         "0px",
         SubtitlePosition.BOTTOM_CENTER,
-        "14%",
-        "14%",
+        "10%",
+        "10%",
         "0%",
         "3%",
         "100%",
-        "14%",
+        "6%",
         None,
         None,
     ),
-    "social-bold": (
+    "bold-headline": (
         "Montserrat",
         FontWeight.EXTRA_BOLD,
         False,
-        "5%",
+        "3.8%",
         "#FFFFFF",
         "100%",
         TextCase.UPPERCASE,
         SubtitleBackdrop.OUTLINE,
-        "#000000E6",
-        "8%",
-        "3%",
+        "#111827",
+        "7%",
         "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "8%",
-        "8%",
+        "0px",
+        SubtitlePosition.CENTER,
+        "10%",
+        "10%",
         "0%",
         "3%",
         "100%",
-        "22%",
-        None,
-        None,
-    ),
-    "classic-yellow": (
-        "Roboto",
-        FontWeight.BOLD,
-        False,
-        "4.2%",
-        "#FFD54F",
-        "100%",
-        TextCase.ORIGINAL,
-        SubtitleBackdrop.OUTLINE,
-        "#000000E6",
         "6%",
-        "3%",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "12%",
-        "12%",
-        "0%",
-        "3%",
-        "100%",
-        "16%",
         None,
         None,
     ),
-    "newsroom": (
-        "Oswald",
-        FontWeight.SEMI_BOLD,
-        False,
-        "4.2%",
-        "#FFFFFF",
-        "100%",
-        TextCase.UPPERCASE,
-        SubtitleBackdrop.BOX,
-        "#0B1F3ACC",
-        "8%",
-        "0px",
-        "1%",
-        SubtitlePosition.BOTTOM_LEFT,
-        "5%",
-        "35%",
-        "0%",
-        "3%",
-        "100%",
-        "16%",
-        None,
-        None,
-    ),
-    "editorial": (
-        "Lora",
-        FontWeight.SEMI_BOLD,
-        True,
-        "4%",
-        "#FFF8E7",
-        "95%",
-        TextCase.ORIGINAL,
-        SubtitleBackdrop.OUTLINE,
-        "#111111CC",
-        "4%",
-        "3%",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "16%",
-        "16%",
-        "0%",
-        "3%",
-        "100%",
-        "15%",
-        None,
-        None,
-    ),
-    "high-contrast": (
+    "podcast-panel": (
         "Atkinson Hyperlegible Next",
-        FontWeight.BOLD,
-        False,
-        "4.3%",
-        "#000000",
-        "100%",
-        TextCase.ORIGINAL,
-        SubtitleBackdrop.BOX,
-        "#FFD600FF",
-        "10%",
-        "0px",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "10%",
-        "10%",
-        "0%",
-        "3%",
-        "100%",
-        "18%",
-        None,
-        None,
-    ),
-    "neon-karaoke": (
-        "Montserrat",
-        FontWeight.BOLD,
-        False,
-        "5%",
-        "#FFFFFF",
-        "100%",
-        TextCase.ORIGINAL,
-        SubtitleBackdrop.OUTLINE,
-        "#080012E6",
-        "7%",
-        "5%",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "8%",
-        "8%",
-        "0%",
-        "3%",
-        "100%",
-        "20%",
-        WordAnimationMode.PROGRESSIVE,
-        "#00F5D4",
-    ),
-    "cinematic-fade": (
-        "Lora",
-        FontWeight.SEMI_BOLD,
-        True,
-        "4.2%",
-        "#FFF4E6",
-        "95%",
-        TextCase.ORIGINAL,
-        SubtitleBackdrop.OUTLINE,
-        "#111111D9",
-        "4%",
-        "2%",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "15%",
-        "15%",
-        "0%",
-        "3%",
-        "100%",
-        "16%",
-        None,
-        None,
-    ),
-    "impact-yellow": (
-        "Montserrat",
-        FontWeight.BLACK,
-        False,
-        "5.2%",
-        "#FFD60A",
-        "100%",
-        TextCase.UPPERCASE,
-        SubtitleBackdrop.OUTLINE,
-        "#000000E6",
-        "8%",
-        "4%",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "8%",
-        "8%",
-        "0%",
-        "3%",
-        "100%",
-        "22%",
-        None,
-        None,
-    ),
-    "lower-third-slide": (
-        "Oswald",
-        FontWeight.SEMI_BOLD,
-        False,
-        "4.1%",
-        "#FFFFFF",
-        "100%",
-        TextCase.UPPERCASE,
-        SubtitleBackdrop.BOX,
-        "#0B1F3AE6",
-        "7%",
-        "0px",
-        "0px",
-        SubtitlePosition.BOTTOM_LEFT,
-        "5%",
-        "38%",
-        "0%",
-        "3%",
-        "100%",
-        "16%",
-        None,
-        None,
-    ),
-    "soft-zoom": (
-        "Inter",
         FontWeight.MEDIUM,
         False,
-        "4.3%",
-        "#F8FAFC",
-        "100%",
-        TextCase.ORIGINAL,
-        SubtitleBackdrop.OUTLINE,
-        "#111827CC",
-        "4%",
-        "2%",
-        "0px",
-        SubtitlePosition.BOTTOM_CENTER,
-        "14%",
-        "14%",
-        "0%",
-        "3%",
-        "100%",
-        "16%",
-        None,
-        None,
-    ),
-    "word-focus": (
-        "Atkinson Hyperlegible Next",
-        FontWeight.BOLD,
-        False,
-        "4.5%",
+        "3.2%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
         SubtitleBackdrop.BOX,
         "#111827D9",
-        "8%",
+        "18%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_LEFT,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "9%",
+        None,
+        None,
+    ),
+    "serif-quote": (
+        "Lora",
+        FontWeight.MEDIUM,
+        True,
+        "3.4%",
+        "#FFF8ED",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "4%",
         "0px",
         "0px",
         SubtitlePosition.BOTTOM_CENTER,
@@ -339,69 +155,507 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "18%",
+        "9%",
+        None,
+        None,
+    ),
+    "amber-word": (
+        "Inter",
+        FontWeight.SEMI_BOLD,
+        False,
+        "3.4%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "6%",
+        WordAnimationMode.ACTIVE_WORD,
+        "#FFD54F",
+    ),
+    "mint-progress": (
+        "Montserrat",
+        FontWeight.MEDIUM,
+        False,
+        "3.3%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.BOX,
+        "#111827D9",
+        "15%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "6%",
+        WordAnimationMode.PROGRESSIVE,
+        "#A7F3D0",
+    ),
+    "paper-label": (
+        "Roboto",
+        FontWeight.MEDIUM,
+        False,
+        "3.2%",
+        "#111827",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.BOX,
+        "#FFF8EDFF",
+        "20%",
+        "0px",
+        "0px",
+        SubtitlePosition.TOP_LEFT,
+        "10%",
+        "10%",
+        "12%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "focus-marker": (
+        "Atkinson Hyperlegible Next",
+        FontWeight.BOLD,
+        False,
+        "3.4%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "4%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "6%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
+    ),
+    "soft-shadow": (
+        "Lora",
+        FontWeight.SEMI_BOLD,
+        False,
+        "3.5%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.NONE,
+        "#111827CC",
+        "25%",
+        "4%",
+        "0px",
+        SubtitlePosition.TOP_CENTER,
+        "10%",
+        "10%",
+        "12%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "golden-title": (
+        "Oswald",
+        FontWeight.BOLD,
+        False,
+        "3.6%",
+        "#FACC15",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "6%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_LEFT,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "sage-serif": (
+        "Lora",
+        FontWeight.REGULAR,
+        False,
+        "3.4%",
+        "#BBF7D0",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.TOP_RIGHT,
+        "10%",
+        "10%",
+        "12%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "crimson-banner": (
+        "Oswald",
+        FontWeight.MEDIUM,
+        False,
+        "3.3%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.BOX,
+        "#991B1BFF",
+        "18%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_RIGHT,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "lemon-card": (
+        "Inter",
+        FontWeight.SEMI_BOLD,
+        False,
+        "3.2%",
+        "#111827",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.BOX,
+        "#FDE68AFF",
+        "20%",
+        "0px",
+        "0px",
+        SubtitlePosition.TOP_CENTER,
+        "10%",
+        "10%",
+        "12%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "emerald-word": (
+        "Roboto",
+        FontWeight.BOLD,
+        False,
+        "3.4%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_RIGHT,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "100%",
+        "6%",
+        None,
+        None,
+    ),
+    "kinetic-lime": (
+        "Montserrat",
+        FontWeight.BOLD,
+        False,
+        "3.4%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        WordAnimationMode.ACTIVE_WORD,
+        "#D9F99D",
+    ),
+    "cobalt-pop": (
+        "Inter",
+        FontWeight.EXTRA_BOLD,
+        False,
+        "3.5%",
+        "#FFFFFF",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.BOX,
+        "#1E40AFFF",
+        "18%",
+        "0px",
+        "0px",
+        SubtitlePosition.CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "3%",
+        "90%",
+        "6%",
+        None,
+        None,
+    ),
+    "coral-marker": (
+        "Roboto",
+        FontWeight.SEMI_BOLD,
+        False,
+        "3.3%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "4%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_LEFT,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        WordAnimationMode.ACTIVE_WORD,
+        "#111827",
+    ),
+    "editorial-reveal": (
+        "Lora",
+        FontWeight.SEMI_BOLD,
+        True,
+        "3.4%",
+        "#FFF8ED",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "4%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        None,
+        None,
+    ),
+    "headline-bounce": (
+        "Oswald",
+        FontWeight.SEMI_BOLD,
+        False,
+        "3.5%",
+        "#FDE68A",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "6%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_RIGHT,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        None,
+        None,
+    ),
+    "yellow-pop": (
+        "Montserrat",
+        FontWeight.EXTRA_BOLD,
+        False,
+        "3.4%",
+        "#FFFFFF",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        WordAnimationMode.ACTIVE_WORD,
+        "#FBE003",
+    ),
+    "yellow-trace": (
+        "Inter",
+        FontWeight.MEDIUM,
+        False,
+        "3.3%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.BOX,
+        "#111827FF",
+        "15%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_LEFT,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        WordAnimationMode.PROGRESSIVE,
+        "#FBE003",
+    ),
+    "neon-lime-marker": (
+        "Oswald",
+        FontWeight.MEDIUM,
+        False,
+        "3.4%",
+        "#FFFFFF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "4%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_CENTER,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        WordAnimationMode.ACTIVE_WORD,
+        "#111827",
+    ),
+    "neon-cyan-reveal": (
+        "Atkinson Hyperlegible Next",
+        FontWeight.BOLD,
+        False,
+        "3.3%",
+        "#00F5FF",
+        "100%",
+        TextCase.ORIGINAL,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_LEFT,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        None,
+        None,
+    ),
+    "neon-magenta-pulse": (
+        "Roboto",
+        FontWeight.BOLD,
+        False,
+        "3.4%",
+        "#FF4FD8",
+        "100%",
+        TextCase.UPPERCASE,
+        SubtitleBackdrop.OUTLINE,
+        "#111827",
+        "5%",
+        "0px",
+        "0px",
+        SubtitlePosition.BOTTOM_RIGHT,
+        "10%",
+        "10%",
+        "0%",
+        "12%",
+        "90%",
+        "6%",
+        None,
+        None,
     ),
 }
 
 EXPECTED_ANIMATIONS = {
     **{
         name: ("none", 0, "none", 0, "none", 0, "none", 0, "none", 0, None, "none", 0)
-        for name in tuple(EXPECTED_TEMPLATES)[:7]
+        for name in (
+            "default",
+            "studio-outline",
+            "podcast-panel",
+            "soft-shadow",
+            "golden-title",
+            "lemon-card",
+            "emerald-word",
+        )
     },
-    "neon-karaoke": (
+    "bold-headline": (
+        "pop",
+        120,
+        "none",
+        0,
+        "fade",
+        100,
         "none",
         0,
         "none",
         0,
-        "none",
-        0,
-        "none",
-        0,
-        "highlight",
-        0,
-        WordAnimationMode.PROGRESSIVE,
+        None,
         "none",
         0,
     ),
-    "cinematic-fade": (
-        "fade",
-        220,
-        "none",
-        0,
+    "serif-quote": (
         "fade",
         180,
         "none",
         0,
-        "none",
-        0,
-        None,
-        "none",
-        0,
-    ),
-    "impact-yellow": (
-        "pop",
-        220,
-        "none",
-        0,
         "fade",
-        100,
-        "none",
-        0,
-        "bounce",
-        240,
-        None,
-        "none",
-        0,
-    ),
-    "lower-third-slide": (
-        "slide-right",
-        220,
-        "none",
-        0,
-        "fade",
-        100,
+        140,
         "none",
         0,
         "none",
@@ -410,22 +664,7 @@ EXPECTED_ANIMATIONS = {
         "none",
         0,
     ),
-    "soft-zoom": (
-        "zoom",
-        220,
-        "float",
-        900,
-        "fade",
-        120,
-        "none",
-        0,
-        "none",
-        0,
-        None,
-        "none",
-        0,
-    ),
-    "word-focus": (
+    "sage-serif": (
         "fade",
         160,
         "none",
@@ -434,9 +673,234 @@ EXPECTED_ANIMATIONS = {
         120,
         "none",
         0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "crimson-banner": (
+        "fade",
+        140,
+        "none",
+        0,
+        "fade",
+        100,
+        "none",
+        0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "paper-label": (
+        "slide-right",
+        160,
+        "none",
+        0,
+        "fade",
+        120,
+        "none",
+        0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "amber-word": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
         "highlight",
         0,
         WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
+    ),
+    "mint-progress": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.PROGRESSIVE,
+        "none",
+        0,
+    ),
+    "focus-marker": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
+    ),
+    "kinetic-lime": (
+        "slide-up",
+        180,
+        "none",
+        0,
+        "fade",
+        120,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
+    ),
+    "cobalt-pop": (
+        "pop",
+        180,
+        "none",
+        0,
+        "zoom",
+        140,
+        "none",
+        0,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "coral-marker": (
+        "fade",
+        140,
+        "none",
+        0,
+        "fade",
+        120,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
+    ),
+    "editorial-reveal": (
+        "zoom",
+        200,
+        "none",
+        0,
+        "fade",
+        160,
+        "fade",
+        100,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "headline-bounce": (
+        "fade",
+        120,
+        "none",
+        0,
+        "slide-down",
+        160,
+        "none",
+        0,
+        "bounce",
+        420,
+        None,
+        "none",
+        0,
+    ),
+    "yellow-pop": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "pop",
+        120,
+        "highlight",
+        0,
+        WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
+    ),
+    "yellow-trace": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.PROGRESSIVE,
+        "none",
+        0,
+    ),
+    "neon-lime-marker": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "highlight",
+        0,
+        WordAnimationMode.ACTIVE_WORD,
+        "none",
+        0,
+    ),
+    "neon-cyan-reveal": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "slide-up",
+        120,
+        "none",
+        0,
+        None,
+        "none",
+        0,
+    ),
+    "neon-magenta-pulse": (
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "none",
+        0,
+        "pulse",
+        400,
+        None,
         "none",
         0,
     ),
@@ -506,39 +970,127 @@ def _rewrite_json(path: Path, transform) -> None:
 def test_registry_has_stable_order_and_immutable_templates():
     assert DEFAULT_SUBTITLE_TEMPLATE == "default"
     assert TEMPLATE_CHOICES == tuple(EXPECTED_TEMPLATES)
+    assert len(TEMPLATE_CHOICES) == 25
     assert tuple(template.name for template in SUBTITLE_TEMPLATES) == TEMPLATE_CHOICES
     assert len(set(TEMPLATE_CHOICES)) == len(TEMPLATE_CHOICES)
     assert all(hash(template) for template in SUBTITLE_TEMPLATES)
 
 
-def test_packaged_catalog_has_complete_deterministic_inventory():
+def test_packaged_catalog_has_sparse_deterministic_inventory():
     root = Path(template_catalog.__file__).parent / "assets" / "templates"
     index = json.loads((root / "index.json").read_text(encoding="utf-8"))
 
     assert index == {
-        "schema_version": 4,
+        "schema_version": 5,
         "templates": [f"{name}.json" for name in EXPECTED_TEMPLATES],
     }
     assert {path.name for path in root.glob("*.json")} == {
         "index.json",
         *index["templates"],
     }
+    assert json.loads((root / "default.json").read_text(encoding="utf-8")) == {
+        "schema_version": 5,
+        "name": "default",
+        "description": (
+            "Current general-purpose white captions on a translucent black box."
+        ),
+    }
+
+
+def test_schema4_complete_resources_remain_readable(tmp_path: Path):
+    root = tmp_path / "templates"
+    root.mkdir()
+    legacy = template_catalog._default_template_data()
+    legacy["schema_version"] = 4
+    legacy["description"] = "Legacy complete default resource."
+    (root / "default.json").write_text(json.dumps(legacy), encoding="utf-8")
+    (root / "index.json").write_text(
+        json.dumps({"schema_version": 4, "templates": ["default.json"]}),
+        encoding="utf-8",
+    )
+
+    templates = template_catalog._load_template_catalog(root)
+
+    assert len(templates) == 1
+    assert templates[0].config == validate_subtitle_config(None)
+
+
+def test_catalog_requires_matching_resource_schema_version(tmp_path: Path):
+    root = _copy_template_catalog(tmp_path)
+    index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+    index["schema_version"] = 4
+    (root / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    with pytest.raises(TemplateError, match="schema_version 4"):
+        template_catalog._load_template_catalog(root)
+
+
+def test_sparse_and_expanded_resources_have_equal_runtime_config(tmp_path: Path):
+    root = _copy_template_catalog(tmp_path)
+    sparse_path = root / "studio-outline.json"
+    sparse_data = json.loads(sparse_path.read_text(encoding="utf-8"))
+    expanded_data = template_catalog._expand_sparse_template_data(
+        sparse_data, expected_name="studio-outline"
+    )
+    expanded_path = root / "expanded.json"
+    expanded_data["name"] = "expanded"
+    expanded_data["description"] = "Expanded equivalent."
+    expanded_path.write_text(json.dumps(expanded_data), encoding="utf-8")
+    index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+    index["templates"].append("expanded.json")
+    (root / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    loaded = template_catalog._load_template_catalog(root)
+
+    assert loaded[-1].config == loaded[1].config
 
 
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
+        (lambda payload: payload.pop("description"), "missing field"),
         (
-            lambda payload: payload["style"]["typography"].update(
-                {"unexpected": "value"}
+            lambda payload: (
+                payload.setdefault("animation", {})
+                .setdefault("word", {})
+                .setdefault("text", {})
+                .update({"emphasis": {}})
             ),
-            "unknown field",
-        ),
-        (
-            lambda payload: payload["animation"]["cue"]["text"].pop("exit"),
             "missing field",
         ),
         (
+            lambda payload: payload.update({"schema_version": 99}),
+            "schema_version 5",
+        ),
+    ],
+)
+def test_sparse_resources_reject_missing_identity_and_invalid_versions(
+    tmp_path: Path, mutate, message: str
+):
+    root = _copy_template_catalog(tmp_path)
+    _rewrite_json(root / "studio-outline.json", mutate)
+
+    with pytest.raises(TemplateError, match=message):
+        template_catalog._load_template_catalog(root)
+
+
+@pytest.mark.parametrize(
+    ("filename", "mutate", "message"),
+    [
+        (
+            "studio-outline.json",
+            lambda payload: payload["style"].update({"unexpected": "value"}),
+            "unknown field",
+        ),
+        (
+            "studio-outline.json",
+            lambda payload: payload.update(
+                {"animation": {"cue": {"text": {"entrance": {}}}}}
+            ),
+            "missing field",
+        ),
+        (
+            "studio-outline.json",
             lambda payload: payload["style"]["typography"].update(
                 {"font_size": "invalid"}
             ),
@@ -547,10 +1099,10 @@ def test_packaged_catalog_has_complete_deterministic_inventory():
     ],
 )
 def test_catalog_rejects_invalid_template_resources(
-    tmp_path: Path, mutate, message: str
+    tmp_path: Path, filename: str, mutate, message: str
 ):
     root = _copy_template_catalog(tmp_path)
-    _rewrite_json(root / "default.json", mutate)
+    _rewrite_json(root / filename, mutate)
 
     with pytest.raises(TemplateError, match=message):
         template_catalog._load_template_catalog(root)
@@ -567,6 +1119,17 @@ def test_catalog_rejects_duplicate_index_entries(tmp_path: Path):
         template_catalog._load_template_catalog(root)
 
 
+@pytest.mark.parametrize("version", [[], {}])
+def test_catalog_rejects_unhashable_index_schema_version(tmp_path: Path, version):
+    root = _copy_template_catalog(tmp_path)
+    _rewrite_json(
+        root / "index.json", lambda payload: payload.update({"schema_version": version})
+    )
+
+    with pytest.raises(TemplateError, match="Template index must use schema_version"):
+        template_catalog._load_template_catalog(root)
+
+
 def test_catalog_rejects_unindexed_resources(tmp_path: Path):
     root = _copy_template_catalog(tmp_path)
     shutil.copyfile(root / "default.json", root / "unindexed.json")
@@ -578,7 +1141,7 @@ def test_catalog_rejects_unindexed_resources(tmp_path: Path):
 def test_catalog_rejects_duplicate_json_keys(tmp_path: Path):
     root = _copy_template_catalog(tmp_path)
     (root / "index.json").write_text(
-        '{"schema_version": 4, "schema_version": 4, "templates": []}',
+        '{"schema_version": 5, "schema_version": 5, "templates": []}',
         encoding="utf-8",
     )
 
@@ -616,15 +1179,21 @@ def test_template_has_exact_documented_baseline_and_bundled_face(name: str):
         word.exit.type.value,
         word.exit.duration_ms,
     ) == EXPECTED_ANIMATIONS[name]
-    if cue.enabled:
+    if cue.enabled and config.animation.cue.backdrop.enabled:
         assert config.animation.cue.backdrop == cue
     expected_word_backdrop = (
         ("box", "#FFD54F", "12%")
-        if name == "word-focus"
+        if name == "focus-marker"
+        else ("box", "#166534FF", "12%")
+        if name == "emerald-word"
+        else ("box", "#FDA4AFFF", "14%")
+        if name == "coral-marker"
+        else ("box", "#39FF14FF", "12%")
+        if name == "neon-lime-marker"
         else (
             "none",
             "#111827E6",
-            "25%" if name == "default" else "12%",
+            "25%",
         )
     )
     assert (
@@ -639,6 +1208,58 @@ def test_template_has_exact_documented_baseline_and_bundled_face(name: str):
         and face.italic is config.style.typography.italic
         for face in family.faces
     )
+
+
+def test_choreographed_word_tracks_keep_their_declared_modes_and_phases():
+    kinetic = get_subtitle_template("kinetic-lime").config.animation
+    assert kinetic.word.text.mode is WordAnimationMode.ACTIVE_WORD
+    assert kinetic.word.text.emphasis.type.value == "highlight"
+    assert kinetic.word.backdrop.enabled is False
+
+    coral = get_subtitle_template("coral-marker").config.animation
+    assert coral.word.text.mode is WordAnimationMode.ACTIVE_WORD
+    assert coral.word.text.emphasis.type.value == "highlight"
+    assert coral.word.backdrop.mode is WordAnimationMode.ACTIVE_WORD
+    assert coral.word.backdrop.entrance.type.value == "fade"
+    assert coral.word.backdrop.entrance.duration_ms == 70
+    assert coral.word.backdrop.exit.type.value == "fade"
+    assert coral.word.backdrop.exit.duration_ms == 70
+
+    editorial = get_subtitle_template("editorial-reveal").config.animation
+    assert editorial.word.text.mode is WordAnimationMode.PROGRESSIVE
+    assert editorial.word.text.entrance.type.value == "fade"
+    assert editorial.word.text.entrance.duration_ms == 100
+
+    headline = get_subtitle_template("headline-bounce").config.animation
+    assert headline.word.text.emphasis.type.value == "bounce"
+    assert headline.word.text.emphasis.duration_ms == 420
+
+    yellow_pop = get_subtitle_template("yellow-pop").config.animation
+    assert yellow_pop.word.text.mode is WordAnimationMode.ACTIVE_WORD
+    assert yellow_pop.word.text.entrance.type.value == "pop"
+    assert yellow_pop.word.text.entrance.duration_ms == 120
+    assert yellow_pop.word.text.emphasis.type.value == "highlight"
+
+    yellow_trace = get_subtitle_template("yellow-trace").config.animation
+    assert yellow_trace.word.text.mode is WordAnimationMode.PROGRESSIVE
+    assert yellow_trace.word.text.emphasis.type.value == "highlight"
+
+    neon_marker = get_subtitle_template("neon-lime-marker").config.animation
+    assert neon_marker.word.backdrop.mode is WordAnimationMode.ACTIVE_WORD
+    assert neon_marker.word.backdrop.entrance.type.value == "zoom"
+    assert neon_marker.word.backdrop.entrance.duration_ms == 100
+    assert neon_marker.word.backdrop.exit.type.value == "fade"
+    assert neon_marker.word.backdrop.exit.duration_ms == 70
+
+    cyan_reveal = get_subtitle_template("neon-cyan-reveal").config.animation
+    assert cyan_reveal.word.text.mode is WordAnimationMode.PROGRESSIVE
+    assert cyan_reveal.word.text.entrance.type.value == "slide-up"
+    assert cyan_reveal.word.text.entrance.duration_ms == 120
+
+    magenta_pulse = get_subtitle_template("neon-magenta-pulse").config.animation
+    assert magenta_pulse.word.text.mode is WordAnimationMode.ACTIVE_WORD
+    assert magenta_pulse.word.text.emphasis.type.value == "pulse"
+    assert magenta_pulse.word.text.emphasis.duration_ms == 400
 
 
 def test_default_template_reuses_authoritative_default_configuration():
@@ -716,11 +1337,11 @@ def test_parser_exposes_only_the_template_option(tmp_path: Path):
 def test_explicit_appearance_and_layout_fields_override_only_their_fields(
     tmp_path: Path,
 ):
-    baseline = get_subtitle_template("editorial").config
+    baseline = get_subtitle_template("serif-quote").config
     request = _build_request(
         tmp_path,
         "--template",
-        "editorial",
+        "serif-quote",
         "--font",
         "Inter",
         "--font-weight",
@@ -792,11 +1413,11 @@ def test_explicit_appearance_and_layout_fields_override_only_their_fields(
 
 
 def test_single_override_preserves_unrelated_template_values(tmp_path: Path):
-    baseline = get_subtitle_template("social-bold").config
+    baseline = get_subtitle_template("bold-headline").config
     request = _build_request(
         tmp_path,
         "--template",
-        "social-bold",
+        "bold-headline",
         "--text-color",
         "#00FF00",
     )
@@ -817,7 +1438,7 @@ def test_single_override_preserves_unrelated_template_values(tmp_path: Path):
 def test_bold_shorthand_overrides_template_weight(
     tmp_path: Path, flag: str, expected: FontWeight
 ):
-    request = _build_request(tmp_path, "--template", "social-bold", flag)
+    request = _build_request(tmp_path, "--template", "bold-headline", flag)
 
     assert request.subtitle_config.style.typography.font_weight is expected
     assert request.subtitle_config.style.typography.font == "Montserrat"
@@ -830,7 +1451,7 @@ def test_custom_fonts_directory_is_compatible_with_template(tmp_path: Path):
     request = _build_request(
         tmp_path,
         "--template",
-        "editorial",
+        "serif-quote",
         "--fonts-dir",
         str(fonts_dir),
     )
@@ -846,7 +1467,7 @@ def test_template_margin_is_not_treated_as_explicit_after_position_override(
     request = _build_request(
         tmp_path,
         "--template",
-        "newsroom",
+        "podcast-panel",
         "--position",
         "top-left",
     )
@@ -860,7 +1481,7 @@ def test_explicit_inactive_template_margin_is_rejected(tmp_path: Path):
         _build_request(
             tmp_path,
             "--template",
-            "newsroom",
+            "podcast-panel",
             "--position",
             "top-left",
             "--margin-bottom",
@@ -877,7 +1498,7 @@ def test_template_envelope_does_not_satisfy_explicit_coordinate_requirements(
         _build_request(
             tmp_path,
             "--template",
-            "social-bold",
+            "bold-headline",
             "--position-x",
             "50%",
             "--position-y",
@@ -889,11 +1510,11 @@ def test_template_envelope_does_not_satisfy_explicit_coordinate_requirements(
     assert error.value.code == 2
 
 
-def test_neon_template_effects_can_be_overridden_or_disabled(tmp_path: Path):
+def test_progressive_template_effects_can_be_overridden_or_disabled(tmp_path: Path):
     active = _build_request(
         tmp_path,
         "--template",
-        "neon-karaoke",
+        "mint-progress",
         "--animation-word-text-mode",
         "active-word",
         "--animation-word-text-highlight-color",
@@ -902,7 +1523,7 @@ def test_neon_template_effects_can_be_overridden_or_disabled(tmp_path: Path):
     disabled = _build_request(
         tmp_path,
         "--template",
-        "neon-karaoke",
+        "mint-progress",
         "--animation-word-text-emphasis",
         "none",
     )
@@ -923,7 +1544,7 @@ def test_highlight_color_is_invalid_when_emphasis_is_disabled(tmp_path: Path):
         _build_request(
             tmp_path,
             "--template",
-            "neon-karaoke",
+            "mint-progress",
             "--animation-word-text-emphasis",
             "none",
             "--animation-word-text-highlight-color=#FF00FF",
@@ -932,12 +1553,12 @@ def test_highlight_color_is_invalid_when_emphasis_is_disabled(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_neon_karaoke_rejects_translation(tmp_path: Path):
+def test_progressive_template_rejects_translation(tmp_path: Path):
     with pytest.raises(SystemExit) as error:
         _build_request(
             tmp_path,
             "--template",
-            "neon-karaoke",
+            "mint-progress",
             "--task",
             "translate",
             "--model",
@@ -947,11 +1568,11 @@ def test_neon_karaoke_rejects_translation(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_neon_karaoke_is_valid_for_preview(tmp_path: Path):
+def test_progressive_template_is_valid_for_preview(tmp_path: Path):
     request = _build_request(
         tmp_path,
         "--template",
-        "neon-karaoke",
+        "mint-progress",
         "--preview-layout",
     )
 
@@ -959,13 +1580,13 @@ def test_neon_karaoke_is_valid_for_preview(tmp_path: Path):
     assert request.subtitle_config.animation.word.uses_timed_highlight is True
 
 
-def test_disabling_word_emphasis_makes_neon_template_valid_for_translation(
+def test_disabling_word_emphasis_makes_progressive_template_valid_for_translation(
     tmp_path: Path,
 ):
     request = _build_request(
         tmp_path,
         "--template",
-        "neon-karaoke",
+        "mint-progress",
         "--animation-word-text-emphasis",
         "none",
         "--task",
@@ -982,12 +1603,12 @@ def test_preview_request_records_template_identity(tmp_path: Path):
         tmp_path,
         "--preview-layout",
         "--template",
-        "classic-yellow",
+        "golden-title",
     )
 
     assert isinstance(request, PreviewRequest)
-    assert request.subtitle_template_requested == "classic-yellow"
-    assert request.subtitle_template_resolved == "classic-yellow"
+    assert request.subtitle_template_requested == "golden-title"
+    assert request.subtitle_template_resolved == "golden-title"
 
 
 def test_json_records_template_identity_without_registry_or_asset_paths(tmp_path: Path):
@@ -1001,7 +1622,7 @@ def test_json_records_template_identity_without_registry_or_asset_paths(tmp_path
         full_text="Olá.",
         segments=({"id": 0, "start": 0.0, "end": 1.0, "text": "Olá.", "words": []},),
     )
-    template = get_subtitle_template("classic-yellow")
+    template = get_subtitle_template("golden-title")
 
     json_path, _, _ = transcriber.write_transcription_artifacts(
         document,
@@ -1016,8 +1637,8 @@ def test_json_records_template_identity_without_registry_or_asset_paths(tmp_path
     assert payload["schema_version"] == 3
     rendering = payload["metadata"]["rendering"]
     assert rendering["template"] == {
-        "requested": "classic-yellow",
-        "resolved": "classic-yellow",
+        "requested": "golden-title",
+        "resolved": "golden-title",
     }
     assert set(rendering["template"]) == {"requested", "resolved"}
     assert "assets/fonts" not in json.dumps(rendering)

@@ -1,0 +1,37 @@
+{
+  "schema_version": 5,
+  "name": "yellow-trace",
+  "description": "Progressive yellow word highlighting on a compact panel for tips and step-by-step clips.",
+  "style": {
+    "typography": {
+      "font_family": "Inter",
+      "font_weight": "medium",
+      "font_size": "3.3%",
+      "highlight_color": "#FBE003"
+    },
+    "backdrop": {
+      "color": "#111827FF",
+      "size": "15%"
+    }
+  },
+  "layout": {
+    "position": "bottom-left",
+    "margins": {
+      "left": "10%",
+      "right": "10%",
+      "bottom": "12%"
+    },
+    "max_width": "90%",
+    "max_height": "6%"
+  },
+  "animation": {
+    "word": {
+      "text": {
+        "mode": "progressive",
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  }
+}
