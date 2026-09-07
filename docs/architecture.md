@@ -59,7 +59,7 @@ flowchart LR
 | multisubs/ass.py | Compiles semantic appearance and cue/word animation into trusted private ASS fields and overrides around safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream, render one preview PNG, or encode a silent frozen-background animation preview. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
 | multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
-| multisubs/templates.py | Strictly loads the deterministic packaged JSON index and complete built-in style/layout/animation baselines, then compiles them through the normal semantic validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
+| multisubs/templates.py | Strictly loads the deterministic packaged JSON index and sparse built-in style/layout/animation definitions, expands them from semantic defaults, and compiles complete baselines through the normal validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, validates native or explicit envelopes, and positions measured visual-line fragments on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement(), position_visual_lines() |
 | multisubs/font_catalog.py | Loads the immutable bundled-font manifest, performs bounded family lookup, exposes unpacked package resources, and materializes only a selected family when required by the importer. | load_bundled_font_catalog(), bundled_font_directory(), verify_bundled_font_assets() |
 | multisubs/text_measurement.py | Resolves the nearest custom, bundled, or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
@@ -138,7 +138,13 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   one-line cue, and receives one lower-layer vector drawing for its complete
   text block. `auto` retains the native single dialogue event only for
   one-line cues without a cue box; a box always uses one shared vector
-  rectangle regardless of line count.
+  rectangle regardless of line count. The block retains the requested semantic
+  anchor, while each positioned line uses the corresponding middle-row ASS
+  alignment plus one shared offset derived from its visible font bounds. This
+  prevents baseline space from appearing as unequal top or bottom box padding.
+  A single-line cue is centered horizontally inside the measured surface;
+  multi-line cues retain the horizontal alignment selected by their block
+  position.
 - Preview models one frame of that sequence: it keeps only the first lexical
   group that fits the resolved width and line capacity, selecting the longest
   fitting prefix when semantic and orphan priorities are equivalent. It omits
@@ -361,9 +367,10 @@ line height, display case, text color, and optional timed-highlight text color.
 Raw ASS style mappings are rejected. `SubtitleConfig` stores a complete native
 presentation assembled from one built-in template baseline and explicit
 field-level overrides, or a complete explicit-coordinate envelope. The
-packaged `default.json` definition duplicates config.py's authoritative
-fixed defaults and is covered by exact equivalence tests, so omitted selection
-and explicit `default` cannot drift silently. templates.py contains no
+packaged `default.json` carries only identity metadata; the loader expands it
+from config.py's authoritative fixed defaults and covers the result with exact
+equivalence tests, so omitted selection and explicit `default` cannot drift
+silently. templates.py contains no
 hard-coded presentation registry; layout.py resolves the typed result without
 template-aware branches or aspect-ratio-dependent selection.
 
@@ -421,9 +428,12 @@ strikeout remain disabled; base style scale stays at 100%, angle stays at zero,
 and the resolved semantic letter spacing is written to ASS `Spacing`. `auto`
 line height does not add a custom baseline distance. A nonempty box cue or an
 explicit line height on a multi-line ordinary cue emits one event per visual
-line with trusted `\\an`/`\\pos` coordinates; the line positions use the natural
-first-line box and the requested baseline advance so the selected anchor
-remains fixed. Progressive word text may use
+line with trusted `\\an`/`\\pos` coordinates. For a cue or timed-word box,
+each line uses a middle-row alignment, a shared visible-bounds vertical offset,
+and the requested baseline advance, while the complete block keeps the selected
+semantic anchor fixed. Single-line cue boxes center text horizontally within
+their measured surface; other positioned lines retain their semantic alignment.
+Progressive word text may use
 synchronized interval events per visual line so word activation remains
 cue-relative. For `backdrop=box`, the text style is temporarily neutralized and
 one lower-layer `\\p1` rectangle uses the measured text bounds plus padding.
@@ -479,30 +489,32 @@ timing only; it cannot represent named or custom positioning.
 ## Internal template resources
 
 Built-in templates are package data under `multisubs/assets/templates`. One
-schema-version-4 `index.json` is the sole ordering authority and names each resource
-exactly once. Each indexed UTF-8 JSON file is a complete semantic baseline with
-`style`, `layout`, and `animation` branches. Style separates typography, cue
-backdrop, word backdrop, shadow, and opacity; layout stores native position, four margins, and
-the width/height envelope. Animation stores cue and word branches, each split
-into independent text and backdrop tracks with explicit `entrance`, `emphasis`,
-and `exit` objects; word tracks also store their mode. Text and highlight colors
-belong to typography, while word decoration type, color, and size belong to
-`style.word_backdrop`. A `none` or `highlight` phase contains only its type;
-motion phases also contain a validated `duration_ms`. The
-catalog contains thirteen templates: the original eight retain static phases
-except for `neon-karaoke` word-text highlighting, while
-`cinematic-fade`, `impact-yellow`, `lower-third-slide`, `soft-zoom`, and
-`word-focus` provide combinations of fade, pop, slide, zoom, float, bounce,
-highlight, and active-word decoration.
+schema-version-5 `index.json` is the sole ordering authority and names each of
+the twenty-five resources exactly once. Each indexed UTF-8 JSON file requires
+`schema_version`, `name`, and `description`; `style`, `layout`, and `animation`
+branches and their recognized nested fields are sparse. Omitted values inherit
+the authoritative semantic defaults from `config.py`. Style separates
+typography, cue backdrop, word backdrop, shadow, and opacity; layout stores
+native position, four margins, and the width/height envelope. Animation stores
+cue and word branches, each split into independent text and backdrop tracks;
+word tracks also store their mode. A supplied phase object contains a type and,
+for motion effects, an optional validated `duration_ms`. Text and highlight
+colors belong to typography, while word decoration type, color, and size belong
+to `style.word_backdrop`. The catalog contains `default` and twenty-four curated
+styles for social clips, podcasts, tutorials, and editorial work, including
+restrained yellow, green, red, lime, cobalt, coral, cyan, and magenta palettes
+plus coordinated cue and word animations.
 
 The loader uses `importlib.resources`, rejects malformed UTF-8/JSON, duplicate
 or unknown fields, unsupported schema versions, unsafe or duplicate filenames,
 index/directory drift, name/file mismatches, invalid types, and semantically
-invalid values. It performs no writes, network access, rendering, font loading,
-or model loading. Valid resources compile through `validate_subtitle_config()`
-into immutable runtime objects and may then be cached for the process. A
-damaged packaged catalog produces a concise `TemplateError` before probing or
-model loading; it never falls back to a different template.
+invalid values. It retains a strict schema-4 reader for complete historical
+fixtures while shipping only schema-5 sparse resources. It performs no writes,
+network access, rendering, font loading, or model loading. Valid resources
+normalize through `validate_subtitle_config()` into immutable complete runtime
+objects and may then be cached for the process. A damaged packaged catalog
+produces a concise `TemplateError` before probing or model loading; it never
+falls back to a different template.
 
 This template schema is private implementation data. It is not copied into
 retained transcription JSON and is not a user template or discovery interface.

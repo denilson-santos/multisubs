@@ -23,7 +23,7 @@ WhisperX must download model assets that are not already cached.
 | Feature | What it gives you |
 | --- | --- |
 | 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
-| 🧩 Ready-made templates | Thirteen built-in presentations for interviews, social video, news, editorial work, high contrast, animation, and karaoke. |
+| 🧩 Ready-made templates | Twenty-five built-in presentations for Reels, TikTok, Shorts, podcasts, tutorials, and editorial clips. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
 | 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
@@ -103,7 +103,7 @@ Select a complete presentation with one option:
 
 ```bash
 multisubs -i ./video.mp4 -l pt \
-  --template classic-yellow
+  --template golden-title
 ```
 
 The current Roboto Regular, white-on-translucent-black presentation remains the
@@ -112,7 +112,7 @@ its corresponding template field:
 
 ```bash
 multisubs -i ./video.mp4 -l pt \
-  --template social-bold \
+  --template bold-headline \
   --text-color '#B8FF5A' \
   --margin-bottom 10%
 ```
@@ -120,49 +120,72 @@ multisubs -i ./video.mp4 -l pt \
 | Template | Good for | Font | Main presentation |
 | --- | --- | --- | --- |
 | `default` | General use | Roboto Regular | White, original case, translucent black box, bottom-center. |
-| `clean-outline` | Interviews, courses, demos | Inter Medium | White with a clean dark outline and no shadow. |
-| `social-bold` | Reels, Shorts, social clips | Montserrat ExtraBold | Large uppercase white text, strong outline, wider vertical envelope. |
-| `classic-yellow` | Interviews, archives, documentaries | Roboto Bold | Yellow text with a strong dark outline. |
-| `newsroom` | Reports, explainers, updates | Oswald SemiBold | Compact uppercase box, bottom-left. |
-| `editorial` | Documentary and cultural material | Lora SemiBold Italic | Warm off-white serif text with a subtle outline. |
-| `high-contrast` | Maximum visual differentiation | Atkinson Hyperlegible Next Bold | Black text on an opaque yellow box. |
-| `neon-karaoke` | Energetic word-timed captions | Montserrat Bold | Large outlined text with progressive turquoise highlighting. |
-| `cinematic-fade` | Documentaries and cinematic scenes | Lora SemiBold Italic | Warm serif captions with gentle entrance and exit fades. |
-| `impact-yellow` | Reels, Shorts, calls to action | Montserrat Black | Uppercase yellow text with cue pop and aligned-word bounce. |
-| `lower-third-slide` | Reports, names, and concise facts | Oswald SemiBold | A compact lower-third box that slides in from the left. |
-| `soft-zoom` | Courses, interviews, polished social video | Inter Medium | Clean outlined text with restrained zoom and float. |
-| `word-focus` | Accessible word-following captions | Atkinson Hyperlegible Next Bold | High-contrast cue box, always-visible text, and an active yellow word box. |
+| `studio-outline` | Interviews, courses, demos | Inter Medium | White text with a clean dark outline, bottom-center. |
+| `bold-headline` | Reels, TikTok, Shorts hooks | Montserrat ExtraBold | Compact uppercase white headline with a measured pop. |
+| `podcast-panel` | Podcasts and longer interviews | Atkinson Hyperlegible Next Medium | White text on a dark two-line panel, bottom-left. |
+| `serif-quote` | Documentary and reflective clips | Lora Medium Italic | Warm italic serif text with a subtle outline and fade. |
+| `amber-word` | Explanations and speaking points | Inter SemiBold | Outlined text with an amber active-word highlight. |
+| `mint-progress` | Tips, steps, and demonstrations | Montserrat Medium | Dark panel with progressive mint word highlighting. |
+| `paper-label` | Editorial callouts and labels | Roboto Medium | Dark text on a warm paper card with a slide-in. |
+| `focus-marker` | Accessible educational captions | Atkinson Hyperlegible Next Bold | Outlined text with an amber active-word marker. |
+| `soft-shadow` | Calm narration and lifestyle clips | Lora SemiBold | White serif text with a soft shadow, top-center. |
+| `golden-title` | Concise topics and chapter titles | Oswald Bold | Golden uppercase text with a dark outline, bottom-left. |
+| `sage-serif` | Wellness and reflective narration | Lora Regular | Soft green serif text with a gentle fade, top-right. |
+| `crimson-banner` | Podcast takeaways and strong statements | Oswald Medium | White text on a compact crimson banner, bottom-right. |
+| `lemon-card` | Practical reminders and short tips | Inter SemiBold | Dark text on a soft yellow card, top-center. |
+| `emerald-word` | Word-led explainers | Roboto Bold | White outlined text with a deep green active-word box. |
+| `kinetic-lime` | Fast explanations and tutorials | Montserrat Bold | White outlined text with a lime active-word highlight, bottom-center. |
+| `cobalt-pop` | Hooks and strong statements | Inter ExtraBold | Uppercase white text on a cobalt panel with a coordinated pop. |
+| `coral-marker` | Advice and interview cuts | Roboto SemiBold | White outlined text with a coral active-word marker, bottom-left. |
+| `editorial-reveal` | Storytelling and reflective clips | Lora SemiBold Italic | Warm serif text that reveals words in order, bottom-center. |
+| `headline-bounce` | Energetic punchlines and takeaways | Oswald SemiBold | Uppercase yellow outlined text with a bounded active-word bounce. |
+| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | Uppercase outlined text with an exact `#FBE003` active-word pop. |
+| `yellow-trace` | Tips and step-by-step clips | Inter Medium | White text on a compact panel with progressive `#FBE003` highlighting. |
+| `neon-lime-marker` | Energetic explainers | Oswald Medium | Outlined text with a neon-lime active-word marker. |
+| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | Neon-cyan text with progressive slide-up word reveals. |
+| `neon-magenta-pulse` | Reactions and creator commentary | Roboto Bold | Uppercase neon-magenta text with an active-word pulse. |
 
 The exact template baselines are:
 
 | Template | Size and text | Backdrop | Native layout | Animation |
 | --- | --- | --- | --- | --- |
 | `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `25%`, shadow `0px` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
-| `clean-outline` | `4%`, `#FFFFFF`, original, `100%` | outline `#000000CC`, `5%`, shadow `0px` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`14%` | none |
-| `social-bold` | `5%`, `#FFFFFF`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `3%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | none |
-| `classic-yellow` | `4.2%`, `#FFD54F`, original, `100%` | outline `#000000E6`, `6%`, shadow `3%` | bottom-center; L/R `12%`, B `3%`, W/H `100%`/`16%` | none |
-| `newsroom` | `4.2%`, `#FFFFFF`, uppercase, `100%`, spacing `1%` | box `#0B1F3ACC`, `8%`, shadow `0px` | bottom-left; L `5%`, R `35%`, B `3%`, W/H `100%`/`16%` | none |
-| `editorial` | `4%`, `#FFF8E7`, original, `95%` | outline `#111111CC`, `4%`, shadow `3%` | bottom-center; L/R `16%`, B `3%`, W/H `100%`/`15%` | none |
-| `high-contrast` | `4.3%`, `#000000`, original, `100%` | box `#FFD600FF`, `10%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` | none |
-| `neon-karaoke` | `5%`, `#FFFFFF`, original, `100%` | outline `#080012E6`, `7%`, shadow `5%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`20%` | progressive word highlight |
-| `cinematic-fade` | `4.2%`, `#FFF4E6`, italic, `95%` | outline `#111111D9`, `4%`, shadow `2%` | bottom-center; L/R `15%`, B `3%`, W/H `100%`/`16%` | fade in/out |
-| `impact-yellow` | `5.2%`, `#FFD60A`, uppercase, `100%` | outline `#000000E6`, `8%`, shadow `4%` | bottom-center; L/R `8%`, B `3%`, W/H `100%`/`22%` | pop in, word bounce, fade out |
-| `lower-third-slide` | `4.1%`, `#FFFFFF`, uppercase, `100%` | box `#0B1F3AE6`, `7%`, shadow `0px` | bottom-left; L `5%`, R `38%`, B `3%`, W/H `100%`/`16%` | slide right in, fade out |
-| `soft-zoom` | `4.3%`, `#F8FAFC`, original, `100%` | outline `#111827CC`, `4%`, shadow `2%` | bottom-center; L/R `14%`, B `3%`, W/H `100%`/`16%` | zoom in, gentle float, fade out |
-| `word-focus` | `4.5%`, `#FFFFFF`, original, `100%` | cue box `#111827D9`/`8%`; word box `#FFD54F`/`12%`; shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`18%` | cue fade, active word highlight and box |
+| `studio-outline` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `4%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | none |
+| `bold-headline` | `3.8%`, `#FFFFFF`, uppercase | outline `#111827`, `7%`, shadow `0px` | center; L/R `10%`, W/H `100%`/`6%` | pop in, fade out |
+| `podcast-panel` | `3.2%`, `#FFFFFF`, original | box `#111827D9`, `18%`, shadow `0px` | bottom-left; L/R `10%`, B `3%`, W/H `100%`/`9%` | none |
+| `serif-quote` | `3.4%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`9%` | fade in/out |
+| `amber-word` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `5%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | active-word amber highlight |
+| `mint-progress` | `3.3%`, `#FFFFFF`, original | box `#111827D9`, `15%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | progressive mint highlight |
+| `paper-label` | `3.2%`, `#111827`, original | box `#FFF8EDFF`, `20%`, shadow `0px` | top-left; L/R `10%`, T `12%`, W/H `100%`/`6%` | slide right in, fade out |
+| `focus-marker` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FFD54F`/`12%` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | active-word highlight and box |
+| `soft-shadow` | `3.5%`, `#FFFFFF`, original | none; shadow `#111827CC`/`4%` | top-center; L/R `10%`, T `12%`, W/H `100%`/`6%` | none |
+| `golden-title` | `3.6%`, `#FACC15`, uppercase | outline `#111827`, `6%`, shadow `0px` | bottom-left; L/R `10%`, B `3%`, W/H `100%`/`6%` | none |
+| `sage-serif` | `3.4%`, `#BBF7D0`, original | outline `#111827`, `5%`, shadow `0px` | top-right; L/R `10%`, T `12%`, W/H `100%`/`6%` | fade in/out |
+| `crimson-banner` | `3.3%`, `#FFFFFF`, original | box `#991B1BFF`, `18%`, shadow `0px` | bottom-right; L/R `10%`, B `3%`, W/H `100%`/`6%` | fade in/out |
+| `lemon-card` | `3.2%`, `#111827`, original | box `#FDE68AFF`, `20%`, shadow `0px` | top-center; L/R `10%`, T `12%`, W/H `100%`/`6%` | none |
+| `emerald-word` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `5%`; word box `#166534FF`/`12%` | bottom-right; L/R `10%`, B `3%`, W/H `100%`/`6%` | active-word box |
+| `kinetic-lime` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `5%`; active text `#D9F99D` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | slide up 180ms, fade out 120ms; active-word highlight |
+| `cobalt-pop` | `3.5%`, `#FFFFFF`, uppercase | box `#1E40AFFF`, `18%`, shadow `0px` | center; L/R `10%`, W/H `90%`/`6%` | text and box pop in 180ms, zoom out 140ms |
+| `coral-marker` | `3.3%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FDA4AFFF`/`14%`, active text `#111827` | bottom-left; L/R `10%`, B `12%`, W/H `90%`/`6%` | fade in 140ms, fade out 120ms; word marker fades 70ms |
+| `editorial-reveal` | `3.4%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | zoom in 200ms, fade out 160ms; progressive word fade 100ms |
+| `headline-bounce` | `3.5%`, `#FDE68A`, uppercase | outline `#111827`, `6%`, shadow `0px` | bottom-right; L/R `10%`, B `12%`, W/H `90%`/`6%` | fade in 120ms, slide down 160ms; active-word bounce 420ms |
+| `yellow-pop` | `3.4%`, `#FFFFFF`, uppercase | outline `#111827`, `5%`, shadow `0px` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | active-word pop 120ms plus exact `#FBE003` highlight |
+| `yellow-trace` | `3.3%`, `#FFFFFF`, original | box `#111827FF`, `15%`, shadow `0px` | bottom-left; L/R `10%`, B `12%`, W/H `90%`/`6%` | progressive `#FBE003` highlight |
+| `neon-lime-marker` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#39FF14FF`/`12%` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | active-word highlight; word marker zoom 100ms, fade 70ms |
+| `neon-cyan-reveal` | `3.3%`, `#00F5FF`, original | outline `#111827`, `5%`, shadow `0px` | bottom-left; L/R `10%`, B `12%`, W/H `90%`/`6%` | progressive word slide-up 120ms |
+| `neon-magenta-pulse` | `3.4%`, `#FF4FD8`, uppercase | outline `#111827`, `5%`, shadow `0px` | bottom-right; L/R `10%`, B `12%`, W/H `90%`/`6%` | active-word pulse 400ms |
 
-All use `auto` line height and a `0%` top margin. Unlisted letter spacing is
-`0px`. `neon-karaoke` uses highlight color `#00F5D4`; `word-focus` uses dark
-text `#111827` over its active yellow word box. The static layout preview
+All use `auto` line height, zero letter spacing, and full opacity. The static layout preview
 suppresses motion and shows a deterministic representative state; the animated
 preview clip runs the same phases with simulated word times. `progressive` word
 tracks affect the first half of the cue in the static preview, while
-`active-word` tracks affect only its first word. Disable one inherited phase
-without changing the other tracks:
+`active-word` tracks affect only its first word. Word-highlight templates require
+aligned word timing during transcription; disable an inherited phase without
+changing the other tracks:
 
 ```bash
 multisubs -i ./video.mp4 --preview-layout \
-  --template neon-karaoke --animation-word-text-emphasis none
+  --template mint-progress --animation-word-text-emphasis none
 ```
 
 ### Translate speech to English
@@ -214,7 +237,7 @@ multisubs -i ./video.mp4 -o ./previews \
   --preview-animation \
   --preview-duration 4s \
   --preview-at 00:00:10.500 \
-  --template word-focus \
+  --template focus-marker \
   --preview-text "This is how the word animation will look"
 ```
 
@@ -420,7 +443,7 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--template NAME` | `default` | Select one of the thirteen built-in presentation baselines. |
+| `--template NAME` | `default` | Select one of the twenty-five built-in presentation baselines. Legacy preset names are rejected. |
 | `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
 | `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
 | `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
@@ -443,6 +466,9 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 With `--backdrop box`, every nonempty cue uses one continuous measured box
 around the complete text block, regardless of whether it occupies one line or
 several; padding, placement, and shadow are resolved from that same geometry.
+Visible font bounds center the text vertically so baseline space does not appear
+as extra padding. A single-line cue is also centered horizontally inside its
+box while the complete box retains the requested screen anchor.
 
 Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
 `semi-bold`, `bold`, `extra-bold`, and `black`. Their numeric equivalents are
