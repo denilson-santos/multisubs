@@ -6,7 +6,6 @@
     "typography": {
       "font_family": "Montserrat",
       "font_weight": "extra-bold",
-      "font_size": "3.8%",
       "text_case": "uppercase"
     },
     "backdrop": {
@@ -14,14 +13,6 @@
       "color": "#111827",
       "size": "7%"
     }
-  },
-  "layout": {
-    "position": "center",
-    "margins": {
-      "left": "10%",
-      "right": "10%"
-    },
-    "max_height": "6%"
   },
   "animation": {
     "cue": {

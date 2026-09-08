@@ -6,7 +6,6 @@
     "typography": {
       "font_family": "Oswald",
       "font_weight": "semi-bold",
-      "font_size": "3.5%",
       "text_case": "uppercase",
       "color": "#FDE68A"
     },
@@ -15,16 +14,6 @@
       "color": "#111827",
       "size": "6%"
     }
-  },
-  "layout": {
-    "position": "bottom-right",
-    "margins": {
-      "left": "10%",
-      "right": "10%",
-      "bottom": "12%"
-    },
-    "max_width": "90%",
-    "max_height": "6%"
   },
   "animation": {
     "cue": {

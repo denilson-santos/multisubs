@@ -6,7 +6,6 @@
     "typography": {
       "font_family": "Roboto",
       "font_weight": "semi-bold",
-      "font_size": "3.3%",
       "highlight_color": "#111827"
     },
     "backdrop": {
@@ -19,16 +18,6 @@
       "color": "#FDA4AFFF",
       "size": "14%"
     }
-  },
-  "layout": {
-    "position": "bottom-left",
-    "margins": {
-      "left": "10%",
-      "right": "10%",
-      "bottom": "12%"
-    },
-    "max_width": "90%",
-    "max_height": "6%"
   },
   "animation": {
     "cue": {

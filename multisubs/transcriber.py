@@ -287,6 +287,8 @@ def write_transcription_artifacts(
     wrapping_metrics: WrappingMetrics | None = None,
     template_requested: str | None = None,
     template_resolved: str = "default",
+    template_source: str = "builtin",
+    template_base: str | None = None,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
@@ -345,6 +347,8 @@ def write_transcription_artifacts(
         karaoke_fallback_cues=fallback_cues,
         template_requested=template_requested,
         template_resolved=template_resolved,
+        template_source=template_source,
+        template_base=template_base,
     )
     _report(progress, "Completed JSON transcript.")
 
@@ -981,6 +985,8 @@ def _write_json(
     karaoke_fallback_cues: int = 0,
     template_requested: str | None = None,
     template_resolved: str = "default",
+    template_source: str = "builtin",
+    template_base: str | None = None,
 ) -> None:
     requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
@@ -1186,6 +1192,14 @@ def _write_json(
         },
     }
     rendering = json_data["metadata"]["rendering"]
+    if template_source != "builtin":
+        rendering["template"].update(
+            {
+                "source": template_source,
+                "schema_version": 1,
+                "base": template_base,
+            }
+        )
     if native_region is not None:
         rendering["native_region"] = {
             "left": native_region.left,

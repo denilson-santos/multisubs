@@ -6,7 +6,6 @@
     "typography": {
       "font_family": "Atkinson Hyperlegible Next",
       "font_weight": "bold",
-      "font_size": "3.3%",
       "color": "#00F5FF"
     },
     "backdrop": {
@@ -14,16 +13,6 @@
       "color": "#111827",
       "size": "5%"
     }
-  },
-  "layout": {
-    "position": "bottom-left",
-    "margins": {
-      "left": "10%",
-      "right": "10%",
-      "bottom": "12%"
-    },
-    "max_width": "90%",
-    "max_height": "6%"
   },
   "animation": {
     "word": {

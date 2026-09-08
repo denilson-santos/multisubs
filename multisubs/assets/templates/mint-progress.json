@@ -6,21 +6,12 @@
     "typography": {
       "font_family": "Montserrat",
       "font_weight": "medium",
-      "font_size": "3.3%",
       "highlight_color": "#A7F3D0"
     },
     "backdrop": {
       "color": "#111827D9",
       "size": "15%"
     }
-  },
-  "layout": {
-    "position": "bottom-center",
-    "margins": {
-      "left": "10%",
-      "right": "10%"
-    },
-    "max_height": "6%"
   },
   "animation": {
     "word": {
