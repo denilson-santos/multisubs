@@ -1,8 +1,8 @@
 # Custom template directory with built-in inheritance
 
-Status: In review
+Status: Done
 
-Delivery: `feat/custom-template-files`
+Delivery: [#71](https://github.com/denilson-santos/multisubs/pull/71)
 
 Depends on:
 
@@ -14,8 +14,7 @@ Depends on:
 Let users supply a local directory with `--template-dir PATH` and select a
 presentation by name through the existing `--template NAME`,
 optionally deriving style, layout, and animation from one built-in template
-through `base`. Implementation is active on the delivery branch after Plan 4's
-merge.
+through `base`. The implementation was delivered after Plan 4's merge.
 
 Include transcription, static preview, animated preview, existing CLI overrides,
 custom fonts through `--fonts-dir`, early validation, and retained provenance.
@@ -296,7 +295,8 @@ completed plans as history; this plan extends Plan 4's private-only scope withou
 adding custom-file support to Plan 4's delivery requirements.
 
 Implementation branch: `feat/custom-template-files`, created from the merged
-Plan 4 baseline. Suggested focused commits:
+Plan 4 baseline. Delivered through [PR #71](https://github.com/denilson-santos/multisubs/pull/71)
+with these focused commits:
 
 1. `feat: load custom templates with built-in inheritance`
 2. `feat: expose custom templates across CLI rendering modes`
@@ -308,10 +308,6 @@ Link this plan and describe scope, public schema/provenance effects, validation
 actually run, documentation, and catalog-upgrade limitations.
 
 Follow [AGENTS.md](../../../AGENTS.md) and [delivery](../../delivery.md).
-Finish implementation and verification before requesting Git delivery approval.
-The implementation branch is `feat/custom-template-files`.
-The final pre-PR documentation commit moves the plan and package to In review
-with that branch; push the complete branch before opening the PR. After an
-authoritative merge signal, mark the plan/package Done, record the merged PR,
-and update progress to 6/6. Rollback the reader, CLI integration, metadata, and
-documentation together through a normal revert or fix; user JSON remains intact.
+The plan and package moved to `Done` after PR #71 was merged. Rollback the
+reader, CLI integration, metadata, and documentation together through a normal
+revert or fix; user JSON remains intact.
