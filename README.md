@@ -23,7 +23,7 @@ WhisperX must download model assets that are not already cached.
 | Feature | What it gives you |
 | --- | --- |
 | 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
-| 🧩 Ready-made templates | Twenty-five built-in presentations for Reels, TikTok, Shorts, podcasts, tutorials, and editorial clips. |
+| 🧩 Ready-made templates | Sixteen built-in presentations for Reels, TikTok, Shorts, podcasts, tutorials, and editorial clips. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
 | 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
@@ -120,22 +120,13 @@ multisubs -i ./video.mp4 -l pt \
 | Template | Good for | Font | Main presentation |
 | --- | --- | --- | --- |
 | `default` | General use | Roboto Regular | White, original case, translucent black box, bottom-center. |
-| `studio-outline` | Interviews, courses, demos | Inter Medium | White text with a clean dark outline, bottom-center. |
 | `bold-headline` | Reels, TikTok, Shorts hooks | Montserrat ExtraBold | Compact uppercase white headline with a measured pop. |
-| `podcast-panel` | Podcasts and longer interviews | Atkinson Hyperlegible Next Medium | White text on a dark two-line panel, bottom-left. |
-| `serif-quote` | Documentary and reflective clips | Lora Medium Italic | Warm italic serif text with a subtle outline and fade. |
 | `amber-word` | Explanations and speaking points | Inter SemiBold | Outlined text with an amber active-word highlight. |
 | `mint-progress` | Tips, steps, and demonstrations | Montserrat Medium | Dark panel with progressive mint word highlighting. |
-| `paper-label` | Editorial callouts and labels | Roboto Medium | Dark text on a warm paper card with a slide-in. |
 | `focus-marker` | Accessible educational captions | Atkinson Hyperlegible Next Bold | Outlined text with an amber active-word marker. |
-| `soft-shadow` | Calm narration and lifestyle clips | Lora SemiBold | White serif text with a soft shadow, top-center. |
 | `golden-title` | Concise topics and chapter titles | Oswald Bold | Golden uppercase text with a dark outline, bottom-left. |
-| `sage-serif` | Wellness and reflective narration | Lora Regular | Soft green serif text with a gentle fade, top-right. |
-| `crimson-banner` | Podcast takeaways and strong statements | Oswald Medium | White text on a compact crimson banner, bottom-right. |
-| `lemon-card` | Practical reminders and short tips | Inter SemiBold | Dark text on a soft yellow card, top-center. |
 | `emerald-word` | Word-led explainers | Roboto Bold | White outlined text with a deep green active-word box. |
 | `kinetic-lime` | Fast explanations and tutorials | Montserrat Bold | White outlined text with a lime active-word highlight, bottom-center. |
-| `cobalt-pop` | Hooks and strong statements | Inter ExtraBold | Uppercase white text on a cobalt panel with a coordinated pop. |
 | `coral-marker` | Advice and interview cuts | Roboto SemiBold | White outlined text with a coral active-word marker, bottom-left. |
 | `editorial-reveal` | Storytelling and reflective clips | Lora SemiBold Italic | Warm serif text that reveals words in order, bottom-center. |
 | `headline-bounce` | Energetic punchlines and takeaways | Oswald SemiBold | Uppercase yellow outlined text with a bounded active-word bounce. |
@@ -145,35 +136,30 @@ multisubs -i ./video.mp4 -l pt \
 | `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | Neon-cyan text with progressive slide-up word reveals. |
 | `neon-magenta-pulse` | Reactions and creator commentary | Roboto Bold | Uppercase neon-magenta text with an active-word pulse. |
 
-The exact template baselines are:
+All built-in templates inherit the default layout: bottom-center, left/right
+margins of `18%`, top `0%`, bottom `3%`, and maximum width/height of
+`100%`/`10%`. They vary only in style and animation, with a font size of at
+least the default `4%` of render height. Explicit CLI layout and font-size
+options remain available. The exact template baselines are:
 
 | Template | Size and text | Backdrop | Native layout | Animation |
 | --- | --- | --- | --- | --- |
-| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `25%`, shadow `0px` | bottom-center; L/R `18%`, B `3%`, W/H `100%`/`10%` | none |
-| `studio-outline` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `4%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | none |
-| `bold-headline` | `3.8%`, `#FFFFFF`, uppercase | outline `#111827`, `7%`, shadow `0px` | center; L/R `10%`, W/H `100%`/`6%` | pop in, fade out |
-| `podcast-panel` | `3.2%`, `#FFFFFF`, original | box `#111827D9`, `18%`, shadow `0px` | bottom-left; L/R `10%`, B `3%`, W/H `100%`/`9%` | none |
-| `serif-quote` | `3.4%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`9%` | fade in/out |
-| `amber-word` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `5%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | active-word amber highlight |
-| `mint-progress` | `3.3%`, `#FFFFFF`, original | box `#111827D9`, `15%`, shadow `0px` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | progressive mint highlight |
-| `paper-label` | `3.2%`, `#111827`, original | box `#FFF8EDFF`, `20%`, shadow `0px` | top-left; L/R `10%`, T `12%`, W/H `100%`/`6%` | slide right in, fade out |
-| `focus-marker` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FFD54F`/`12%` | bottom-center; L/R `10%`, B `3%`, W/H `100%`/`6%` | active-word highlight and box |
-| `soft-shadow` | `3.5%`, `#FFFFFF`, original | none; shadow `#111827CC`/`4%` | top-center; L/R `10%`, T `12%`, W/H `100%`/`6%` | none |
-| `golden-title` | `3.6%`, `#FACC15`, uppercase | outline `#111827`, `6%`, shadow `0px` | bottom-left; L/R `10%`, B `3%`, W/H `100%`/`6%` | none |
-| `sage-serif` | `3.4%`, `#BBF7D0`, original | outline `#111827`, `5%`, shadow `0px` | top-right; L/R `10%`, T `12%`, W/H `100%`/`6%` | fade in/out |
-| `crimson-banner` | `3.3%`, `#FFFFFF`, original | box `#991B1BFF`, `18%`, shadow `0px` | bottom-right; L/R `10%`, B `3%`, W/H `100%`/`6%` | fade in/out |
-| `lemon-card` | `3.2%`, `#111827`, original | box `#FDE68AFF`, `20%`, shadow `0px` | top-center; L/R `10%`, T `12%`, W/H `100%`/`6%` | none |
-| `emerald-word` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `5%`; word box `#166534FF`/`12%` | bottom-right; L/R `10%`, B `3%`, W/H `100%`/`6%` | active-word box |
-| `kinetic-lime` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `5%`; active text `#D9F99D` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | slide up 180ms, fade out 120ms; active-word highlight |
-| `cobalt-pop` | `3.5%`, `#FFFFFF`, uppercase | box `#1E40AFFF`, `18%`, shadow `0px` | center; L/R `10%`, W/H `90%`/`6%` | text and box pop in 180ms, zoom out 140ms |
-| `coral-marker` | `3.3%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FDA4AFFF`/`14%`, active text `#111827` | bottom-left; L/R `10%`, B `12%`, W/H `90%`/`6%` | fade in 140ms, fade out 120ms; word marker fades 70ms |
-| `editorial-reveal` | `3.4%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | zoom in 200ms, fade out 160ms; progressive word fade 100ms |
-| `headline-bounce` | `3.5%`, `#FDE68A`, uppercase | outline `#111827`, `6%`, shadow `0px` | bottom-right; L/R `10%`, B `12%`, W/H `90%`/`6%` | fade in 120ms, slide down 160ms; active-word bounce 420ms |
-| `yellow-pop` | `3.4%`, `#FFFFFF`, uppercase | outline `#111827`, `5%`, shadow `0px` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | active-word pop 120ms plus exact `#FBE003` highlight |
-| `yellow-trace` | `3.3%`, `#FFFFFF`, original | box `#111827FF`, `15%`, shadow `0px` | bottom-left; L/R `10%`, B `12%`, W/H `90%`/`6%` | progressive `#FBE003` highlight |
-| `neon-lime-marker` | `3.4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#39FF14FF`/`12%` | bottom-center; L/R `10%`, B `12%`, W/H `90%`/`6%` | active-word highlight; word marker zoom 100ms, fade 70ms |
-| `neon-cyan-reveal` | `3.3%`, `#00F5FF`, original | outline `#111827`, `5%`, shadow `0px` | bottom-left; L/R `10%`, B `12%`, W/H `90%`/`6%` | progressive word slide-up 120ms |
-| `neon-magenta-pulse` | `3.4%`, `#FF4FD8`, uppercase | outline `#111827`, `5%`, shadow `0px` | bottom-right; L/R `10%`, B `12%`, W/H `90%`/`6%` | active-word pulse 400ms |
+| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `25%`, shadow `0px` | default | none |
+| `bold-headline` | `4%`, `#FFFFFF`, uppercase | outline `#111827`, `7%`, shadow `0px` | default | pop in, fade out |
+| `amber-word` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`, shadow `0px` | default | active-word amber highlight |
+| `mint-progress` | `4%`, `#FFFFFF`, original | box `#111827D9`, `15%`, shadow `0px` | default | progressive mint highlight |
+| `focus-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FFD54F`/`12%` | default | active-word highlight and box |
+| `golden-title` | `4%`, `#FACC15`, uppercase | outline `#111827`, `6%`, shadow `0px` | default | none |
+| `emerald-word` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`; word box `#166534FF`/`12%` | default | active-word box |
+| `kinetic-lime` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`; active text `#D9F99D` | default | slide up 180ms, fade out 120ms; active-word highlight |
+| `coral-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FDA4AFFF`/`14%`, active text `#111827` | default | fade in 140ms, fade out 120ms; word marker fades 70ms |
+| `editorial-reveal` | `4%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | default | zoom in 200ms, fade out 160ms; progressive word fade 100ms |
+| `headline-bounce` | `4%`, `#FDE68A`, uppercase | outline `#111827`, `6%`, shadow `0px` | default | fade in 120ms, slide down 160ms; active-word bounce 420ms |
+| `yellow-pop` | `4%`, `#FFFFFF`, uppercase | outline `#111827`, `5%`, shadow `0px` | default | active-word pop 120ms plus exact `#FBE003` highlight |
+| `yellow-trace` | `4%`, `#FFFFFF`, original | box `#111827FF`, `15%`, shadow `0px` | default | progressive `#FBE003` highlight |
+| `neon-lime-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#39FF14FF`/`12%` | default | active-word highlight; word marker zoom 100ms, fade 70ms |
+| `neon-cyan-reveal` | `4%`, `#00F5FF`, original | outline `#111827`, `5%`, shadow `0px` | default | progressive word slide-up 120ms |
+| `neon-magenta-pulse` | `4%`, `#FF4FD8`, uppercase | outline `#111827`, `5%`, shadow `0px` | default | active-word pulse 400ms |
 
 All use `auto` line height, zero letter spacing, and full opacity. The static layout preview
 suppresses motion and shows a deterministic representative state; the animated
@@ -187,6 +173,55 @@ changing the other tracks:
 multisubs -i ./video.mp4 --preview-layout \
   --template mint-progress --animation-word-text-emphasis none
 ```
+
+### Use a custom template directory
+
+Custom templates live in a flat local directory and are selected by the JSON
+name, independently of the filename:
+
+~~~bash
+mkdir -p ./templates
+cat > ./templates/my-yellow-captions.json <<'JSON'
+{
+  "schema_version": 1,
+  "name": "my-yellow-captions",
+  "description": "A compact yellow caption variant.",
+  "base": "yellow-pop",
+  "style": {
+    "typography": {
+      "font_size": "3.6%"
+    }
+  },
+  "layout": {
+    "margins": {
+      "bottom": "15%"
+    }
+  }
+}
+JSON
+
+multisubs -i ./video.mp4 -l pt \
+  --template-dir ./templates \
+  --template my-yellow-captions
+~~~
+
+The template-dir option reads only immediate regular JSON files. Each file
+must use schema_version 1 and a unique lowercase kebab-case name; description,
+base, style, layout, and animation are optional. base names one of the
+built-in templates and defaults to default; it never inherits another custom
+file. Omitted fields inherit the base, and explicit CLI options then override
+the corresponding fields. Custom names take precedence over built-in names for
+that invocation, including default. The directory may be empty, and malformed
+or duplicate files are reported even when another template is selected.
+
+The public JSON mirrors the semantic renderer fields: style.typography
+(font_family, font_weight, font_size, italic, letter_spacing, line_height,
+text_case, color, highlight_color), style.backdrop, style.word_backdrop,
+style.shadow, style.opacity, layout.position, layout.margins, layout.max_width,
+layout.max_height, and independent animation.cue and animation.word tracks.
+Each animation phase contains a supported type and, for duration-bearing
+effects, an optional duration_ms. Font directories and explicit coordinates
+remain CLI options.
 
 ### Translate speech to English
 
@@ -443,7 +478,8 @@ Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--template NAME` | `default` | Select one of the twenty-five built-in presentation baselines. Legacy preset names are rejected. |
+| `--template NAME` | `default` | Select a built-in or `--template-dir` custom presentation by JSON name. |
+| `--template-dir DIR` | — | Read immediate custom template JSON files for this invocation; custom names take precedence over built-ins. |
 | `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
 | `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
 | `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
@@ -610,8 +646,10 @@ source and processing metadata, original and displayed cue text, render
 geometry, resolved layout and typography, wrapping diagnostics, and the four
 independent cue/word text/backdrop animation tracks. Rendering diagnostics also record the
 requested and resolved template names; omitted selection is recorded as
-requested `null` and resolved `default`. The current retained JSON contract
-uses schema version `3` and stores animation data under
+requested `null` and resolved `default`. A custom selection additionally
+records source `custom`, schema_version `1`, and its resolved built-in base;
+custom directory paths, descriptions, and raw JSON are never stored. The current
+retained JSON contract uses schema version `3` and stores animation data under
 `metadata.rendering.animation`.
 
 ## 🧪 Development

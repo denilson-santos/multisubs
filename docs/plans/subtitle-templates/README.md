@@ -2,7 +2,7 @@
 
 Status: In review
 
-Delivery branch: `feat/curated-social-templates`
+Delivery branch: `feat/custom-template-files`
 
 This package adds reproducible bundled fonts, named subtitle templates, and a
 declarative animation layer on top of the completed
@@ -14,32 +14,29 @@ options.
 
 ## Current proposal
 
-[Plan 4](04-curated-social-templates.md) replaces all twelve non-default
-presets with twenty-four professional social-video templates, preserving
-`default` and normalizing sparse internal JSON into the existing runtime
-contract. All twenty-five choices, including yellow, green, red, lime, cobalt,
-coral, cyan, and magenta styles, are implemented and locally verified. The
-choreographed additions are `kinetic-lime`, `cobalt-pop`, `coral-marker`,
-`editorial-reveal`, `headline-bounce`, `yellow-pop`, `yellow-trace`,
-`neon-lime-marker`, `neon-cyan-reveal`, and `neon-magenta-pulse`. The following delivered
+[Plan 4](04-curated-social-templates.md) established the sparse social-video
+catalog and Plan 5's final delivery retains sixteen choices: `default` plus
+fifteen curated styles. Nine redundant Plan 4 presets were removed in this
+follow-up while preserving the yellow, green, red, lime, coral, cyan, and
+magenta styles that remain in the active catalog. The following delivered
 behavior describes Plans 0–3;
 legacy names below are historical/current baselines, not the current catalog.
 
 ## Product outcome
 
-[Plan 5](05-custom-template-files.md) is Planned for a later delivery after
-Plan 4. It adds local `--template-file` input with an optional built-in `base`;
-precedence is base, custom fields, then explicit CLI options. Its public
-version-1 format is separate from private schema 5. Custom-file support is not
-part of the currently implemented catalog work.
+[Plan 5](05-custom-template-files.md) is In review after Plan 4. It adds a
+local `--template-dir` catalog with selection through `--template NAME` and
+an optional built-in `base`. Custom names take precedence for selection;
+bases always resolve against the built-in catalog. Inheritance precedence is
+base, custom fields, then explicit CLI options. Its public version-1 format is
+separate from private schema 5. The implementation is active on `feat/custom-template-files`.
 
 Users can render a useful subtitle presentation with one option, preview its
 final static appearance before transcription, and then override individual
 style, animation, or placement fields. The curated catalog includes restrained
 word emphasis in `amber-word`, progressive timing in `mint-progress`, a measured
 active-word marker in `focus-marker`, and compact colored accents in
-`golden-title`, `sage-serif`, `crimson-banner`, `lemon-card`, and
-`emerald-word`, plus choreographed `kinetic-lime`, `cobalt-pop`,
+`golden-title` and `emerald-word`, plus choreographed `kinetic-lime`,
 `coral-marker`, `editorial-reveal`, `headline-bounce`, `yellow-pop`,
 `yellow-trace`, `neon-lime-marker`, `neon-cyan-reveal`, and
 `neon-magenta-pulse` styles for short-form social cuts. Animated templates
@@ -105,12 +102,12 @@ reliably render variable-font instances.
 
 | Family | Bundled static faces | Count | Used by |
 | --- | --- | ---: | --- |
-| Roboto | Weights 100-900; upright and italic; normal width | 18 | `default`, `paper-label`, `emerald-word` |
-| Inter | Weights 100-900, upright and italic, at the default optical size | 18 | `studio-outline`, `amber-word`, `lemon-card` |
-| Montserrat | Weights 100-900, upright and italic | 18 | `bold-headline`, `mint-progress` |
-| Oswald | Upright weights 200-700 | 6 | `golden-title`, `crimson-banner` |
-| Lora | Weights 400-700, upright and italic | 8 | `serif-quote`, `soft-shadow`, `sage-serif` |
-| Atkinson Hyperlegible Next | Weights 200-800, upright and italic | 14 | `podcast-panel`, `focus-marker` |
+| Roboto | Weights 100-900; upright and italic; normal width | 18 | `default`, `emerald-word`, `coral-marker`, `neon-magenta-pulse` |
+| Inter | Weights 100-900, upright and italic, at the default optical size | 18 | `amber-word`, `yellow-trace` |
+| Montserrat | Weights 100-900, upright and italic | 18 | `bold-headline`, `mint-progress`, `yellow-pop` |
+| Oswald | Upright weights 200-700 | 6 | `golden-title`, `headline-bounce`, `neon-lime-marker` |
+| Lora | Weights 400-700, upright and italic | 8 | `editorial-reveal` |
+| Atkinson Hyperlegible Next | Weights 200-800, upright and italic | 14 | `focus-marker`, `neon-cyan-reveal` |
 
 Total inventory: 82 unmodified font binaries. Each family keeps its
 original `OFL.txt`; the project does not need a `THIRD_PARTY_NOTICES.md` file.
@@ -128,13 +125,12 @@ This table is the source of truth for the package. Status values follow the
 | 1 | [Built-in subtitle templates](01-built-in-subtitle-templates.md) | Done | 0 and completed karaoke package | [#61](https://github.com/denilson-santos/multisubs/pull/61) |
 | 2 | [Declarative template schema](02-declarative-template-schema.md) | Done | 1 | [#64](https://github.com/denilson-santos/multisubs/pull/64) |
 | 3 | [Independent subtitle element animations](03-cue-animations-and-animated-templates.md) | Done | 2 and completed karaoke/preview contracts | [#65](https://github.com/denilson-santos/multisubs/pull/65) |
-| 4 | [Curated social templates](04-curated-social-templates.md) | In review | 2, 3; completed vector boxes and multiline capacity | `feat/curated-social-templates` |
-| 5 | [Custom template files](05-custom-template-files.md) | Planned | 4 | Not started |
+| 4 | [Curated social templates](04-curated-social-templates.md) | Done | 2, 3; completed vector boxes and multiline capacity | [#70](https://github.com/denilson-santos/multisubs/pull/70) |
+| 5 | [Custom template directory](05-custom-template-files.md) | In review | 4 | `feat/custom-template-files` |
 
-Package progress: 4 of 6 plans done. Current plan: Plan 4 (In review).
-Next plan: Plan 5 (Planned), to be implemented after Plan 4 is delivered.
-Plans 0–3 are delivered; Plan 4 is complete on its task branch and ready for
-pull-request review. Animated preview clips are optional for its verification.
+Package progress: 5 of 6 plans done. Current plan: Plan 5 (In review).
+Plans 0–4 are delivered; Plan 5 is complete on its task branch with no blocking
+technical dependency. Animated preview clips remain optional for its verification.
 
 ## Dependencies and delivery order
 
@@ -164,7 +160,8 @@ Recommended delivery order:
    [multiline-capacity](../subtitle-preview/00-multiline-capacity.md) work.
    The [animated clip](../subtitle-preview/01-animation-clip.md) is optional,
    not a blocking dependency.
-6. After Plan 4, expose local custom JSON with one optional built-in base,
+6. After Plan 4, expose a flat custom-template directory and selection by name
+   with one optional built-in base,
    a separately versioned public contract, CLI overrides, and source provenance.
 
 Keep these plans in separate pull requests. Plan 1 must consume the packaged
@@ -257,9 +254,9 @@ SemVer release; never move an existing tag.
   describe only the delivered interface, bundled-font behavior, licensing, and
   limitations.
 
-For Plan 4, completion also requires exactly twenty-five choices, preserved default
-output, strict sparse/expanded equivalence, calibrated one/two-line capacities,
-and real ASS/visual evidence for all twenty-four non-default styles, including the ten
+For Plan 4, completion historically required exactly twenty-five choices, preserved
+default output, strict sparse/expanded equivalence, calibrated one/two-line
+capacities, and real ASS/visual evidence for all twenty-four non-default styles, including the ten
 choreographed additions and balanced box padding. Its acceptance criteria
 supersede named legacy-template examples above; completed plans stay intact.
 
