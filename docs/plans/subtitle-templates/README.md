@@ -1,8 +1,8 @@
 # Subtitle templates roadmap
 
-Status: In review
+Status: Done
 
-Delivery branch: `feat/custom-template-files`
+Delivery: [#71](https://github.com/denilson-santos/multisubs/pull/71)
 
 This package adds reproducible bundled fonts, named subtitle templates, and a
 declarative animation layer on top of the completed
@@ -24,12 +24,13 @@ legacy names below are historical/current baselines, not the current catalog.
 
 ## Product outcome
 
-[Plan 5](05-custom-template-files.md) is In review after Plan 4. It adds a
+[Plan 5](05-custom-template-files.md) is Done after Plan 4. It adds a
 local `--template-dir` catalog with selection through `--template NAME` and
 an optional built-in `base`. Custom names take precedence for selection;
 bases always resolve against the built-in catalog. Inheritance precedence is
 base, custom fields, then explicit CLI options. Its public version-1 format is
-separate from private schema 5. The implementation is active on `feat/custom-template-files`.
+separate from private schema 5. The implementation was delivered through
+[PR #71](https://github.com/denilson-santos/multisubs/pull/71).
 
 Users can render a useful subtitle presentation with one option, preview its
 final static appearance before transcription, and then override individual
@@ -126,11 +127,11 @@ This table is the source of truth for the package. Status values follow the
 | 2 | [Declarative template schema](02-declarative-template-schema.md) | Done | 1 | [#64](https://github.com/denilson-santos/multisubs/pull/64) |
 | 3 | [Independent subtitle element animations](03-cue-animations-and-animated-templates.md) | Done | 2 and completed karaoke/preview contracts | [#65](https://github.com/denilson-santos/multisubs/pull/65) |
 | 4 | [Curated social templates](04-curated-social-templates.md) | Done | 2, 3; completed vector boxes and multiline capacity | [#70](https://github.com/denilson-santos/multisubs/pull/70) |
-| 5 | [Custom template directory](05-custom-template-files.md) | In review | 4 | `feat/custom-template-files` |
+| 5 | [Custom template directory](05-custom-template-files.md) | Done | 4 | [#71](https://github.com/denilson-santos/multisubs/pull/71) |
 
-Package progress: 5 of 6 plans done. Current plan: Plan 5 (In review).
-Plans 0–4 are delivered; Plan 5 is complete on its task branch with no blocking
-technical dependency. Animated preview clips remain optional for its verification.
+Package progress: 6 of 6 plans done. Current plan: Complete.
+Plans 0–5 are delivered with no blocking technical dependency. Animated preview
+clips remain optional for their verification.
 
 ## Dependencies and delivery order
 
