@@ -58,7 +58,8 @@ from .config import (
     parse_text_case,
     validate_subtitle_config,
 )
-from .errors import ArtifactError, MultisubsError, ValidationError
+from .custom_templates import resolve_subtitle_template
+from .errors import ArtifactError, MultisubsError, TemplateError, ValidationError
 from .layout import (
     resolve_cue_placement,
     resolve_subtitle_config,
@@ -85,7 +86,6 @@ from .preview import (
 from .templates import (
     DEFAULT_SUBTITLE_TEMPLATE,
     TEMPLATE_CHOICES,
-    get_subtitle_template,
     require_template_catalog,
 )
 from .utils import (
@@ -163,13 +163,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--template",
-        choices=TEMPLATE_CHOICES,
         default=None,
-        metavar="{" + ",".join(TEMPLATE_CHOICES) + "}",
+        metavar="NAME",
         help=(
-            "Built-in subtitle presentation; explicit appearance, layout, and "
-            f"animation options override individual fields (default: "
-            f"{DEFAULT_SUBTITLE_TEMPLATE})."
+            "Subtitle presentation selected by template name; built-ins are "
+            "available by default and --template-dir adds custom JSON templates "
+            f"(default: {DEFAULT_SUBTITLE_TEMPLATE}). Built-ins: "
+            + ", ".join(TEMPLATE_CHOICES)
+            + "."
+        ),
+    )
+    parser.add_argument(
+        "--template-dir",
+        default=None,
+        metavar="DIR",
+        help=(
+            "Directory of custom subtitle template JSON files. The selected "
+            "template name is resolved from this directory before built-ins."
         ),
     )
     preview_group = parser.add_argument_group(
@@ -680,7 +690,8 @@ def _build_request(
         if value is not None
     }
     try:
-        template = get_subtitle_template(args.template)
+        selection = resolve_subtitle_template(args.template, args.template_dir)
+        template = selection.template
         subtitle_config = validate_subtitle_config(
             None,
             defaults=template.config,
@@ -690,7 +701,7 @@ def _build_request(
             relative_values=relative_values,
             anchor=args.anchor,
         )
-    except ValidationError as exc:
+    except (TemplateError, ValidationError) as exc:
         parser.error(str(exc))
 
     if not preview_mode_requested:
@@ -723,6 +734,8 @@ def _build_request(
             guides=args.preview_guides,
             subtitle_template_requested=args.template,
             subtitle_template_resolved=template.name,
+            subtitle_template_source=selection.source,
+            subtitle_template_base=selection.base,
             preview_mode=(
                 PreviewMode.ANIMATION if args.preview_animation else PreviewMode.LAYOUT
             ),
@@ -743,6 +756,8 @@ def _build_request(
         keep_transcriptions=args.keep_transcriptions,
         subtitle_template_requested=args.template,
         subtitle_template_resolved=template.name,
+        subtitle_template_source=selection.source,
+        subtitle_template_base=selection.base,
     )
 
 
@@ -812,7 +827,17 @@ def _run_request_with_fonts(
     bundled_fonts_dir: Path | None,
 ) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
-    progress(f"Using subtitle template: {request.subtitle_template_resolved}.")
+    if request.subtitle_template_source == "custom":
+        progress(
+            f"Using custom subtitle template: {request.subtitle_template_resolved}"
+            + (
+                f" (base: {request.subtitle_template_base})."
+                if request.subtitle_template_base is not None
+                else "."
+            )
+        )
+    else:
+        progress(f"Using subtitle template: {request.subtitle_template_resolved}.")
     animation = request.subtitle_config.animation
     progress(
         "Resolved subtitle animations: "
@@ -878,16 +903,24 @@ def _run_request_with_fonts(
             request.model_name,
             progress=progress,
         )
+        artifact_options = {
+            "geometry": geometry,
+            "resolved_subtitle_config": resolved_subtitle_config,
+            "wrapping_metrics": wrapping_metrics,
+            "template_requested": request.subtitle_template_requested,
+            "template_resolved": request.subtitle_template_resolved,
+            "progress": progress,
+        }
+        if request.subtitle_template_source != "builtin":
+            artifact_options.update(
+                template_source=request.subtitle_template_source,
+                template_base=request.subtitle_template_base,
+            )
         json_path, srt_path, ass_path = write_transcription_artifacts(
             document,
             work_dir,
             request.subtitle_config,
-            geometry=geometry,
-            resolved_subtitle_config=resolved_subtitle_config,
-            wrapping_metrics=wrapping_metrics,
-            template_requested=request.subtitle_template_requested,
-            template_resolved=request.subtitle_template_resolved,
-            progress=progress,
+            **artifact_options,
         )
         transcripts = TranscriptionPaths(
             json_path=Path(json_path), srt_path=Path(srt_path), ass_path=Path(ass_path)

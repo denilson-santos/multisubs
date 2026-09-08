@@ -71,7 +71,7 @@ def test_animation_duration_rejects_ambiguous_or_out_of_range_values(value: obje
 
 
 def test_explicit_duration_precedence_preserves_or_overrides_template_duration():
-    template = get_subtitle_template("serif-quote").config
+    template = get_subtitle_template("coral-marker").config
 
     inherited = validate_subtitle_config(None, defaults=template)
     same_type = validate_subtitle_config(
@@ -90,8 +90,8 @@ def test_explicit_duration_precedence_preserves_or_overrides_template_duration()
         animation_values={"cue_text_exit": "zoom"},
     )
 
-    assert inherited.animation.cue.text.entrance.duration_ms == 180
-    assert same_type.animation.cue.text.entrance.duration_ms == 180
+    assert inherited.animation.cue.text.entrance.duration_ms == 140
+    assert same_type.animation.cue.text.entrance.duration_ms == 140
     assert explicit.animation.cue.text.entrance.duration_ms == 350
     assert changed_type.animation.cue.text.exit.duration_ms == 160
 
@@ -552,7 +552,7 @@ def test_animation_template_branches_can_be_disabled_independently():
     "options",
     [
         ["--animation-cue-text-entrance", "pop"],
-        ["--template", "serif-quote"],
+        ["--template", "bold-headline"],
         [
             "--template",
             "focus-marker",

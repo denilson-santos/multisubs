@@ -1,8 +1,8 @@
 # Curated social subtitle templates
 
-Status: In review
+Status: Done
 
-Delivery: `feat/curated-social-templates`
+Delivery: [#70](https://github.com/denilson-santos/multisubs/pull/70)
 
 Depends on:
 
@@ -18,8 +18,12 @@ preserved `default` baseline and twenty-four distinct social-video styles.
 Simplify packaged JSON authoring while keeping the existing typed configuration
 and ASS renderer contracts. The catalog, sparse loader, renderer validation, and
 current documentation for all twenty-five choices are in place on the delivery
-branch. The implementation and verification are complete; the plan is In review
-pending pull-request review and merge.
+branch. The implementation and verification are complete; the plan was merged
+through [PR #70](https://github.com/denilson-santos/multisubs/pull/70).
+
+The twenty-five-choice catalog described by this historical plan was later
+reduced to sixteen active choices in the custom-template delivery branch. The
+completion evidence below remains the record for the original Plan 4 scope.
 
 Remove these twelve files and index entries during implementation:
 `clean-outline`, `social-bold`, `classic-yellow`, `newsroom`, `editorial`,
@@ -535,13 +539,11 @@ base `main`. Describe the removed choices in a BREAKING CHANGE note, link this
 plan, list scope/exclusions, runtime and CLI impact, actual checks, visual
 findings, documentation changes, and remaining limitations.
 
-Follow [AGENTS.md](../../../AGENTS.md) and [delivery](../../delivery.md). This
-final documentation update moves the plan, package, and catalog to In review
-with the task branch as delivery reference. Push the complete branch before
-opening; no post-open metadata-only commit. After an authoritative merge signal,
-mark Done, replace the branch with the merged PR link, and record package
-progress 5/6 in the next status update, leaving Plan 5 Planned and the package
-active for that subsequent delivery.
+Follow [AGENTS.md](../../../AGENTS.md) and [delivery](../../delivery.md). The
+implementation was delivered through [PR #70](https://github.com/denilson-santos/multisubs/pull/70).
+Plan 5 now carries the active package delivery reference. After Plan 5 merges,
+mark it Done, replace this package's branch with the merged PR link, and update
+the package progress to 6/6.
 
 Risks: defaults inheritance can conceal future visual drift, font metrics can
 change line capacity, and removed names break saved commands. Address these
@@ -555,5 +557,5 @@ ASS artifacts stay usable and published tags remain immutable.
 
 All twenty-five choices, including the ten choreographed additions and the
 alignment corrections, are implemented and locally verified on
-`feat/curated-social-templates`. This plan is In review; only a later merged
-status update may move it to Done.
+`feat/curated-social-templates`. This plan is Done after the authoritative merge
+signal from PR #70.

@@ -415,6 +415,8 @@ class RunRequest:
     keep_transcriptions: bool
     subtitle_template_requested: str | None = None
     subtitle_template_resolved: str = "default"
+    subtitle_template_source: str = "builtin"
+    subtitle_template_base: str | None = None
 
 
 @dataclass(frozen=True)
@@ -431,3 +433,5 @@ class PreviewRequest:
     subtitle_template_resolved: str = "default"
     preview_mode: PreviewMode = PreviewMode.LAYOUT
     preview_duration_ms: int = 4_000
+    subtitle_template_source: str = "builtin"
+    subtitle_template_base: str | None = None

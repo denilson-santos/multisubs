@@ -144,6 +144,14 @@ Update a higher-level document when a proposed change intentionally modifies the
   previously shipped complete resource schema when a catalog migration changes
   the internal representation.
 
+For user-provided subtitle templates, keep the public schema version separate
+from the packaged catalog schema. Read one bounded flat directory per request,
+validate every immediate JSON file before selection, reject duplicate or
+unknown fields and non-finite values, and resolve inheritance only through
+known built-in names. Never execute, fetch, install, or persist custom JSON;
+retained metadata may record source and base names but must not include local
+template paths or raw file contents.
+
 ## Command-line interface conventions
 
 ### Compatibility and arguments

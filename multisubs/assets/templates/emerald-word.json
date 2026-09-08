@@ -5,8 +5,7 @@
   "style": {
     "typography": {
       "font_family": "Roboto",
-      "font_weight": "bold",
-      "font_size": "3.4%"
+      "font_weight": "bold"
     },
     "backdrop": {
       "type": "outline",
@@ -18,13 +17,5 @@
       "color": "#166534FF",
       "size": "12%"
     }
-  },
-  "layout": {
-    "position": "bottom-right",
-    "margins": {
-      "left": "10%",
-      "right": "10%"
-    },
-    "max_height": "6%"
   }
 }

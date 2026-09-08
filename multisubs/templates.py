@@ -358,13 +358,20 @@ def _relative_text(value: object) -> str:
     return getattr(value, "original", str(value))
 
 
-def _default_template_data() -> dict[str, Any]:
-    """Build the sparse-schema inheritance base from semantic config defaults."""
-    config = validate_subtitle_config(None)
+def _template_data_from_config(
+    config: SubtitleConfig,
+    *,
+    name: str,
+    description: str,
+) -> dict[str, Any]:
+    """Serialize a complete semantic configuration to the internal schema."""
     typography = config.style.typography
 
     def phase_data(phase: SubtitleAnimationPhase) -> dict[str, Any]:
-        return {"type": phase.type.value}
+        value: dict[str, Any] = {"type": phase.type.value}
+        if phase.duration_ms:
+            value["duration_ms"] = phase.duration_ms
+        return value
 
     def track_data(
         track: SubtitleElementAnimation, *, include_mode: bool = False
@@ -385,8 +392,8 @@ def _default_template_data() -> dict[str, Any]:
 
     return {
         "schema_version": _TEMPLATE_SCHEMA_VERSION,
-        "name": DEFAULT_SUBTITLE_TEMPLATE,
-        "description": "General-purpose subtitle presentation.",
+        "name": name,
+        "description": description,
         "style": {
             "typography": {
                 "font_family": typography.font,
@@ -438,6 +445,15 @@ def _default_template_data() -> dict[str, Any]:
     }
 
 
+def _default_template_data() -> dict[str, Any]:
+    """Build the sparse-schema inheritance base from semantic config defaults."""
+    return _template_data_from_config(
+        validate_subtitle_config(None),
+        name=DEFAULT_SUBTITLE_TEMPLATE,
+        description="General-purpose subtitle presentation.",
+    )
+
+
 def _merge_sparse_object(
     base: Mapping[str, Any],
     value: Any,
@@ -453,7 +469,11 @@ def _merge_sparse_object(
 
 
 def _merge_sparse_phase(
-    base: Mapping[str, Any], value: Any, *, context: str
+    base: Mapping[str, Any],
+    value: Any,
+    *,
+    context: str,
+    reset_duration_on_type_change: bool = False,
 ) -> dict[str, Any]:
     phase = _expect_object(value, context=context)
     _expect_allowed_keys(phase, {"type", "duration_ms"}, context=context)
@@ -461,11 +481,21 @@ def _merge_sparse_phase(
         raise TemplateError(f"{context} is missing field(s): type")
     merged = deepcopy(dict(base))
     merged.update(phase)
+    if reset_duration_on_type_change and phase["type"] != base.get("type"):
+        if "duration_ms" not in phase:
+            merged.pop("duration_ms", None)
+    if reset_duration_on_type_change and phase["type"] in {"none", "highlight"}:
+        if "duration_ms" not in phase:
+            merged.pop("duration_ms", None)
     return merged
 
 
 def _expand_sparse_template_data(
-    data: dict[str, Any], *, expected_name: str
+    data: dict[str, Any],
+    *,
+    expected_name: str,
+    base_data: Mapping[str, Any] | None = None,
+    reset_animation_duration: bool = False,
 ) -> dict[str, Any]:
     """Expand schema-5 omissions while rejecting unknown authored fields."""
     context = "Template"
@@ -485,7 +515,9 @@ def _expand_sparse_template_data(
         )
     _expect_string(data["description"], context=f"{context}.description")
 
-    expanded = _default_template_data()
+    expanded = (
+        deepcopy(dict(base_data)) if base_data is not None else _default_template_data()
+    )
     expanded["name"] = name
     expanded["description"] = data["description"]
 
@@ -581,6 +613,7 @@ def _expand_sparse_template_data(
                             context=(
                                 f"Template.animation.{scope}.{element}.{phase_name}"
                             ),
+                            reset_duration_on_type_change=reset_animation_duration,
                         )
                 group[element] = track
             animation[scope] = group

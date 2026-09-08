@@ -19,6 +19,7 @@ flowchart LR
     probe --> cli
     config[config.py<br/>typed subtitle config] --> cli
     templates[templates.py + packaged JSON<br/>validated baselines] --> cli
+    custom[custom_templates.py<br/>local JSON directory] --> cli
     cli --> preview[preview.py<br/>sample cue + guides]
     cli --> transcriber[transcriber.py]
     transcriber --> whisper[WhisperX + PyTorch]
@@ -60,6 +61,7 @@ flowchart LR
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream, render one preview PNG, or encode a silent frozen-background animation preview. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
 | multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
 | multisubs/templates.py | Strictly loads the deterministic packaged JSON index and sparse built-in style/layout/animation definitions, expands them from semantic defaults, and compiles complete baselines through the normal validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
+| multisubs/custom_templates.py | Reads the bounded public schema-1 template directory, validates every discovered file, resolves custom names with built-in-only inheritance, and returns immutable source metadata for one request. | load_custom_template_directory(), resolve_subtitle_template(), ResolvedSubtitleTemplate |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, validates native or explicit envelopes, and positions measured visual-line fragments on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement(), position_visual_lines() |
 | multisubs/font_catalog.py | Loads the immutable bundled-font manifest, performs bounded family lookup, exposes unpacked package resources, and materializes only a selected family when required by the importer. | load_bundled_font_catalog(), bundled_font_directory(), verify_bundled_font_assets() |
 | multisubs/text_measurement.py | Resolves the nearest custom, bundled, or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
@@ -72,7 +74,7 @@ flowchart LR
 ## Execution flow
 
 1. The console script declared in pyproject.toml calls cli.main().
-2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths resolve the omitted template name to `default`, load one complete immutable semantic baseline from the strictly validated packaged template catalog, overlay only explicitly supplied style, layout, four independent animation-track phases, durations, word modes, and highlight color, and validate the final typed configuration once. Template fields are defaults rather than explicit option presence. An explicit CLI duration overrides the selected template duration, which overrides the effect default; `none` and `highlight` are durationless. Both paths validate paths, semantic colors and options, explicit units, opacity, text case, and placement before probing. The normal transcription path validates the 10–5000 ms animation-phase range and rejects active word behavior for translation; preview modes skip speech-specific translation restrictions because they never load speech alignment.
+2. The CLI parses options and, for the normal transcription path, verifies that the selected source language has a default WhisperX alignment model. Both paths load and validate an optional local template directory before resolving the omitted name to `default`; a custom name takes precedence over a built-in name, while custom bases resolve only through the packaged catalog. The selected complete immutable semantic baseline is then overlaid with only explicitly supplied style, layout, four independent animation-track phases, durations, word modes, and highlight color, and the final typed configuration is validated once. Template fields are defaults rather than explicit option presence. An explicit CLI duration overrides the selected template duration, which overrides the effect default; `none` and `highlight` are durationless. Both paths validate paths, semantic colors and options, explicit units, opacity, text case, and placement before probing. The normal transcription path validates the 10–5000 ms animation-phase range and rejects active word behavior for translation; preview modes skip speech-specific translation restrictions because they never load speech alignment.
 3. When `--preview-layout` is present, the CLI validates FFmpeg and ffprobe, probes geometry and duration, resolves the layout, and creates a temporary ASS sample. preview.py suppresses every motion phase at its stable state. It maps displayed words into typed fragments so ass.py can show the first half for each progressive word track, rounding up, and the first word for each active-word track, independently for text and decoration and without timing tags. It then renders exactly one PNG and exits without importing transcriber.py, WhisperX, or PyTorch. When `--preview-animation` is present, the CLI additionally requires `libx264`, selects the same first fitting transformed display cue, builds a typed deterministic simulation in ASS centiseconds, and gives sentence/clause/default gaps capped at 20% of the cue before weighted largest-remainder allocation. The cue occupies [500ms, 500ms + duration), while a single uncaptioned frame captured at `--preview-at` is repeated at 30 fps as the background; the timestamp does not drive the animation clock. The MP4 is silent, lasts one second longer than the requested cue duration, uses `yuv420p` for even geometry or `yuv444p` for odd geometry, and reuses the production ASS compiler with motion enabled. Both preview modes avoid transcription imports, publish no subtitle artifacts, and remove temporary ASS/frame/partial-media files on success or failure. Animated guides identify the word timing as simulated.
 4. For a normal translation task, the CLI rejects turbo and English-only model names before model loading.
 5. The CLI validates the FFmpeg and ffprobe executables and FFmpeg's subtitles filter. probe_video_geometry() then selects the lowest-index usable video stream and validates coded dimensions, rotation, sample aspect ratio, displayed aspect ratio, and container duration before a work directory or model is loaded. resolve_subtitle_config() resolves the complete requested configuration without classifying the video shape, resolves all dimensions, resolves `--line-height` against measured natural font metrics, and rejects explicit leading below that metric. Native placement resolves maximum width after horizontal ASS margins and maximum height after the active top or bottom margin; middle alignment uses the full height. Explicit placement resolves X/Y and both user-supplied maximum dimensions against the full PlayRes canvas, compiles retained native defaults to zero, and rejects a complete envelope that crosses an edge. resolve_wrapping_metrics() also validates that at least one decorated line fits before WhisperX is loaded.
@@ -352,7 +354,9 @@ The JSON artifact has this high-level shape:
 
 The `template` object records requested and resolved template identity. Omitted
 selection is stored as requested `null` and resolved `default`; only names are
-serialized, never registry mappings or asset paths.
+serialized, never registry mappings or asset paths. A custom selection adds
+`source: "custom"`, `schema_version: 1`, and its resolved built-in
+`base`; directory paths, descriptions, and raw custom JSON are excluded.
 
 ### SRT and ASS
 
@@ -365,8 +369,9 @@ independent cue and aligned-word entrance, emphasis, and exit phases. Typography
 includes the resolved font size, non-negative letter spacing, resolved baseline
 line height, display case, text color, and optional timed-highlight text color.
 Raw ASS style mappings are rejected. `SubtitleConfig` stores a complete native
-presentation assembled from one built-in template baseline and explicit
-field-level overrides, or a complete explicit-coordinate envelope. The
+presentation assembled from one built-in or directory-provided template
+baseline and explicit field-level overrides, or a complete explicit-coordinate
+envelope. The
 packaged `default.json` carries only identity metadata; the loader expands it
 from config.py's authoritative fixed defaults and covers the result with exact
 equivalence tests, so omitted selection and explicit `default` cannot drift
@@ -490,7 +495,7 @@ timing only; it cannot represent named or custom positioning.
 
 Built-in templates are package data under `multisubs/assets/templates`. One
 schema-version-5 `index.json` is the sole ordering authority and names each of
-the twenty-five resources exactly once. Each indexed UTF-8 JSON file requires
+the sixteen resources exactly once. Each indexed UTF-8 JSON file requires
 `schema_version`, `name`, and `description`; `style`, `layout`, and `animation`
 branches and their recognized nested fields are sparse. Omitted values inherit
 the authoritative semantic defaults from `config.py`. Style separates
@@ -500,10 +505,14 @@ cue and word branches, each split into independent text and backdrop tracks;
 word tracks also store their mode. A supplied phase object contains a type and,
 for motion effects, an optional validated `duration_ms`. Text and highlight
 colors belong to typography, while word decoration type, color, and size belong
-to `style.word_backdrop`. The catalog contains `default` and twenty-four curated
+to `style.word_backdrop`. The catalog contains `default` and fifteen curated
 styles for social clips, podcasts, tutorials, and editorial work, including
 restrained yellow, green, red, lime, cobalt, coral, cyan, and magenta palettes
-plus coordinated cue and word animations.
+plus coordinated cue and word animations. Packaged presets omit layout overrides
+and inherit the complete default layout. Their font sizes are at least the
+default render-height percentage; sizes equal to the default are omitted.
+The loader still accepts layout overrides for schema compatibility and custom
+templates.
 
 The loader uses `importlib.resources`, rejects malformed UTF-8/JSON, duplicate
 or unknown fields, unsupported schema versions, unsafe or duplicate filenames,
@@ -520,6 +529,13 @@ This template schema is private implementation data. It is not copied into
 retained transcription JSON and is not a user template or discovery interface.
 Retained transcription JSON uses its independent public schema version 3 and
 records the resolved behavior under `metadata.rendering.animation`.
+
+User templates use an independent public schema version 1 and are read by
+custom_templates.py from one flat `--template-dir` for the current request.
+The reader validates every immediate JSON file, applies bounded size/count/
+depth limits, and resolves `base` only against the packaged built-in catalog.
+It never modifies the package registry, follows JSON symlink entries, reads
+recursively, or stores custom paths in retained artifacts.
 
 ## Output layouts
 
