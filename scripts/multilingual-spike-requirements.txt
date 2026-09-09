@@ -1,0 +1,6 @@
+# Evaluation only. Production dependencies are adopted by their owning plans.
+fonttools==4.63.0
+uniseg==0.10.1
+SudachiPy==0.6.11
+SudachiDict-small==20260723
+jieba==0.42.1

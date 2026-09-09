@@ -692,6 +692,17 @@ The default test suite is hermetic and excludes tests marked `integration`.
 Avoid a full transcription as a routine smoke test because model loading can
 download large assets and consume significant CPU, GPU, memory, and time.
 
+For local subtitle debugging, a source checkout includes
+`python -m scripts.replay_subtitle_layout retained.json --output-dir ./data/replays`.
+It writes collision-safe JSON/SRT/ASS and an evidence manifest without loading
+speech models. Add `--render` to render on a synthetic background, or additionally
+pass `--uncaptioned-video original.mp4` for an explicitly selected clean input.
+The helper uses the current `amber-word` template at the center; select another
+with `--template` and optionally `--font`. Saved rendering settings are not
+imported. Retained JSON has already lost any text or boundaries discarded by
+earlier processing, so replay cannot recover them. Files remain local and are
+never overwritten. See the [regression and backend evaluation instructions](docs/plans/multilingual-subtitles/00-regressions-and-decisions.md).
+
 The CLI exits with status `0` on success, `2` for invalid arguments or paths,
 and `1` for dependency, transcription, artifact, or FFmpeg failures.
 
