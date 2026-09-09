@@ -7,6 +7,7 @@ import logging
 import shutil
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from . import __version__
@@ -132,11 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-l",
         "--lang",
-        default="en",
+        default=None,
         choices=SUPPORTED_LANGUAGES,
         metavar="CODE",
         help=(
-            "Source language code; translation output is always English (default: en)."
+            "Source language code (default: automatic detection; .en models use "
+            "English). Translation output is always English."
         ),
     )
     parser.add_argument(
@@ -711,6 +713,13 @@ def _build_request(
             parser=parser,
         )
         _validate_translation_request(args.task, args.model, parser)
+        if args.model.endswith(".en"):
+            if args.lang not in (None, "en"):
+                parser.error(
+                    f'Model "{args.model}" is English-only; use --lang en or '
+                    "choose a multilingual model for another source language."
+                )
+            args.lang = "en"
 
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
     if not input_path.exists() or not input_path.is_file():
@@ -903,6 +912,13 @@ def _run_request_with_fonts(
             request.model_name,
             progress=progress,
         )
+        request = replace(request, language=document.language)
+        wrapping_metrics = resolve_wrapping_metrics(
+            resolved_subtitle_config,
+            geometry,
+            language="en" if request.task == "translate" else document.language,
+            bundled_fonts_dir=bundled_fonts_dir,
+        )
         artifact_options = {
             "geometry": geometry,
             "resolved_subtitle_config": resolved_subtitle_config,
@@ -934,7 +950,7 @@ def _run_request_with_fonts(
                 request.input_path,
                 transcripts.ass_path,
                 work_dir,
-                request.language,
+                document.language,
                 output_path=video_path,
                 geometry=geometry,
                 fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),

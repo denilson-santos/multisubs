@@ -27,7 +27,7 @@ from .ass import (
 from .config import (
     MODELS as _MODELS,
 )
-from .config import validate_subtitle_config
+from .config import SUPPORTED_LANGUAGES, validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
 from .layout import (
     WrappingMetrics,
@@ -133,7 +133,7 @@ def generate_transcriptions(
     input_path: str | Path,
     output_dir: str | Path,
     style_options: SubtitleConfig | None = None,
-    lang: str = "en",
+    lang: str | None = None,
     task: str = "transcribe",
     model_name: str = "turbo",
     *,
@@ -163,15 +163,19 @@ def generate_transcriptions(
 
     geometry = probe_video_geometry(source_path)
     resolved_config = resolve_subtitle_config(subtitle_config, geometry)
-    wrapping_metrics = resolve_wrapping_metrics(
-        resolved_config, geometry, language=lang
-    )
+    # Validate the visual budget before loading speech models.
+    resolve_wrapping_metrics(resolved_config, geometry, language=lang)
     document = transcribe_video(
         source_path,
         lang=lang,
         task=task,
         model_name=model_name,
         progress=progress,
+    )
+    wrapping_metrics = resolve_wrapping_metrics(
+        resolved_config,
+        geometry,
+        language="en" if task == "translate" else document.language,
     )
     return write_transcription_artifacts(
         document,
@@ -186,7 +190,7 @@ def generate_transcriptions(
 
 def transcribe_video(
     input_path: str | Path,
-    lang: str = "en",
+    lang: str | None = None,
     task: str = "transcribe",
     model_name: str = "turbo",
     *,
@@ -194,6 +198,18 @@ def transcribe_video(
 ) -> TranscriptDocument:
     """Transcribe and align one video without serializing output artifacts."""
     source_path = _normalise_input_path(input_path)
+    if model_name.endswith(".en"):
+        if lang not in (None, "en"):
+            raise ValidationError(
+                f'Model "{model_name}" is English-only; use --lang en or '
+                "choose a multilingual model for another source language."
+            )
+        lang = "en"
+    if lang is not None and lang not in SUPPORTED_LANGUAGES:
+        raise ValidationError(
+            f"Source language '{lang}' has no supported default alignment model. "
+            "Use --help to list supported language codes."
+        )
 
     _report(progress, f"Generating transcripts for '{source_path.name}'...")
     torch, whisperx = _load_runtime_dependencies()
@@ -234,16 +250,25 @@ def transcribe_video(
     raw_segments = _require_sequence(
         result_mapping.get("segments"), "transcription segments"
     )
-    detected_language = _result_language(result_mapping, lang)
+    source_language = _result_language(result_mapping, lang)
+    if source_language not in SUPPORTED_LANGUAGES:
+        raise TranscriptionError(
+            f"Detected source language '{source_language}' has no supported default "
+            "alignment model. Use --help to list supported languages; if detection "
+            "was incorrect, specify the source language with --lang CODE."
+        )
+    if lang is None:
+        _report(progress, f"Detected source language: {source_language}.")
+    alignment_language = "en" if task == "translate" else source_language
 
     _report(progress, "Aligning words for subtitle timing...")
     try:
         align_model, align_metadata = _load_model_with_retries(
             lambda: whisperx.load_align_model(
-                language_code=detected_language,
+                language_code=alignment_language,
                 device=device,
             ),
-            operation=f"Loading alignment model for '{detected_language}'",
+            operation=f"Loading alignment model for '{alignment_language}'",
             progress=progress,
         )
         aligned_result = whisperx.align(
@@ -269,7 +294,7 @@ def transcribe_video(
     full_text = _result_full_text(result_mapping, segments)
     return TranscriptDocument(
         source_path=source_path,
-        language=lang,
+        language=source_language,
         task=task,
         model_name=model_name,
         full_text=full_text,
@@ -308,7 +333,7 @@ def write_transcription_artifacts(
         document.segments,
         resolved_config,
         geometry,
-        language=document.language,
+        language="en" if document.task == "translate" else document.language,
         wrapping_metrics=wrapping_metrics,
     )
     display_segments, fallback_cues = prepare_karaoke_cues(
@@ -538,9 +563,16 @@ def _require_sequence(value: object, description: str) -> Sequence[object]:
     return value
 
 
-def _result_language(result: Mapping[str, Any], requested_language: str) -> str:
+def _result_language(result: Mapping[str, Any], requested_language: str | None) -> str:
+    if requested_language is not None:
+        return requested_language
     language = result.get("language")
-    return language if isinstance(language, str) and language else requested_language
+    if isinstance(language, str) and language:
+        return language
+    raise TranscriptionError(
+        "WhisperX did not return a detected source language. "
+        "Specify the source language with --lang CODE and retry."
+    )
 
 
 def _result_full_text(
