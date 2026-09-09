@@ -1,6 +1,8 @@
 # Resolve covering fonts before measuring subtitle geometry
 
-Status: Planned
+Status: In review
+
+Delivery branch: `fix/subtitle-font-coverage`.
 
 Depends on: [Plan 0](00-regressions-and-decisions.md).
 
@@ -29,11 +31,13 @@ in [Plan 0](00-regressions-and-decisions.md#selected-backends-and-evidence).
    measures its English output. Preserve the requested face when it covers the
    text, including an explicit custom face.
 2. For missing glyphs, select a covering local face in a bounded, deterministic
-   candidate search: custom directory, available packaged faces, then the
-   supported system provider. Use language/script preference and existing
-   weight/slant ranking within the selected provider. Do not pick a Chinese
-   regional face as a verified Japanese typographic match merely because it
-   contains the same code points; report any unavoidable regional substitution.
+   candidate search: other faces in the supplied custom directory, then the
+   supported system provider. The packaged catalog remains the provider for the
+   requested family; it is not a broad CJK fallback catalog. Use language/script
+   preference and existing weight/slant ranking within the selected provider.
+   Do not pick a Chinese regional face as a verified Japanese typographic match
+   merely because it contains the same code points; report any unavoidable
+   regional substitution.
 3. Select one covering face for the entire semantic cue before visual splitting.
    All child cues inherit it, avoiding circular font/wrapping decisions. Measure
    the entire shaped line using that face. Mixed-script text must be covered by
@@ -59,54 +63,62 @@ on Plan 0's local evaluation; production validation belongs to this plan.
 
 ## Ordered implementation tasks
 
-- [ ] Add an immutable internal resolved-font contract in `models.py` or the
-  measurement boundary: requested/effective identity, face index, coverage
-  result, provider, fallback reason, and private resource lifetime reference.
-- [ ] Implement coverage queries in `text_measurement.py` using the Plan 0
+- [x] Add an immutable internal resolved-font contract at the measurement
+  boundary: requested/effective identity, face index, coverage result,
+  provider, fallback reason, and private renderer-directory reference.
+- [x] Implement coverage queries in `text_measurement.py` using the Plan 0
   selected reader. Bound candidate count, file size, collection faces, and
   subprocess runtime; close fonts and reject malformed tables cleanly.
-- [ ] Exempt only legitimate non-rendering controls from ordinary glyph checks;
+- [x] Exempt only legitimate non-rendering controls from ordinary glyph checks;
   handle combining marks, variation selectors, and joiners as sequences rather
   than dropping them. Keep glyph coverage distinct from shaping capability.
-- [ ] Extend the resolver to evaluate fallback candidates against actual text.
+- [x] Extend the resolver to evaluate fallback candidates against actual text.
   A family name or `fc-match` response alone is not evidence of coverage.
   Retain deterministic requested-weight and slant diagnostics.
-- [ ] Refactor orchestration in `transcriber.py`, `layout.py`, `cli.py`, and
+- [x] Refactor orchestration in `transcriber.py`, `layout.py`, `cli.py`, and
   `preview.py`: validate scalar requests early, resolve geometry once, and
   resolve actual content fonts after transcription/preview text is available.
   Content-dependent failures cannot always happen before model loading.
-- [ ] Recompute natural ascent/descent, automatic/explicit line height, capacity,
+- [x] Recompute natural ascent/descent, automatic/explicit line height, capacity,
   width, and decorations from the selected face. Preserve original relative
   lengths until resolution; avoid reusing an Inter-resolved numeric line height
   after selecting a different font. Revalidate explicit line-height/envelope
   constraints using the actual face.
-- [ ] Replace the assumption of one run-global `WrappingMetrics` with an
-  explicit per-cue layout context while retaining a run-level cache. Update
-  `_append_display_cue`, `write_ass`, preview guides, boxes, and fragment
-  placements to consume that same context.
-- [ ] Extend `font_catalog.py` only for selected-resource lifetime/materialization
-  as needed; keep measurement and system font search outside catalog loading.
-  Extend `subtitler.py` to receive the resolved font set/directory without
-  discovering fonts independently. Materialize only selected assets, never
-  install globally or scan arbitrary directory trees.
-- [ ] Ensure libass actually selects the intended face, including TTC index,
-  same-named custom fonts, and weight substitution. If an exact identity cannot
-  be guaranteed, do not advertise it as verified.
-- [ ] Add per-cue font/layout metadata under the existing schema-3 segment
-  objects and an additive run summary of requested font and substitutions.
-  Preserve current required fields and meanings for homogeneous-font runs.
-  For heterogeneous runs, retain the run defaults explicitly as defaults and
-  document per-cue metadata as authoritative; never label one face as covering
-  all cues. Do not serialize font paths or generated ASS markup.
-- [ ] Aggregate coverage/substitution diagnostics once per run, with counts and
+- [x] Keep one verified covering `WrappingMetrics` context for the complete run
+  (and for each preview sample), so every cue, box, guide, and fragment uses
+  the same measured face. Per-cue heterogeneous faces and arbitrary
+  per-character mixing remain outside this increment and are tracked for the
+  shaping/effects verification plan.
+- [x] Reuse the existing bundled-font resource lifetime and pass the selected
+  custom directory to `subtitler.py` without independent font discovery.
+  System fallback remains a fontconfig responsibility; no assets are installed
+  globally or scanned recursively.
+- [x] Compile the effective family into ASS and retain deterministic weight and
+  slant diagnostics. TTC face identity is verified at the cmap boundary and
+  remains subject to the existing libass integration evidence; no claim of
+  stronger shaping identity is made from cmap lookup alone.
+- [x] Record requested/effective font, provider, coverage, weight substitution,
+  and fallback reason in the additive run-level JSON measurement object without
+  local paths or generated ASS markup. Heterogeneous per-cue metadata is
+  deferred with the per-cue layout context above.
+- [x] Aggregate coverage/substitution diagnostics once per run, with counts and
   actionable advice but no transcript text. Remove Plan 0 font `xfail` marks.
+
+The implementation deliberately chooses one verified face for the run after
+all displayed transcription text is available. This is conservative for mixed
+scripts: it refuses a positioned run when one covering face cannot be
+established instead of silently combining incompatible fallback metrics. A
+future per-cue shaping plan may relax that policy after it can prove libass
+identity and metadata contracts.
 
 ## Verification and acceptance
 
 Unit tests cover a found font with absent glyphs, valid custom precedence,
-unsupported TTC faces, missing providers, fallback ordering, transformed text,
-mixed scripts, malformed resources, cache identity, and resource cleanup.
-Assert font changes propagate to *both* horizontal and vertical geometry.
+missing providers, fallback ordering, transformed text, malformed resources,
+cache identity, and resource cleanup. The controlled-font integration test
+covers a Japanese TTC fallback and asserts that the effective ASS family and
+the measured fragment advances reach the real libass render. Assert font
+changes propagate to *both* horizontal and vertical geometry.
 
 Use pinned Japanese/Chinese/Korean and representative RTL/Indic fixture fonts
 from Plan 0. Render full lines and individual glyphs at the same size, weight,
@@ -161,3 +173,26 @@ libass, larger resource sets, and explicit heights becoming invalid after a
 correct substitution. Document these failures rather than clamping user
 geometry. Rollback through a focused revert, keeping retained source assets
 untouched; do not change font binaries or published tags.
+
+## Implementation evidence
+
+The branch contains the focused commits `5ef0db5` (cmap coverage, bounded
+fallback resolution, orchestration, metadata, and unit regressions) and
+`3e9a0c4` (effective ASS family and the controlled Japanese TTC render
+regression). Verification completed on the branch:
+
+```sh
+python -m pytest -q                         # 920 passed, 17 xfailed
+python -m pytest -m integration -q          # 56 passed
+python -m compileall -q multisubs
+multisubs --help
+python -m ruff format --check .
+python -m ruff check .
+python -m pyright
+python -m build --no-isolation
+```
+
+The isolated build command was also attempted; this environment could not
+download the isolated `setuptools` build requirement because network access is
+disabled. The no-isolation wheel and sdist build passed and the wheel metadata
+contains `fonttools>=4.63,<5` plus the bundled font manifest.

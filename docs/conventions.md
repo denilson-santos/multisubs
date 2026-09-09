@@ -71,6 +71,12 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must treat Pillow as the text-measurement boundary rather than reimplementing
   TrueType/OpenType parsing. Font resolution must remain bounded and must not
   serialize machine-specific font paths or persist transcript text in caches.
+- Must keep fontTools 4.63 or a reviewed compatible 4.x release as the runtime
+  cmap-coverage reader. Use it only for bounded TrueType/OpenType coverage
+  inspection; Pillow/RAQM remains the shaping and advance-measurement boundary.
+  Bound file size, collection faces, candidate count, and fontconfig runtime;
+  reject malformed resources without automatic downloads. Record the effective
+  family and fallback reason without local paths in JSON.
 - Must normalize public font-weight names, aliases, and supported numeric input
   to one canonical OpenType rank. Face selection ranks absolute weight distance
   before italic mismatch and uses stable provider order as the final tie
@@ -355,6 +361,12 @@ template paths or raw file contents.
   selected SFNT face's OS/2 Windows metrics, with Pillow ascent/descent as the
   fallback. Fragment placement must not introduce synthetic tracking because
   the renderer and measurer used different font-size conventions.
+- Before concrete metrics are used for positioned subtitles, fontTools must
+  check the selected face's cmap against the display-cased sample. Missing-glyph
+  fallback must be measured and compiled into ASS as the same effective family;
+  a positioned run with no covering face fails with actionable `--font` or
+  `--fonts-dir` guidance. Cmap verification does not claim complete shaping or
+  final libass fallback identity.
 - Must count one tracking gap between consecutive rendered grapheme clusters on
   each visual line. Combining marks and zero-width joiner sequences stay with
   their base cluster, while spaces and punctuation remain measurable clusters.
