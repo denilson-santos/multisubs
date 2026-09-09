@@ -453,7 +453,7 @@ Run `multisubs --help` for the parser's complete, authoritative help text.
 | --- | --- | --- |
 | `-i`, `--input-path PATH` | required | Path to one local input video. |
 | `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
-| `-l`, `--lang CODE` | `en` | Source-language code with a WhisperX alignment model. |
+| `-l`, `--lang CODE` | automatic detection | Source-language code with a WhisperX alignment model; an explicit code overrides detection. English-only `.en` models use `en`. |
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
 | `-m`, `--model MODEL` | `turbo` | Whisper model used for processing. |
 | `-k`, `--keep-transcriptions` | off | Keep JSON, SRT, and ASS in a `subtitles` directory. |
@@ -606,6 +606,19 @@ keeps both original cue text and its rendered `display_text`.
 
 ## 🌍 Supported languages
 
+Omit `--lang` to let WhisperX detect the source language from the beginning of
+the audio. Use an explicit code such as `--lang pt`, `--lang ja`, or `--lang zh`
+to fix the source language, including when automatic detection is incorrect.
+Detection selects one language for the run; it does not switch languages within
+a multilingual video. Short or ambiguous audio can produce an incorrect result.
+The detected code is reported during processing.
+
+Models ending in `.en` always use English and reject an explicit non-English
+`--lang`. Translation still produces English, regardless of the selected or
+detected source language, and requires a multilingual non-Turbo model.
+If detection returns an unsupported language or no language, processing stops
+with guidance before loading the alignment model.
+
 Source languages are limited to those with a default word-alignment model in
 the installed WhisperX release:
 
@@ -617,7 +630,7 @@ tr, uk, ur, vi, zh
 
 ## 📁 Generated files
 
-For `video.mp4` with language `pt`:
+For `video.mp4` with selected or automatically detected source language `pt`:
 
 ```text
 # Default: only the rendered video is kept; all subtitle artifacts are transient
@@ -640,6 +653,9 @@ output/
 
 Existing paths are never overwritten. multisubs adds suffixes such as `(1)` to
 new files or directories when a name already exists.
+
+Artifact names and JSON `metadata.language` use the resolved source-language
+code, including for translation runs whose subtitle text is English.
 
 Work happens in a private temporary directory inside the requested output
 directory. Completed artifacts are published only after FFmpeg succeeds. If

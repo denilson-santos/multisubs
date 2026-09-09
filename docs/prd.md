@@ -41,7 +41,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | --- | --- |
 | FR-1 | The CLI must require one input video path and must reject a missing input file. |
 | FR-2 | The user must be able to choose an output directory; the current directory is the default. |
-| FR-3 | The user must be able to specify a source-language code for which the installed WhisperX release provides a default word-alignment model. |
+| FR-3 | Omitting `--lang` must automatically detect one source language for the run. An explicit supported source-language code must take precedence over detection. English-only `.en` models must use `en` and reject an explicit non-English source language before processing. Selected or detected source languages must have a supported default WhisperX word-alignment model; missing or unsupported detection must fail with actionable guidance before alignment-model loading. Artifact names and JSON language metadata must use the resolved source language. |
 | FR-4 | The tool must support transcription and translation tasks. Translation output is English. |
 | FR-5 | The tool must reject translation with turbo and English-only Whisper models. |
 | FR-6 | The tool must generate a JSON transcript with metadata, an SRT subtitle file, and an ASS subtitle file before rendering. |
@@ -125,7 +125,7 @@ custom source/base metadata without serializing local paths or raw JSON.
 ## Constraints and risks
 
 - Model quality, alignment quality, and processing time depend on source audio, selected language, selected model, and available hardware.
-- Source-language selection is limited to languages with a default WhisperX word-alignment model.
+- Selected and automatically detected source languages are limited to languages with a supported default WhisperX word-alignment model. Automatic detection selects one language per run and can be inaccurate for short or ambiguous audio; an explicit `--lang` overrides it.
 - Initial use may require model downloads; temporary connection failures during those downloads are retried, but a stable network connection is still required when assets are not cached.
 - FFmpeg installations without ffprobe or subtitle rendering support can prevent expected rendering. Unbundled font families still require an explicit custom directory or a compatible system provider.
 - Generated hard subtitles cannot be turned off after the video is created.

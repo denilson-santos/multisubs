@@ -408,7 +408,7 @@ class RunRequest:
 
     input_path: Path
     output_dir: Path
-    language: str
+    language: str | None
     task: str
     model_name: str
     subtitle_config: SubtitleConfig
