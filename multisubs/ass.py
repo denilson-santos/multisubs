@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 from numbers import Real
 from pathlib import Path
@@ -145,6 +145,20 @@ def write_ass(
             wrapping_metrics.text_measurer if wrapping_metrics is not None else None
         ),
     )
+    if wrapping_metrics is not None:
+        # The measurer may have selected a coverage-safe fallback face.  Keep
+        # the ASS style on that same family so libass renders the glyphs that
+        # were measured for wrapping and fragment placement.
+        effective_font = wrapping_metrics.text_measurer.info.resolved_font
+        if effective_font:
+            typography = replace(
+                config.style.typography,
+                font=effective_font,
+            )
+            config = replace(
+                config,
+                style=replace(config.style, typography=typography),
+            )
     explicit_line_height = _uses_explicit_line_height(config)
     metrics = wrapping_metrics
     allow_single_line_overflow = (

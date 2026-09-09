@@ -11,7 +11,6 @@ import pytest
 from PIL import Image
 
 from multisubs.config import validate_subtitle_config
-from multisubs.font_catalog import bundled_font_directory
 from multisubs.models import TranscriptDocument
 from multisubs.subtitler import probe_video_geometry
 from multisubs.templates import get_subtitle_template
@@ -58,11 +57,6 @@ def _frame(ass: Path, fonts: Path) -> tuple[Image.Image, str]:
     return Image.frombytes("L", (1080, 1920), result.stdout), result.stderr.decode()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="Multilingual Plan 1: Inter missing-glyph advances collide in real libass",
-)
 def test_japanese_fragment_advances_fit_rendered_glyphs(tmp_path, record_property):
     _require_renderer()
     if not WQY.is_file() or hashlib.sha256(WQY.read_bytes()).hexdigest() != WQY_SHA256:
@@ -82,10 +76,24 @@ def test_japanese_fragment_advances_fit_rendered_glyphs(tmp_path, record_propert
     config = validate_subtitle_config(
         None,
         defaults=get_subtitle_template("amber-word").config,
+        appearance_values={"fonts_dir": WQY.parent},
         position="center",
     )
-    paths = write_transcription_artifacts(document, tmp_path, config, geometry=geometry)
+    paths = write_transcription_artifacts(
+        document,
+        tmp_path,
+        config,
+        geometry=geometry,
+        verify_font_coverage=True,
+    )
+    metadata = json.loads(Path(paths[0]).read_text())["metadata"]["rendering"]
+    measurement = metadata["text_measurement"]
+    assert measurement["requested_font"] == "Inter"
+    assert measurement["resolved_font"] == "WenQuanYi Zen Hei"
+    assert measurement["coverage"] == "verified"
+    assert measurement["fallback_reason"] == "requested face lacks glyph coverage"
     ass = Path(paths[2]).read_text()
+    assert "Style: Default,WenQuanYi Zen Hei," in ass
     centers = sorted({int(x) for x in re.findall(r"\\pos\((\d+),\d+\)", ass)})
     if len(centers) < 2:
         pytest.fail("Fixture did not produce positioned glyphs")
@@ -95,10 +103,7 @@ def test_japanese_fragment_advances_fit_rendered_glyphs(tmp_path, record_propert
         header + "Dialogue: 0,0:00:00.00,0:00:00.80,Positioned,,0,0,0,,"
         r"{\an5\pos(540,960)\b600\bord0}ナ" + "\n"
     )
-    with bundled_font_directory("Inter") as fonts:
-        if fonts is None:
-            raise RuntimeError("Bundled Inter fixture is unavailable")
-        frame, log = _frame(single, fonts)
+    frame, log = _frame(single, WQY.parent)
 
     def threshold(value: float) -> float:
         return 255.0 if value > 32 else 0.0
