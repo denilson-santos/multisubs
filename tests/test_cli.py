@@ -599,6 +599,7 @@ def test_run_request_cleans_private_work_dir_after_default_success(
         geometry,
         resolved_subtitle_config,
         wrapping_metrics,
+        verify_font_coverage,
         template_requested,
         template_resolved,
         progress,
@@ -606,6 +607,7 @@ def test_run_request_cleans_private_work_dir_after_default_success(
         assert geometry is GEOMETRY
         assert resolved_subtitle_config is not None
         assert wrapping_metrics.line_capacity >= 1
+        assert verify_font_coverage is True
         assert template_requested is None
         assert template_resolved == "default"
         paths = TranscriptionPaths(

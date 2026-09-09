@@ -72,6 +72,8 @@ def resolve_subtitle_config(
     *,
     text_measurer: TextMeasurer | None = None,
     bundled_fonts_dir: Path | None = None,
+    sample_text: str | Sequence[str] | None = None,
+    verify_font_coverage: bool = False,
 ) -> SubtitleConfig:
     """Resolve all geometry- and font-dependent subtitle lengths exactly once."""
     from .config import parse_line_height, validate_subtitle_config
@@ -118,12 +120,24 @@ def resolve_subtitle_config(
     )
     line_measurer = text_measurer
     if line_measurer is None:
+        measurement_options = (
+            {
+                "sample_text": sample_text,
+                "verify_font_coverage": verify_font_coverage,
+            }
+            if sample_text is not None or verify_font_coverage
+            else {}
+        )
         line_measurer = (
-            build_text_measurer(measurement_typography)
+            build_text_measurer(
+                measurement_typography,
+                **measurement_options,
+            )
             if bundled_fonts_dir is None
             else build_text_measurer(
                 measurement_typography,
                 bundled_fonts_dir=bundled_fonts_dir,
+                **measurement_options,
             )
         )
     requested_line_height = (
@@ -605,6 +619,8 @@ def resolve_wrapping_metrics(
     text_measurer: TextMeasurer | None = None,
     bundled_fonts_dir: Path | None = None,
     allow_single_line_overflow: bool = False,
+    sample_text: str | Sequence[str] | None = None,
+    verify_font_coverage: bool = False,
 ) -> WrappingMetrics:
     """Resolve the geometry-aware inputs used by adaptive cue wrapping."""
     resolved = resolve_subtitle_config(
@@ -612,6 +628,8 @@ def resolve_wrapping_metrics(
         geometry,
         text_measurer=text_measurer,
         bundled_fonts_dir=bundled_fonts_dir,
+        sample_text=sample_text,
+        verify_font_coverage=verify_font_coverage,
     )
     return _build_wrapping_metrics(
         resolved,
@@ -620,6 +638,8 @@ def resolve_wrapping_metrics(
         text_measurer=text_measurer,
         bundled_fonts_dir=bundled_fonts_dir,
         allow_single_line_overflow=allow_single_line_overflow,
+        sample_text=sample_text,
+        verify_font_coverage=verify_font_coverage,
     )
 
 
@@ -631,6 +651,8 @@ def _build_wrapping_metrics(
     text_measurer: TextMeasurer | None,
     bundled_fonts_dir: Path | None,
     allow_single_line_overflow: bool,
+    sample_text: str | Sequence[str] | None,
+    verify_font_coverage: bool,
 ) -> WrappingMetrics:
     layout = config.layout
     max_width = _require_resolved_layout_int(layout.max_width, "max-width")
@@ -643,13 +665,26 @@ def _build_wrapping_metrics(
     shadow_size = _require_resolved_layout_int(config.style.shadow.size, "shadow-size")
     measurer = text_measurer
     if measurer is None:
+        measurement_options = (
+            {
+                "sample_text": sample_text,
+                "verify_font_coverage": verify_font_coverage,
+            }
+            if sample_text is not None or verify_font_coverage
+            else {}
+        )
         measurer = (
-            build_text_measurer(config.style.typography, language=language)
+            build_text_measurer(
+                config.style.typography,
+                language=language,
+                **measurement_options,
+            )
             if bundled_fonts_dir is None
             else build_text_measurer(
                 config.style.typography,
                 language=language,
                 bundled_fonts_dir=bundled_fonts_dir,
+                **measurement_options,
             )
         )
     decoration_width = 2 * backdrop_size + shadow_size

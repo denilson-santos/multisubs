@@ -176,6 +176,14 @@ def generate_transcriptions(
         resolved_config,
         geometry,
         language="en" if task == "translate" else document.language,
+        sample_text=[
+            _transform_display_text(
+                str(segment.get("text", "")),
+                resolved_config.style.typography.text_case,
+            )
+            for segment in document.segments
+        ],
+        verify_font_coverage=True,
     )
     return write_transcription_artifacts(
         document,
@@ -314,6 +322,7 @@ def write_transcription_artifacts(
     template_resolved: str = "default",
     template_source: str = "builtin",
     template_base: str | None = None,
+    verify_font_coverage: bool = False,
     progress: ProgressReporter = None,
 ) -> tuple[str, str, str]:
     """Serialize one semantic transcript as JSON, SRT, and ASS artifacts."""
@@ -335,6 +344,7 @@ def write_transcription_artifacts(
         geometry,
         language="en" if document.task == "translate" else document.language,
         wrapping_metrics=wrapping_metrics,
+        verify_font_coverage=verify_font_coverage,
     )
     display_segments, fallback_cues = prepare_karaoke_cues(
         display_segments,
@@ -798,6 +808,7 @@ def layout_subtitle_cues(
     language: str | None = None,
     text_measurer: TextMeasurer | None = None,
     wrapping_metrics: WrappingMetrics | None = None,
+    verify_font_coverage: bool = False,
 ) -> tuple[list[dict[str, Any]], WrappingMetrics]:
     """Create display cues from semantic cues using resolved layout metrics."""
     if wrapping_metrics is not None and text_measurer is not None:
@@ -805,7 +816,22 @@ def layout_subtitle_cues(
             "wrapping metrics and text measurer cannot be supplied together"
         )
     metrics = wrapping_metrics or resolve_wrapping_metrics(
-        resolved_config, geometry, language=language, text_measurer=text_measurer
+        resolved_config,
+        geometry,
+        language=language,
+        text_measurer=text_measurer,
+        sample_text=(
+            [
+                _transform_display_text(
+                    str(segment.get("semantic_text", segment.get("text", ""))),
+                    resolved_config.style.typography.text_case,
+                )
+                for segment in segments
+            ]
+            if verify_font_coverage
+            else None
+        ),
+        verify_font_coverage=verify_font_coverage,
     )
     text_case = resolved_config.style.typography.text_case
     display_cues: list[dict[str, Any]] = []

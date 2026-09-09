@@ -5,6 +5,7 @@ import pytest
 from PIL import ImageFont
 
 from multisubs import text_measurement
+from multisubs.errors import ValidationError
 from multisubs.models import (
     FontWeight,
     FontWeightInputForm,
@@ -172,6 +173,8 @@ def test_missing_pillow_uses_visible_unicode_fallback(monkeypatch):
         "resolved_weight_name": None,
         "resolved_weight": None,
         "weight_substituted": None,
+        "coverage": "unverified",
+        "fallback_reason": None,
     }
     assert "could not be resolved" in (measurer.diagnostic or "")
 
@@ -245,6 +248,57 @@ def test_bundled_family_precedes_fontconfig(monkeypatch):
     assert measurer.info.resolved_style == "Regular"
     assert measurer.info.renderer_fonts_dir is not None
     assert measurer.info.renderer_fonts_dir.name == "inter"
+
+
+def test_coverage_verification_marks_a_face_when_all_displayed_text_is_supported():
+    measurer = build_text_measurer(
+        _appearance(font="Inter"),
+        language="en",
+        sample_text="Hello, world!",
+        verify_font_coverage=True,
+    )
+
+    assert measurer.info.coverage == "verified"
+    assert measurer.info.fallback_reason is None
+    assert measurer.info.font_source == "bundled"
+
+
+def test_font_cmap_coverage_ignores_controls_and_variation_selectors():
+    font_path = (
+        Path(text_measurement.__file__).parent
+        / "assets"
+        / "fonts"
+        / "inter"
+        / "Inter-Regular.ttf"
+    )
+
+    assert text_measurement._font_path_covers_text(font_path, 0, "A\n\u200d\ufe0f")
+    assert not text_measurement._font_path_covers_text(font_path, 0, "字幕")
+
+
+def test_coverage_verification_fails_with_an_actionable_error_when_no_face_covers_text(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "multisubs.text_measurement._font_path_covers_text",
+        lambda path, index, text: False,
+    )
+    monkeypatch.setattr(
+        "multisubs.text_measurement._resolve_face_from_fontconfig",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "multisubs.text_measurement._resolve_covering_face_from_fontconfig",
+        lambda *args, **kwargs: None,
+    )
+
+    with pytest.raises(ValidationError, match="does not cover the displayed"):
+        build_text_measurer(
+            _appearance(font="Inter"),
+            language="ja",
+            sample_text="字幕",
+            verify_font_coverage=True,
+        )
 
 
 def test_bundled_roboto_resolves_every_supported_weight_exactly():

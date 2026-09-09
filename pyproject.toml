@@ -17,6 +17,7 @@ dependencies = [
     "torchvision~=0.23.0",
     "whisperx==3.8.6",
     "ffmpeg-python",
+    "fonttools>=4.63,<5",
 ]
 
 [project.optional-dependencies]
