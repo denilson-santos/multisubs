@@ -7,7 +7,8 @@
       "font_family": "Lora",
       "font_weight": "semi-bold",
       "italic": true,
-      "color": "#FFF8ED"
+      "color": "#FFF8ED",
+      "font_size": "5.07%"
     },
     "backdrop": {
       "type": "outline",
@@ -36,5 +37,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "11.1%"
   }
 }

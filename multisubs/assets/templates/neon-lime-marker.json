@@ -6,7 +6,8 @@
     "typography": {
       "font_family": "Oswald",
       "font_weight": "medium",
-      "highlight_color": "#111827"
+      "highlight_color": "#111827",
+      "font_size": "5.06%"
     },
     "backdrop": {
       "type": "outline",
@@ -37,5 +38,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "11.1%"
   }
 }

@@ -12,7 +12,7 @@ from multisubs.ass import write_ass
 from multisubs.config import parse_relative_length, validate_subtitle_config
 from multisubs.errors import TemplateError
 from multisubs.font_catalog import find_bundled_font_family
-from multisubs.layout import resolve_subtitle_config
+from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import (
     FontWeight,
     PreviewRequest,
@@ -63,7 +63,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "12%",
         None,
         None,
     ),
@@ -71,7 +71,7 @@ EXPECTED_TEMPLATES = {
         "Montserrat",
         FontWeight.EXTRA_BOLD,
         False,
-        "4%",
+        "4.8%",
         "#FFFFFF",
         "100%",
         TextCase.UPPERCASE,
@@ -86,7 +86,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "9.9%",
         None,
         None,
     ),
@@ -94,7 +94,7 @@ EXPECTED_TEMPLATES = {
         "Inter",
         FontWeight.SEMI_BOLD,
         False,
-        "4%",
+        "4.65%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
@@ -109,7 +109,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "9.7%",
         WordAnimationMode.ACTIVE_WORD,
         "#FFD54F",
     ),
@@ -117,7 +117,7 @@ EXPECTED_TEMPLATES = {
         "Montserrat",
         FontWeight.MEDIUM,
         False,
-        "4%",
+        "5.24%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
@@ -132,7 +132,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.3%",
         WordAnimationMode.PROGRESSIVE,
         "#A7F3D0",
     ),
@@ -140,7 +140,7 @@ EXPECTED_TEMPLATES = {
         "Atkinson Hyperlegible Next",
         FontWeight.BOLD,
         False,
-        "4%",
+        "4.99%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
@@ -155,7 +155,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.8%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
     ),
@@ -163,7 +163,7 @@ EXPECTED_TEMPLATES = {
         "Oswald",
         FontWeight.BOLD,
         False,
-        "4%",
+        "5.06%",
         "#FACC15",
         "100%",
         TextCase.UPPERCASE,
@@ -178,7 +178,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.3%",
         None,
         None,
     ),
@@ -201,7 +201,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "9.9%",
         None,
         None,
     ),
@@ -209,7 +209,7 @@ EXPECTED_TEMPLATES = {
         "Montserrat",
         FontWeight.BOLD,
         False,
-        "4%",
+        "5.2%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
@@ -224,7 +224,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "10.3%",
         WordAnimationMode.ACTIVE_WORD,
         "#D9F99D",
     ),
@@ -247,7 +247,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "9.8%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
     ),
@@ -255,7 +255,7 @@ EXPECTED_TEMPLATES = {
         "Lora",
         FontWeight.SEMI_BOLD,
         True,
-        "4%",
+        "5.07%",
         "#FFF8ED",
         "100%",
         TextCase.ORIGINAL,
@@ -270,7 +270,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.1%",
         None,
         None,
     ),
@@ -278,7 +278,7 @@ EXPECTED_TEMPLATES = {
         "Oswald",
         FontWeight.SEMI_BOLD,
         False,
-        "4%",
+        "5.06%",
         "#FDE68A",
         "100%",
         TextCase.UPPERCASE,
@@ -293,7 +293,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.3%",
         None,
         None,
     ),
@@ -301,7 +301,7 @@ EXPECTED_TEMPLATES = {
         "Montserrat",
         FontWeight.EXTRA_BOLD,
         False,
-        "4%",
+        "4.9%",
         "#FFFFFF",
         "100%",
         TextCase.UPPERCASE,
@@ -316,7 +316,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "9.8%",
         WordAnimationMode.ACTIVE_WORD,
         "#FBE003",
     ),
@@ -324,7 +324,7 @@ EXPECTED_TEMPLATES = {
         "Inter",
         FontWeight.MEDIUM,
         False,
-        "4%",
+        "4.65%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
@@ -339,7 +339,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "10.7%",
         WordAnimationMode.PROGRESSIVE,
         "#FBE003",
     ),
@@ -347,7 +347,7 @@ EXPECTED_TEMPLATES = {
         "Oswald",
         FontWeight.MEDIUM,
         False,
-        "4%",
+        "5.06%",
         "#FFFFFF",
         "100%",
         TextCase.ORIGINAL,
@@ -362,7 +362,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.1%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
     ),
@@ -370,7 +370,7 @@ EXPECTED_TEMPLATES = {
         "Atkinson Hyperlegible Next",
         FontWeight.BOLD,
         False,
-        "4%",
+        "4.99%",
         "#00F5FF",
         "100%",
         TextCase.ORIGINAL,
@@ -385,7 +385,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "11.9%",
         None,
         None,
     ),
@@ -393,7 +393,7 @@ EXPECTED_TEMPLATES = {
         "Roboto",
         FontWeight.BOLD,
         False,
-        "4%",
+        "3.8%",
         "#FF4FD8",
         "100%",
         TextCase.UPPERCASE,
@@ -408,7 +408,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10%",
+        "9.4%",
         None,
         None,
     ),
@@ -712,16 +712,38 @@ def test_packaged_catalog_has_sparse_deterministic_inventory():
 
 
 @pytest.mark.parametrize("name", TEMPLATE_CHOICES)
-def test_builtin_templates_share_default_layout_and_minimum_font_size(name: str):
+def test_builtin_templates_preserve_placement_and_calibrate_font_size(name: str):
     default = get_subtitle_template("default").config
     config = get_subtitle_template(name).config
-    assert config.layout == default.layout
+    assert (
+        replace(config.layout, max_height=default.layout.max_height) == default.layout
+    )
     font_size = config.style.typography.font_size
     default_size = default.style.typography.font_size
     assert isinstance(font_size, RelativeLength)
     assert isinstance(default_size, RelativeLength)
     assert font_size.unit == default_size.unit
-    assert font_size.value >= default_size.value
+    assert font_size.value > 0
+
+
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [(1280, 720), (1920, 1080), (1080, 1920), (1080, 1080), (3840, 2160)],
+)
+@pytest.mark.parametrize("name", TEMPLATE_CHOICES)
+def test_calibrated_templates_fit_two_lines_with_bundled_fonts(name, width, height):
+    geometry = replace(
+        GEOMETRY,
+        coded_width=width,
+        coded_height=height,
+        render_width=width,
+        render_height=height,
+        display_aspect_ratio=Fraction(width, height),
+    )
+    metrics = resolve_wrapping_metrics(get_subtitle_template(name).config, geometry)
+
+    assert metrics.text_measurer.info.font_source == "bundled"
+    assert metrics.line_capacity == 2
 
 
 def test_schema4_complete_resources_remain_readable(tmp_path: Path):

@@ -6,7 +6,8 @@
     "typography": {
       "font_family": "Inter",
       "font_weight": "semi-bold",
-      "highlight_color": "#FFD54F"
+      "highlight_color": "#FFD54F",
+      "font_size": "4.65%"
     },
     "backdrop": {
       "type": "outline",
@@ -22,5 +23,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "9.7%"
   }
 }

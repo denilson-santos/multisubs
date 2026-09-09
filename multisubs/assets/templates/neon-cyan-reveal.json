@@ -6,7 +6,8 @@
     "typography": {
       "font_family": "Atkinson Hyperlegible Next",
       "font_weight": "bold",
-      "color": "#00F5FF"
+      "color": "#00F5FF",
+      "font_size": "4.99%"
     },
     "backdrop": {
       "type": "outline",
@@ -24,5 +25,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "11.9%"
   }
 }

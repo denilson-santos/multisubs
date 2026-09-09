@@ -6,7 +6,8 @@
     "typography": {
       "font_family": "Montserrat",
       "font_weight": "bold",
-      "highlight_color": "#D9F99D"
+      "highlight_color": "#D9F99D",
+      "font_size": "5.2%"
     },
     "backdrop": {
       "type": "outline",
@@ -33,5 +34,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "10.3%"
   }
 }

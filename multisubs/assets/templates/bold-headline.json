@@ -6,7 +6,8 @@
     "typography": {
       "font_family": "Montserrat",
       "font_weight": "extra-bold",
-      "text_case": "uppercase"
+      "text_case": "uppercase",
+      "font_size": "4.8%"
     },
     "backdrop": {
       "type": "outline",
@@ -27,5 +28,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "9.9%"
   }
 }

@@ -136,30 +136,35 @@ multisubs -i ./video.mp4 -l pt \
 | `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | Neon-cyan text with progressive slide-up word reveals. |
 | `neon-magenta-pulse` | Reactions and creator commentary | Roboto Bold | Uppercase neon-magenta text with an active-word pulse. |
 
-All built-in templates inherit the default layout: bottom-center, left/right
-margins of `18%`, top `0%`, bottom `3%`, and maximum width/height of
-`100%`/`10%`. They vary only in style and animation, with a font size of at
-least the default `4%` of render height. Explicit CLI layout and font-size
-options remain available. The exact template baselines are:
+Built-in templates share bottom-center placement, left/right margins of `18%`,
+top `0%`, bottom `3%`, and maximum width of `100%`. Font sizes are calibrated
+against the visible letter height of the default Roboto at `4%`; equal nominal
+sizes would look different across families. Optical adjustments also account
+for uppercase text, weight, and outlines; a preset may use less than `4%`.
+Each template has a maximum-height
+baseline calibrated for two lines with its bundled font and decorations.
+The default retains `12%` maximum height. Explicit CLI options override these
+baselines; changing fonts, margins, size, or line height can change line capacity.
+The exact template baselines are:
 
 | Template | Size and text | Backdrop | Native layout | Animation |
 | --- | --- | --- | --- | --- |
-| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `25%`, shadow `0px` | default | none |
-| `bold-headline` | `4%`, `#FFFFFF`, uppercase | outline `#111827`, `7%`, shadow `0px` | default | pop in, fade out |
-| `amber-word` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`, shadow `0px` | default | active-word amber highlight |
-| `mint-progress` | `4%`, `#FFFFFF`, original | box `#111827D9`, `15%`, shadow `0px` | default | progressive mint highlight |
-| `focus-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FFD54F`/`12%` | default | active-word highlight and box |
-| `golden-title` | `4%`, `#FACC15`, uppercase | outline `#111827`, `6%`, shadow `0px` | default | none |
-| `emerald-word` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`; word box `#166534FF`/`12%` | default | active-word box |
-| `kinetic-lime` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`; active text `#D9F99D` | default | slide up 180ms, fade out 120ms; active-word highlight |
-| `coral-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FDA4AFFF`/`14%`, active text `#111827` | default | fade in 140ms, fade out 120ms; word marker fades 70ms |
-| `editorial-reveal` | `4%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | default | zoom in 200ms, fade out 160ms; progressive word fade 100ms |
-| `headline-bounce` | `4%`, `#FDE68A`, uppercase | outline `#111827`, `6%`, shadow `0px` | default | fade in 120ms, slide down 160ms; active-word bounce 420ms |
-| `yellow-pop` | `4%`, `#FFFFFF`, uppercase | outline `#111827`, `5%`, shadow `0px` | default | active-word pop 120ms plus exact `#FBE003` highlight |
-| `yellow-trace` | `4%`, `#FFFFFF`, original | box `#111827FF`, `15%`, shadow `0px` | default | progressive `#FBE003` highlight |
-| `neon-lime-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#39FF14FF`/`12%` | default | active-word highlight; word marker zoom 100ms, fade 70ms |
-| `neon-cyan-reveal` | `4%`, `#00F5FF`, original | outline `#111827`, `5%`, shadow `0px` | default | progressive word slide-up 120ms |
-| `neon-magenta-pulse` | `4%`, `#FF4FD8`, uppercase | outline `#111827`, `5%`, shadow `0px` | default | active-word pulse 400ms |
+| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `25%`, shadow `0px` | max-height `12%` | none |
+| `bold-headline` | `4.8%`, `#FFFFFF`, uppercase | outline `#111827`, `7%`, shadow `0px` | max-height `9.9%` | pop in, fade out |
+| `amber-word` | `4.65%`, `#FFFFFF`, original | outline `#111827`, `5%`, shadow `0px` | max-height `9.7%` | active-word amber highlight |
+| `mint-progress` | `5.24%`, `#FFFFFF`, original | box `#111827D9`, `15%`, shadow `0px` | max-height `11.3%` | progressive mint highlight |
+| `focus-marker` | `4.99%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FFD54F`/`12%` | max-height `11.8%` | active-word highlight and box |
+| `golden-title` | `5.06%`, `#FACC15`, uppercase | outline `#111827`, `6%`, shadow `0px` | max-height `11.3%` | none |
+| `emerald-word` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`; word box `#166534FF`/`12%` | max-height `9.9%` | active-word box |
+| `kinetic-lime` | `5.2%`, `#FFFFFF`, original | outline `#111827`, `5%`; active text `#D9F99D` | max-height `10.3%` | slide up 180ms, fade out 120ms; active-word highlight |
+| `coral-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FDA4AFFF`/`14%`, active text `#111827` | max-height `9.8%` | fade in 140ms, fade out 120ms; word marker fades 70ms |
+| `editorial-reveal` | `5.07%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | max-height `11.1%` | zoom in 200ms, fade out 160ms; progressive word fade 100ms |
+| `headline-bounce` | `5.06%`, `#FDE68A`, uppercase | outline `#111827`, `6%`, shadow `0px` | max-height `11.3%` | fade in 120ms, slide down 160ms; active-word bounce 420ms |
+| `yellow-pop` | `4.9%`, `#FFFFFF`, uppercase | outline `#111827`, `5%`, shadow `0px` | max-height `9.8%` | active-word pop 120ms plus exact `#FBE003` highlight |
+| `yellow-trace` | `4.65%`, `#FFFFFF`, original | box `#111827FF`, `15%`, shadow `0px` | max-height `10.7%` | progressive `#FBE003` highlight |
+| `neon-lime-marker` | `5.06%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#39FF14FF`/`12%` | max-height `11.1%` | active-word highlight; word marker zoom 100ms, fade 70ms |
+| `neon-cyan-reveal` | `4.99%`, `#00F5FF`, original | outline `#111827`, `5%`, shadow `0px` | max-height `11.9%` | progressive word slide-up 120ms |
+| `neon-magenta-pulse` | `3.8%`, `#FF4FD8`, uppercase | outline `#111827`, `5%`, shadow `0px` | max-height `9.4%` | active-word pulse 400ms |
 
 All use `auto` line height, zero letter spacing, and full opacity. The static layout preview
 suppresses motion and shows a deterministic representative state; the animated
@@ -528,7 +533,7 @@ provided flags then replace only their own fields.
 | `--margin-top LENGTH` | `0%` | Native ASS margin for top positions. |
 | `--margin-bottom LENGTH` | `3%` | Native ASS margin for bottom positions. |
 | `--max-width LENGTH` | `100%` | Maximum subtitle width. |
-| `--max-height LENGTH` | `10%` | Maximum height used to derive line capacity. |
+| `--max-height LENGTH` | `12%` | Maximum height used to derive line capacity. |
 | `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
 | `--position-y LENGTH` | — | Explicit global PlayRes Y coordinate. |
 | `--anchor POSITION` | — | Subtitle-box anchor for explicit coordinates. |
