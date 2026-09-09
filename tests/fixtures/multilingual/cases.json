@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "provenance": "Synthetic regression examples authored for multisubs; MIT project license. No user media or transcript copied.",
+  "joins": [
+    {"id": "korean-spaces", "language": "ko", "parts": ["안녕하세요", "세계"], "text": "안녕하세요 세계", "owner": 2},
+    {"id": "japanese-digits", "language": "ja", "parts": ["第", "1", "回"], "text": "第1回", "owner": 2},
+    {"id": "japanese-latin", "language": "ja", "parts": ["字幕", "AI"], "text": "字幕AI", "owner": 2},
+    {"id": "repeated-kana", "language": "ja", "parts": ["ナ", "ナ", "ト"], "text": "ナナト", "owner": null},
+    {"id": "latin-spaces", "language": "pt", "parts": ["Olá,", "mundo!"], "text": "Olá, mundo!", "owner": null}
+  ],
+  "clusters": [
+    {"id": "devanagari-vowel", "text": "कि", "clusters": ["कि"], "owner": 2},
+    {"id": "flag", "text": "🇯🇵", "clusters": ["🇯🇵"], "owner": 2},
+    {"id": "skin-tone", "text": "👍🏽", "clusters": ["👍🏽"], "owner": 2},
+    {"id": "combining-accent", "text": "á", "clusters": ["á"], "owner": null},
+    {"id": "zwj", "text": "👩‍💻", "clusters": ["👩‍💻"], "owner": null}
+  ],
+  "lexical": [
+    {"language": "ja", "text": "今日は寒くなかった。", "protected": "なかった"},
+    {"language": "ja", "text": "デフォルト設定を使用する。", "protected": "デフォルト"},
+    {"language": "zh", "text": "我们今天学习中文。", "protected": "学习"},
+    {"language": "zh", "text": "我們今天學習中文。", "protected": "學習"},
+    {"language": "ja", "text": "👩‍💻字幕AI第1回", "protected": "字幕"},
+    {"language": "zh", "text": "👩‍💻字幕AI第1回", "protected": "字幕"}
+  ]
+}
