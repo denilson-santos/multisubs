@@ -99,7 +99,11 @@ def test_japanese_fragment_advances_fit_rendered_glyphs(tmp_path, record_propert
         if fonts is None:
             raise RuntimeError("Bundled Inter fixture is unavailable")
         frame, log = _frame(single, fonts)
-    bounds = frame.point(lambda value: 255 if value > 32 else 0).getbbox()
+
+    def threshold(value: float) -> float:
+        return 255.0 if value > 32 else 0.0
+
+    bounds = frame.point(threshold).getbbox()
     if bounds is None:
         raise RuntimeError("Reference glyph did not render")
     advance = min(b - a for a, b in zip(centers, centers[1:], strict=False))
