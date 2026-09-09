@@ -104,7 +104,7 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   backdrop/shadow allowance. The first line uses the natural ascent-plus-descent
   metric and each additional line consumes the resolved baseline advance:
   `natural_line_height + (line_count - 1) * resolved_line_height`. The fixed
-  `10%` native maximum-height default can derive different capacities from
+  `12%` native maximum-height default can derive different capacities from
   different video geometries; there is no fixed max-lines input.
 - Wrapping compares measured text content with the already decoration-reduced
   width budget. Backdrop and shadow allowances are counted once while deriving
@@ -508,11 +508,28 @@ colors belong to typography, while word decoration type, color, and size belong
 to `style.word_backdrop`. The catalog contains `default` and fifteen curated
 styles for social clips, podcasts, tutorials, and editorial work, including
 restrained yellow, green, red, lime, cobalt, coral, cyan, and magenta palettes
-plus coordinated cue and word animations. Packaged presets omit layout overrides
-and inherit the complete default layout. Their font sizes are at least the
-default render-height percentage; sizes equal to the default are omitted.
-The loader still accepts layout overrides for schema compatibility and custom
-templates.
+plus coordinated cue and word animations. Packaged presets share default placement and margins, with authored font-size
+and maximum-height overrides. Font calibration compares the average visible
+height of `H` and `x` in each bundled weight/slant against Roboto Regular at
+`4%`, using the Pillow boundary's libass-compatible sizing at a nominal 1000px
+for stable ratios. This is a starting point for optical review of rendered
+captions with each preset's actual casing, weight, outline, and highlighting.
+The broad uppercase Montserrat ExtraBold presets use 4.8% (`bold-headline`)
+and 4.9% (`yellow-pop`, compensating for its thinner outline). Uppercase
+Roboto Bold (`neon-magenta-pulse`) uses
+3.8% to temper their visual size against the mixed-case default. Condensed
+Oswald presets retain their measured size. Authored percentages may therefore
+be smaller than the default; equal values are omitted. Calibration approximates
+perceived size, not equal glyph width, weight, or identical wrapping. Animation
+scale remains an intentional temporary change to the calibrated resting size.
+
+Maximum heights are rounded to tenths of a percent from 2.3 natural line heights
+plus cue decoration allowance, measured at a 1000px render height with the
+native 3% bottom margin. The extra 0.3 line provides rounding headroom above two
+lines while remaining below three. The default retains its central 12% value.
+All presets keep automatic line height. Calibration is checked at 720p, 1080p,
+portrait 1080x1920, square 1080x1080, and 4K; it is not a fixed line-count contract
+for arbitrary geometry, custom fonts, or explicit overrides.
 
 The loader uses `importlib.resources`, rejects malformed UTF-8/JSON, duplicate
 or unknown fields, unsupported schema versions, unsafe or duplicate filenames,

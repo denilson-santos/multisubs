@@ -7,7 +7,8 @@
       "font_family": "Montserrat",
       "font_weight": "extra-bold",
       "text_case": "uppercase",
-      "highlight_color": "#FBE003"
+      "highlight_color": "#FBE003",
+      "font_size": "4.9%"
     },
     "backdrop": {
       "type": "outline",
@@ -27,5 +28,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "9.8%"
   }
 }

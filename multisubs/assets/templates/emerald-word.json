@@ -17,5 +17,8 @@
       "color": "#166534FF",
       "size": "12%"
     }
+  },
+  "layout": {
+    "max_height": "9.9%"
   }
 }

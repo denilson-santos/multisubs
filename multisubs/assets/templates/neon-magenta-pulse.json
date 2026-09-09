@@ -7,7 +7,8 @@
       "font_family": "Roboto",
       "font_weight": "bold",
       "text_case": "uppercase",
-      "color": "#FF4FD8"
+      "color": "#FF4FD8",
+      "font_size": "3.8%"
     },
     "backdrop": {
       "type": "outline",
@@ -24,5 +25,8 @@
         }
       }
     }
+  },
+  "layout": {
+    "max_height": "9.4%"
   }
 }

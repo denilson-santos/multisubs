@@ -365,17 +365,17 @@ def test_fixed_defaults_resolve_against_portrait_geometry():
     )
 
     assert config.layout.margin_left == parse_relative_length("18%")
-    assert config.layout.max_height == parse_relative_length("10%")
+    assert config.layout.max_height == parse_relative_length("12%")
     assert resolved.layout.margin_left == 194
     assert resolved.layout.margin_right == 194
     assert resolved.layout.margin_top == 0
     assert resolved.layout.margin_bottom == 58
     assert resolved.layout.max_width == 692
     assert isinstance(resolved.layout.max_height, int)
-    assert resolved.layout.max_height == 186
+    assert resolved.layout.max_height == 223
     assert metrics.available_width == 692
     assert metrics.max_width == 692
-    assert metrics.line_capacity == 1
+    assert metrics.line_capacity == 2
 
 
 @pytest.mark.parametrize("width", [1920, 608])
@@ -713,9 +713,9 @@ def test_max_height_too_small_for_one_measured_line_is_rejected():
 @pytest.mark.parametrize(
     ("width", "height", "expected_margins", "expected_maximums"),
     [
-        (1920, 1080, (346, 346, 0, 32), (1228, 105)),
-        (1080, 1920, (194, 194, 0, 58), (692, 186)),
-        (1080, 1080, (194, 194, 0, 32), (692, 105)),
+        (1920, 1080, (346, 346, 0, 32), (1228, 126)),
+        (1080, 1920, (194, 194, 0, 58), (692, 223)),
+        (1080, 1080, (194, 194, 0, 32), (692, 126)),
     ],
 )
 def test_fixed_defaults_do_not_classify_aspect_ratio(

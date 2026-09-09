@@ -7,12 +7,16 @@
       "font_family": "Oswald",
       "font_weight": "bold",
       "text_case": "uppercase",
-      "color": "#FACC15"
+      "color": "#FACC15",
+      "font_size": "5.06%"
     },
     "backdrop": {
       "type": "outline",
       "color": "#111827",
       "size": "6%"
     }
+  },
+  "layout": {
+    "max_height": "11.3%"
   }
 }
