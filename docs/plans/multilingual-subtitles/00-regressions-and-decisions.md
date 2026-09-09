@@ -1,10 +1,10 @@
 # Establish regressions and select multilingual backends
 
-Status: In review
+Status: Done
 
-Delivery branch: `test/multilingual-regressions`.
-Local implementation is verified and ready for pull-request review; `Done`
-requires merge evidence.
+Delivery: [PR #75](https://github.com/denilson-santos/multisubs/pull/75), merged.
+
+The implementation and documentation were merged through pull request #75.
 
 Depends on: the completed foundations linked in the [dashboard](README.md).
 
@@ -203,11 +203,12 @@ pytest record properties. The saved artifact's reported font is not proof of
 the original video's fallback face.
 
 The synthetic integration test measures a **63px glyph ink width against a
-40px minimum positioned advance**. Running that test with `--runxfail` fails
+40px minimum positioned advance**. Running that test with `--runxfail` failed
 at exactly the collision assertion, confirming the defect rather than masking
-an unrelated exception. The normal suite marks it strictly as Plan 1's owned
-regression. Eighteen additional hermetic expected failures belong to Plans 1–3;
-they are not fixed by this foundation work.
+an unrelated exception. Plan 1 now removes the expected-failure mark, resolves
+the Japanese TTC fallback, and asserts the matching effective ASS family. The
+remaining seventeen hermetic expected failures belong to Plans 2–3; they are
+not fixed by this foundation work.
 
 Local replay used:
 

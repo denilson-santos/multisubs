@@ -31,8 +31,14 @@ GEOMETRY = VideoGeometry(
 
 @pytest.fixture(autouse=True)
 def _use_hermetic_text_measurement(monkeypatch):
-    def build(appearance, *, language=None):
-        del language
+    def build(
+        appearance,
+        *,
+        language=None,
+        sample_text=None,
+        verify_font_coverage=False,
+    ):
+        del language, sample_text, verify_font_coverage
         return build_unicode_text_measurer(
             appearance.font,
             appearance.font_size,
@@ -668,6 +674,8 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "resolved_weight_name": None,
             "resolved_weight": None,
             "weight_substituted": None,
+            "coverage": "unverified",
+            "fallback_reason": None,
         },
         "text_case": {"requested": "original", "resolved": "original"},
         "opacity": {

@@ -30,7 +30,7 @@ WhisperX must download model assets that are not already cached.
 | 🎯 Precise placement | Nine semantic positions, relative units, margins, safe envelopes, and exact PlayRes coordinates. |
 | 👀 Fast previews | Render one subtitle preview frame without loading WhisperX or transcribing the video. |
 | ✨ Subtitle animation | Independent entrance, emphasis, and exit phases for complete cues and aligned words. |
-| 🧠 Adaptive wrapping | Font-aware wrapping that favors readable language and timing boundaries. |
+| 🧠 Adaptive wrapping | Coverage-aware font metrics keep measured advances aligned with the rendered subtitle face. |
 | 🛡️ Safe outputs | Collision-safe names and temporary rendering prevent existing or partial files from being overwritten. |
 
 ## 📋 Requirements
@@ -40,6 +40,8 @@ WhisperX must download model assets that are not already cached.
 - An FFmpeg build with the `subtitles` filter and libass support; animated
   previews additionally require the `libx264` H.264 encoder.
 - Enough CPU or GPU memory for the selected Whisper model.
+- The Python package installs `fontTools` for bounded Unicode cmap checks. No
+  font or dictionary is downloaded at runtime.
 
 CUDA with float16 is selected automatically when PyTorch reports an available
 GPU. CPU runs use int8 inference and can take substantially longer.
@@ -437,11 +439,36 @@ may share the same directory. The closest available weight is selected when an
 exact face is absent, with a visible substitution diagnostic.
 
 A custom matching family takes precedence over the same bundled family;
-bundled families take precedence over fontconfig. An unbundled family may still
-resolve through fontconfig, otherwise wrapping uses the documented Unicode
-estimate. The custom directory is used only for that invocation and does not
-install fonts globally. You are responsible for ensuring that supplied fonts
-may be used and distributed in your intended output.
+bundled families take precedence over fontconfig. After transcription or when
+preview text is available, multisubs checks the selected face's Unicode cmap
+against the displayed text. If a glyph is absent, it selects a covering face
+from the custom directory or a bounded fontconfig candidate search, measures
+with that face, and writes the same effective family into ASS. The diagnostic
+and JSON `text_measurement` object retain the requested family, effective family,
+provider, and fallback reason. If no covering face can be established for a
+positioned subtitle, the run fails with guidance to choose `--font` or
+`--fonts-dir`; it never downloads a replacement. The custom directory is used
+only for that invocation and does not install fonts globally. You are
+responsible for ensuring that supplied fonts may be used and distributed in
+your intended output.
+
+### Coverage and fallback diagnostics
+
+Coverage is checked after display casing and before wrapping, so Japanese,
+Chinese, Korean, RTL, Indic, and mixed-script cues use advances from a face
+that contains their displayed characters. A language code is only a search
+preference; it is not treated as proof that a requested family has every glyph.
+The fallback search is bounded by font-file size, collection faces, candidate
+count, and fontconfig subprocess time. Combining marks remain part of coverage
+checks, while non-rendering controls and variation selectors are ignored.
+
+When `--keep-transcriptions` is enabled, inspect `rendering.text_measurement`
+in the retained JSON. `coverage: "verified"` means the cmap contains all
+required code points; it does not claim that cmap lookup alone proves every
+shaping or libass substitution detail. `font_source` and `fallback_reason`
+explain a replacement. A `unicode-estimate` record is an explicit legacy path
+for runs without concrete font metrics and must not be interpreted as verified
+glyph coverage.
 
 ## ⚙️ Command reference
 
@@ -593,9 +620,10 @@ the canvas; invalid coordinates are rejected instead of being moved or clipped.
 ### Adaptive wrapping
 
 multisubs measures the selected custom, bundled, or fontconfig face with Pillow
-and RAQM when a concrete face is available. The selected custom or bundled
-directory is also passed to FFmpeg/libass. Otherwise, it uses a Unicode-aware
-width estimate. Wrapping takes
+and RAQM when a concrete face is available. Once displayed subtitle text is
+known, fontTools checks that face's cmap and the same effective family is
+compiled into ASS. The selected custom or bundled directory is also passed to
+FFmpeg/libass. Otherwise, it uses a Unicode-aware width estimate. Wrapping takes
 font size, weight, letter spacing, line height, maximum dimensions, backdrop,
 and shadow into account.
 

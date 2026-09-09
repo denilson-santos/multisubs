@@ -1,11 +1,13 @@
 """Desired behavior regressions, owned by the numbered multilingual plans."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from multisubs.config import validate_subtitle_config
+from multisubs.errors import ValidationError
 from multisubs.text_measurement import build_text_measurer
 from multisubs.transcriber import _build_subtitle_segments, prepare_karaoke_cues
 from multisubs.wrapping import (
@@ -67,11 +69,6 @@ def test_unicode_clause_endings(mark):
     assert ends_clause("text" + mark)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="Multilingual Plan 1: missing-glyph metrics",
-)
 def test_missing_japanese_glyphs_are_not_measured_as_exact_inter():
     config = validate_subtitle_config(
         None,
@@ -79,13 +76,21 @@ def test_missing_japanese_glyphs_are_not_measured_as_exact_inter():
         relative_values={"font_size": "89px", "letter_spacing": "0px"},
     )
     # Resolve only the scalar typography for this boundary-level regression.
-    from dataclasses import replace
-
     typography = replace(config.style.typography, font_size=89, letter_spacing=0)
-    measurer = build_text_measurer(typography, language="ja")
+    try:
+        measurer = build_text_measurer(
+            typography,
+            language="ja",
+            sample_text="字幕",
+            verify_font_coverage=True,
+        )
+    except ValidationError as exc:
+        pytest.skip(f"No local Japanese covering face is available: {exc}")
     measured = measurer.measure("字幕")
     missing = measurer.measure("\U0010ffff\U0010ffff")
-    assert measured != missing or measurer.info.mode != "font-metrics"
+    assert measurer.info.coverage == "verified"
+    assert measurer.info.resolved_font != "Inter"
+    assert measured != missing
 
 
 @pytest.mark.xfail(

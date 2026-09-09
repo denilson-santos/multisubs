@@ -9,17 +9,20 @@ import struct
 import subprocess
 import unicodedata
 from collections import OrderedDict
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
+from .errors import DependencyError, ValidationError
 from .font_catalog import bundled_filesystem_directory
 from .models import FontWeight, FontWeightInputForm, SubtitleTypography
 
 _FONT_SUFFIXES = frozenset({".otf", ".ttc", ".ttf"})
 _FONT_COLLECTION_LIMIT = 32
+_FONT_CANDIDATE_LIMIT = 24
+_FONT_FILE_SIZE_LIMIT = 64 * 1024 * 1024
 _MEASUREMENT_CACHE_LIMIT = 4096
 _FONTCONFIG_FIELD_SEPARATOR = "\x1f"
 _FONTCONFIG_WEIGHT_BY_RANK = {
@@ -53,6 +56,8 @@ class TextMeasurementInfo:
     resolved_weight_name: str | None = None
     resolved_weight: int | None = None
     weight_substituted: bool | None = None
+    coverage: str = "unverified"
+    fallback_reason: str | None = None
     # Font metrics are kept as optional fields so callers using the historical
     # metadata contract remain valid while layout can expose precise vertical
     # geometry when a face was resolved.
@@ -80,6 +85,8 @@ class TextMeasurementInfo:
             "resolved_weight_name": self.resolved_weight_name,
             "resolved_weight": self.resolved_weight,
             "weight_substituted": self.weight_substituted,
+            "coverage": self.coverage,
+            "fallback_reason": self.fallback_reason,
         }
 
 
@@ -181,6 +188,12 @@ class TextMeasurer:
                 f"({self.info.requested_weight}); adaptive wrapping is using "
                 "Unicode width estimates."
             )
+        if self.info.fallback_reason:
+            return (
+                f"Font '{self.info.requested_font}' lacked coverage for the "
+                f"displayed subtitle text; measurement uses the verified "
+                f"fallback '{self.info.resolved_font or 'unknown'}'."
+            )
         resolved = self.info.resolved_font
         family_substituted = bool(
             resolved
@@ -219,6 +232,10 @@ class _ResolvedFace:
     descent: float
     weight: FontWeight
     renderer_fonts_dir: Path | None
+    path: Path | None
+    index: int
+    coverage: str = "unverified"
+    fallback_reason: str | None = None
 
 
 def build_text_measurer(
@@ -226,6 +243,8 @@ def build_text_measurer(
     *,
     language: str | None = None,
     bundled_fonts_dir: Path | None = None,
+    sample_text: str | Sequence[str] | None = None,
+    verify_font_coverage: bool = False,
 ) -> TextMeasurer:
     """Build a font-aware measurer or the explicit Unicode fallback."""
     font_size = appearance.font_size
@@ -244,6 +263,10 @@ def build_text_measurer(
             appearance,
             font_size,
             bundled_fonts_dir=bundled_fonts_dir,
+            language=language,
+            sample_text=(
+                _combine_sample_text(sample_text) if verify_font_coverage else None
+            ),
         )
         if resolved is not None:
             direction = _text_direction
@@ -293,6 +316,8 @@ def build_text_measurer(
                     resolved_weight_name=resolved.weight.canonical_name,
                     resolved_weight=resolved.weight.rank,
                     weight_substituted=(resolved.weight is not appearance.font_weight),
+                    coverage=resolved.coverage,
+                    fallback_reason=resolved.fallback_reason,
                     ascent=resolved.ascent,
                     descent=resolved.descent,
                     natural_line_height=resolved.line_height,
@@ -377,6 +402,8 @@ def _resolve_face(
     font_size: int,
     *,
     bundled_fonts_dir: Path | None,
+    language: str | None,
+    sample_text: str | None,
 ) -> _ResolvedFace | None:
     if appearance.fonts_dir is not None:
         face = _resolve_face_from_directory(
@@ -388,9 +415,12 @@ def _resolve_face(
             font_weight=appearance.font_weight,
             italic=appearance.italic,
             source="fonts-dir",
+            sample_text=None,
+            family_required=True,
         )
         if face is not None:
-            return face
+            if sample_text is None or _face_covers_text(face, sample_text):
+                return _mark_coverage(face, sample_text)
     bundled_directory = bundled_fonts_dir or bundled_filesystem_directory(
         appearance.font
     )
@@ -404,10 +434,13 @@ def _resolve_face(
             font_weight=appearance.font_weight,
             italic=appearance.italic,
             source="bundled",
+            sample_text=None,
+            family_required=True,
         )
         if face is not None:
-            return face
-    return _resolve_face_from_fontconfig(
+            if sample_text is None or _face_covers_text(face, sample_text):
+                return _mark_coverage(face, sample_text)
+    face = _resolve_face_from_fontconfig(
         image_font,
         features,
         appearance.font,
@@ -415,22 +448,66 @@ def _resolve_face(
         font_weight=appearance.font_weight,
         italic=appearance.italic,
     )
+    if face is not None and (
+        sample_text is None or _face_covers_text(face, sample_text)
+    ):
+        return _mark_coverage(face, sample_text)
+    if sample_text is None:
+        return face
+
+    if appearance.fonts_dir is not None:
+        fallback = _resolve_face_from_directory(
+            image_font,
+            features,
+            appearance.fonts_dir,
+            None,
+            font_size,
+            font_weight=appearance.font_weight,
+            italic=appearance.italic,
+            source="fonts-dir-fallback",
+            sample_text=sample_text,
+            family_required=False,
+        )
+        if fallback is not None:
+            return _with_fallback_reason(
+                fallback, "requested face lacks glyph coverage"
+            )
+
+    fallback = _resolve_covering_face_from_fontconfig(
+        image_font,
+        features,
+        font_size,
+        font_weight=appearance.font_weight,
+        italic=appearance.italic,
+        language=language,
+        sample_text=sample_text,
+    )
+    if fallback is not None:
+        return fallback
+    raise ValidationError(
+        f"Font '{appearance.font}' does not cover the displayed subtitle text; "
+        "choose --font or --fonts-dir with a covering local face."
+    )
 
 
 def _resolve_face_from_directory(
     image_font: Any,
     features: Any,
     fonts_dir: Path,
-    family: str,
+    family: str | None,
     font_size: int,
     *,
     font_weight: FontWeight,
     italic: bool,
     source: str,
+    sample_text: str | None,
+    family_required: bool,
 ) -> _ResolvedFace | None:
     best: tuple[tuple[int, int], _ResolvedFace] | None = None
     for path in sorted(fonts_dir.iterdir(), key=lambda item: item.name.casefold()):
         if not path.is_file() or path.suffix.casefold() not in _FONT_SUFFIXES:
+            continue
+        if not _font_file_is_bounded(path):
             continue
         for index in range(_FONT_COLLECTION_LIMIT):
             loaded = _load_face(image_font, features, path, font_size, index=index)
@@ -446,7 +523,14 @@ def _resolve_face_from_directory(
                 ascent,
                 descent,
             ) = loaded
-            if _normalise_font_name(loaded_family) != _normalise_font_name(family):
+            if family_required and (
+                family is None
+                or _normalise_font_name(loaded_family) != _normalise_font_name(family)
+            ):
+                continue
+            if sample_text is not None and not _font_path_covers_text(
+                path, index, sample_text
+            ):
                 continue
             loaded_weight = _weight_from_style(loaded_style)
             score = _style_distance(
@@ -466,6 +550,8 @@ def _resolve_face_from_directory(
                 descent=descent,
                 weight=loaded_weight,
                 renderer_fonts_dir=fonts_dir,
+                path=path,
+                index=index,
             )
             if best is None or score < best[0]:
                 best = (score, face)
@@ -514,7 +600,7 @@ def _resolve_face_from_fontconfig(
         field.strip() for field in fields
     )
     path = Path(raw_path).expanduser().resolve(strict=False)
-    if not resolved_family or not path.is_file():
+    if not resolved_family or not path.is_file() or not _font_file_is_bounded(path):
         return None
     try:
         index = int(raw_index or "0")
@@ -545,7 +631,177 @@ def _resolve_face_from_fontconfig(
         descent=descent,
         weight=_weight_from_style(loaded_style or resolved_style),
         renderer_fonts_dir=None,
+        path=path,
+        index=index,
     )
+
+
+def _resolve_covering_face_from_fontconfig(
+    image_font: Any,
+    features: Any,
+    font_size: int,
+    *,
+    font_weight: FontWeight,
+    italic: bool,
+    language: str | None,
+    sample_text: str,
+) -> _ResolvedFace | None:
+    """Find the first bounded system face covering all displayed code points."""
+    executable = shutil.which("fc-match")
+    if executable is None:
+        return None
+    fontconfig_weight = _FONTCONFIG_WEIGHT_BY_RANK[font_weight.rank]
+    fontconfig_slant = 100 if italic else 0
+    safe_language = (
+        language
+        if language is not None and language.replace("-", "").isalpha()
+        else None
+    )
+    pattern = "sans-serif"
+    if safe_language:
+        pattern += f":lang={safe_language}"
+    pattern += f":weight={fontconfig_weight}:slant={fontconfig_slant}"
+    try:
+        completed = subprocess.run(
+            [
+                executable,
+                "-s",
+                f"--format=%{{family}}{_FONTCONFIG_FIELD_SEPARATOR}"
+                f"%{{style}}{_FONTCONFIG_FIELD_SEPARATOR}%{{file}}"
+                f"{_FONTCONFIG_FIELD_SEPARATOR}%{{index}}\\n",
+                pattern,
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    for line in completed.stdout.splitlines()[:_FONT_CANDIDATE_LIMIT]:
+        fields = line.split(_FONTCONFIG_FIELD_SEPARATOR)
+        if len(fields) != 4:
+            continue
+        resolved_family, resolved_style, raw_path, raw_index = (
+            field.strip() for field in fields
+        )
+        path = Path(raw_path).expanduser().resolve(strict=False)
+        if not resolved_family or not path.is_file() or not _font_file_is_bounded(path):
+            continue
+        try:
+            index = int(raw_index or "0")
+        except ValueError:
+            continue
+        loaded = _load_face(image_font, features, path, font_size, index=index)
+        if loaded is None or not _font_path_covers_text(path, index, sample_text):
+            continue
+        (
+            loaded_font,
+            loaded_family,
+            loaded_style,
+            shaping,
+            metric_size,
+            line_height,
+            ascent,
+            descent,
+        ) = loaded
+        return _ResolvedFace(
+            font=loaded_font,
+            family=loaded_family or resolved_family.split(",", 1)[0],
+            style=loaded_style or resolved_style.split(",", 1)[0],
+            source="fontconfig-fallback",
+            shaping=shaping,
+            metric_size=metric_size,
+            line_height=line_height,
+            ascent=ascent,
+            descent=descent,
+            weight=_weight_from_style(loaded_style or resolved_style),
+            renderer_fonts_dir=None,
+            path=path,
+            index=index,
+            coverage="verified",
+            fallback_reason="requested face lacks glyph coverage",
+        )
+    return None
+
+
+def _with_fallback_reason(face: _ResolvedFace, reason: str) -> _ResolvedFace:
+    return replace(
+        face,
+        coverage="verified",
+        fallback_reason=reason,
+    )
+
+
+def _mark_coverage(face: _ResolvedFace, sample_text: str | None) -> _ResolvedFace:
+    if sample_text is None:
+        return face
+    return replace(face, coverage="verified")
+
+
+def _combine_sample_text(sample_text: str | Sequence[str] | None) -> str | None:
+    if sample_text is None:
+        return None
+    if isinstance(sample_text, str):
+        return sample_text
+    return "\n".join(value for value in sample_text if isinstance(value, str))
+
+
+def _face_covers_text(face: _ResolvedFace, text: str) -> bool:
+    if face.path is None:
+        return False
+    return _font_path_covers_text(face.path, face.index, text)
+
+
+def _font_path_covers_text(path: Path, index: int, text: str) -> bool:
+    """Check bounded Unicode cmap coverage without shaping or rendering claims."""
+    required = {
+        ord(character)
+        for character in text
+        if unicodedata.category(character) not in {"Cc", "Cf"}
+        and not _is_variation_selector(character)
+    }
+    if not required:
+        return True
+    try:
+        if not _font_file_is_bounded(path):
+            return False
+    except OSError:
+        return False
+    try:
+        from fontTools.ttLib import TTFont, TTLibError
+    except ImportError as exc:
+        raise DependencyError(
+            "fontTools is required to verify subtitle font coverage; reinstall "
+            "multisubs with its runtime dependencies."
+        ) from exc
+    try:
+        with TTFont(
+            str(path),
+            fontNumber=index,
+            lazy=True,
+            recalcBBoxes=False,
+            recalcTimestamp=False,
+        ) as face:
+            cmap = face.getBestCmap() or {}
+            return required.issubset(cmap)
+    except (OSError, OverflowError, TypeError, TTLibError, ValueError):
+        return False
+
+
+def _is_variation_selector(character: str) -> bool:
+    codepoint = ord(character)
+    return 0xFE00 <= codepoint <= 0xFE0F or 0xE0100 <= codepoint <= 0xE01EF
+
+
+def _font_file_is_bounded(path: Path) -> bool:
+    """Keep font parsing bounded before Pillow or fontTools opens a file."""
+    try:
+        return path.stat().st_size <= _FONT_FILE_SIZE_LIMIT
+    except OSError:
+        return False
 
 
 def _load_face(

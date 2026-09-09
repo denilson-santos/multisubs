@@ -868,6 +868,7 @@ def _run_request_with_fonts(
         validate_ffmpeg_support,
     )
     from .transcriber import transcribe_video, write_transcription_artifacts
+    from .wrapping import transform_display_text
 
     validate_ffmpeg_support()
     geometry = probe_video_geometry(request.input_path)
@@ -918,11 +919,20 @@ def _run_request_with_fonts(
             geometry,
             language="en" if request.task == "translate" else document.language,
             bundled_fonts_dir=bundled_fonts_dir,
+            sample_text=[
+                transform_display_text(
+                    str(segment.get("text", "")),
+                    resolved_subtitle_config.style.typography.text_case,
+                )
+                for segment in document.segments
+            ],
+            verify_font_coverage=True,
         )
         artifact_options = {
             "geometry": geometry,
             "resolved_subtitle_config": resolved_subtitle_config,
             "wrapping_metrics": wrapping_metrics,
+            "verify_font_coverage": True,
             "template_requested": request.subtitle_template_requested,
             "template_resolved": request.subtitle_template_resolved,
             "progress": progress,
@@ -1009,7 +1019,14 @@ def _run_preview_request(
         resolved_config,
         geometry,
         bundled_fonts_dir=bundled_fonts_dir,
+        sample_text=transform_display_text(
+            request.preview_text,
+            resolved_config.style.typography.text_case,
+        ),
+        verify_font_coverage=True,
     )
+    if wrapping_metrics.text_measurer.diagnostic is not None:
+        progress(wrapping_metrics.text_measurer.diagnostic)
     progress(
         "Detected video layout: "
         f"{geometry.render_width}x{geometry.render_height} "
