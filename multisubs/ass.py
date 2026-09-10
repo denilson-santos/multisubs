@@ -48,6 +48,7 @@ from .models import (
     VideoGeometry,
     WordAnimationMode,
 )
+from .render_capabilities import assess_renderer_capability
 from .utils import atomic_write_text
 from .wrapping import build_visual_lines, has_multiple_visual_lines
 
@@ -184,8 +185,12 @@ def write_ass(
     positioned_lines: list[tuple[PositionedVisualLine, ...]] = []
     backdrop_bounds: list[tuple[int, int, int, int] | None] = []
     for segment in segments:
-        karaoke_cue = segment.get("_karaoke_cue")
-        karaoke_preview_cue = segment.get("_karaoke_preview_cue")
+        karaoke_cue = _safe_word_effect_cue(
+            config, segment, segment.get("_karaoke_cue")
+        )
+        karaoke_preview_cue = _safe_word_effect_cue(
+            config, segment, segment.get("_karaoke_preview_cue")
+        )
         preview_word_behavior = (
             suppress_animation
             and isinstance(karaoke_preview_cue, KaraokeCue)
@@ -331,8 +336,12 @@ def write_ass(
                 animate=not suppress_animation,
             )
 
-        karaoke_cue = segment.get("_karaoke_cue")
-        karaoke_preview_cue = segment.get("_karaoke_preview_cue")
+        karaoke_cue = _safe_word_effect_cue(
+            config, segment, segment.get("_karaoke_cue")
+        )
+        karaoke_preview_cue = _safe_word_effect_cue(
+            config, segment, segment.get("_karaoke_preview_cue")
+        )
         visual_line_events = positioned_lines[index]
         if visual_line_events:
             if metrics is None:
@@ -1318,8 +1327,10 @@ def _segment_uses_positioned_lines(
 ) -> bool:
     """Return whether one segment needs measured visual-line placement."""
     text = str(segment.get("text", ""))
-    karaoke_cue = segment.get("_karaoke_cue")
-    karaoke_preview_cue = segment.get("_karaoke_preview_cue")
+    karaoke_cue = _safe_word_effect_cue(config, segment, segment.get("_karaoke_cue"))
+    karaoke_preview_cue = _safe_word_effect_cue(
+        config, segment, segment.get("_karaoke_preview_cue")
+    )
     preview_word_behavior = (
         suppress_animation
         and isinstance(karaoke_preview_cue, KaraokeCue)
@@ -1338,6 +1349,21 @@ def _segment_uses_positioned_lines(
         )
         or preview_word_behavior
     )
+
+
+def _safe_word_effect_cue(
+    config: SubtitleConfig,
+    segment: Mapping[str, Any],
+    cue: object,
+) -> KaraokeCue | None:
+    """Keep positioned word effects only for content this renderer can lay out."""
+    if not isinstance(cue, KaraokeCue):
+        return None
+    capability = assess_renderer_capability(
+        str(segment.get("text", "")),
+        word_effects_requested=_has_positioned_word_animation(config),
+    )
+    return cue if capability.word_effects_supported else None
 
 
 def _render_strategy_for_segments(

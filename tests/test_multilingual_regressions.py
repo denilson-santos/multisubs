@@ -8,6 +8,7 @@ import pytest
 
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import ValidationError
+from multisubs.render_capabilities import assess_renderer_capability
 from multisubs.text_measurement import build_text_measurer
 from multisubs.transcriber import _build_subtitle_segments, prepare_karaoke_cues
 from multisubs.wrapping import (
@@ -140,3 +141,63 @@ def test_missing_alignment_uses_static_word_effect_fallback():
     assert cues[0]["text"] == "字幕。"
     assert "_karaoke_cue" not in cues[0]
     assert cues[0]["_word_effect"]["fallback_reason"] == "missing-alignment-records"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "العربية 123 (test)",
+        "فارسی ۱۲۳ (test)",
+        "اردو ۱۲۳ (test)",
+        "עברית 123 (test)",
+        "हिन्दी 123 (test)",
+        "తెలుగు 123 (test)",
+        "മലയാളം 123 (test)",
+        "Latin \u2067RTL isolate\u2069",
+    ],
+)
+def test_complex_scripts_require_full_line_word_effect_fallback(text):
+    capability = assess_renderer_capability(text, word_effects_requested=True)
+
+    assert capability.renderer_strategy == "full-line"
+    assert not capability.word_effects_supported
+    assert capability.fallback_reason == "unsupported-word-shaping"
+    assert capability.shaping_features
+
+
+@pytest.mark.parametrize("text", ["Hello, mundo!", "字幕AI第1回", "안녕하세요 세계"])
+def test_non_shaping_sensitive_scripts_keep_positioned_word_effects(text):
+    capability = assess_renderer_capability(text, word_effects_requested=True)
+
+    assert capability.renderer_strategy == "positioned-fragments"
+    assert capability.word_effects_supported
+    assert capability.fallback_reason is None
+
+
+def test_arabic_alignment_uses_shaping_fallback_without_losing_text():
+    from multisubs.templates import get_subtitle_template
+
+    text = "مرحبا 123 (test)"
+    words = [
+        {"word": "مرحبا", "start": 0.0, "end": 0.5},
+        {"word": "123", "start": 0.5, "end": 0.75},
+        {"word": "(test)", "start": 0.75, "end": 1.0},
+    ]
+    cues, fallback_count = prepare_karaoke_cues(
+        [{"start": 0.0, "end": 1.0, "text": text, "words": words}],
+        get_subtitle_template("amber-word").config,
+    )
+
+    assert fallback_count == 1
+    assert cues[0]["text"] == text
+    assert "_karaoke_cue" not in cues[0]
+    assert cues[0]["_word_effect"] == {
+        "strategy": "static-fallback",
+        "renderer_strategy": "full-line",
+        "status": "fallback",
+        "units": "alignment-records",
+        "unit_count": 3,
+        "fallback_reason": "unsupported-word-shaping",
+        "fallback_count": 1,
+        "shaping_features": ["arabic", "bidirectional"],
+    }

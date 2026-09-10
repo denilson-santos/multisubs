@@ -54,6 +54,7 @@ from .models import (
     TranscriptionPaths,
     VideoGeometry,
 )
+from .render_capabilities import assess_renderer_capability
 from .text_measurement import TextMeasurer
 from .text_segmentation import (
     LinguisticSegmenter,
@@ -393,9 +394,10 @@ def write_transcription_artifacts(
     if _requires_word_timing(resolved_config) and fallback_cues:
         _report(
             progress,
-            f"Warning: {fallback_cues} subtitle cue(s) could not be mapped "
-            "to complete word timings and were rendered without word animation; "
-            "no timestamps were invented.",
+            f"Warning: {fallback_cues} subtitle cue(s) could not safely use "
+            "the requested word effects and were rendered as complete logical "
+            "lines; inspect retained word_effect diagnostics for timing, mapping, "
+            "or shaping reasons.",
         )
     measurement_diagnostic = resolved_wrapping_metrics.text_measurer.diagnostic
     if measurement_diagnostic is not None:
@@ -1408,20 +1410,33 @@ def prepare_karaoke_cues(
             karaoke_cue, fallback_reason = _build_karaoke_cue(
                 segment, resolved_config.style.typography.text_case
             )
+            capability = assess_renderer_capability(
+                str(segment.get("text", "")),
+                word_effects_requested=True,
+            )
+            if karaoke_cue is not None and not capability.word_effects_supported:
+                karaoke_cue = None
+                fallback_reason = capability.fallback_reason
             if karaoke_cue is None:
                 fallback_cues += 1
                 prepared_segment["_word_effect"] = {
                     "strategy": "static-fallback",
+                    "renderer_strategy": "full-line",
                     "status": "fallback",
                     "units": "alignment-records",
                     "unit_count": _segment_record_count(segment),
                     "fallback_reason": fallback_reason or "invalid-effect-contract",
                     "fallback_count": 1,
                 }
+                if capability.shaping_features:
+                    prepared_segment["_word_effect"]["shaping_features"] = list(
+                        capability.shaping_features
+                    )
             else:
                 prepared_segment["_karaoke_cue"] = karaoke_cue
                 prepared_segment["_word_effect"] = {
                     "strategy": "alignment-records",
+                    "renderer_strategy": capability.renderer_strategy,
                     "status": "active",
                     "units": "alignment-records",
                     "unit_count": len(karaoke_cue.durations),
@@ -2013,8 +2028,14 @@ def _serialize_word_effect_metadata(
     if not diagnostics:
         return None
     reasons: dict[str, int] = {}
+    renderer_strategies: dict[str, int] = {}
     fallback_cues = 0
     for diagnostic in diagnostics:
+        renderer_strategy = diagnostic.get("renderer_strategy")
+        if isinstance(renderer_strategy, str) and renderer_strategy:
+            renderer_strategies[renderer_strategy] = (
+                renderer_strategies.get(renderer_strategy, 0) + 1
+            )
         if diagnostic.get("status") != "fallback":
             continue
         fallback_cues += 1
@@ -2026,6 +2047,7 @@ def _serialize_word_effect_metadata(
         "cues": len(diagnostics),
         "fallback_cues": fallback_cues,
         "reasons": reasons,
+        "renderer_strategies": renderer_strategies,
     }
 
 
