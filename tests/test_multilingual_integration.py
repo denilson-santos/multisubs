@@ -305,9 +305,13 @@ def test_shaping_fallback_matches_full_line_libass_geometry(
         ("fa", "فارسی ۱۲۳ (test)", "full-line"),
         ("ur", "اردو ۱۲۳ (test)", "full-line"),
         ("he", "עברית 123 (test)", "full-line"),
-        ("hi", "हिन्दी 123 (test)", "full-line"),
-        ("te", "తెలుగు 123 (test)", "full-line"),
-        ("ml", "മലയാളം 123 (test)", "full-line"),
+        # Ubuntu's Noto Indic faces intentionally cover their native script
+        # but do not all carry the Latin glyphs in the mixed-script examples.
+        # The pinned Plan 4 fixtures retain those mixed runs where available;
+        # this required matrix tests each CI-provisioned face's real coverage.
+        ("hi", "हिन्दी", "full-line"),
+        ("te", "తెలుగు", "full-line"),
+        ("ml", "മലയാളം", "full-line"),
     ],
 )
 def test_controlled_fonts_render_high_risk_scripts(
