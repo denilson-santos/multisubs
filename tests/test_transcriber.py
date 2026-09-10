@@ -74,6 +74,28 @@ def test_build_subtitle_segments_prefers_sentence_and_pause_boundaries():
     assert [segment["id"] for segment in segments] == [0, 1]
 
 
+def test_adjoining_source_segments_do_not_invent_a_separator():
+    segments = transcriber._build_subtitle_segments(
+        [
+            {
+                "start": 0.0,
+                "end": 0.4,
+                "text": "第",
+                "words": [_word("第", 0.0, 0.4)],
+            },
+            {
+                "start": 0.4,
+                "end": 0.8,
+                "text": "1",
+                "words": [_word("1", 0.4, 0.8)],
+            },
+        ]
+    )
+
+    assert [segment["text"] for segment in segments] == ["第1"]
+    assert [word["word"] for word in segments[0]["words"]] == ["第", "1"]
+
+
 def test_build_subtitle_segments_uses_coarse_fallback_without_word_timestamps():
     segments = transcriber._build_subtitle_segments(
         [{"start": 1, "end": 2.5, "text": "Fallback text"}]
@@ -82,6 +104,20 @@ def test_build_subtitle_segments_uses_coarse_fallback_without_word_timestamps():
     assert segments == [
         {"id": 0, "start": 1.0, "end": 2.5, "text": "Fallback text", "words": []}
     ]
+
+
+def test_build_subtitle_segments_uses_record_text_when_source_text_is_empty():
+    words = [
+        _word("字幕", 0.0, 0.4),
+        _word("AI", 0.4, 0.8),
+    ]
+
+    segments = transcriber._build_subtitle_segments(
+        [{"start": 0.0, "end": 0.8, "text": "", "words": words}]
+    )
+
+    assert [segment["text"] for segment in segments] == ["字幕AI"]
+    assert [word["word"] for word in segments[0]["words"]] == ["字幕", "AI"]
 
 
 def test_adaptive_wrapping_uses_resolved_width_and_preserves_timed_words():
@@ -421,6 +457,110 @@ def test_subtitle_writers_preserve_unicode_and_escape_ass_text(tmp_path: Path):
     srt = srt_path.read_text(encoding="utf-8")
     assert "00:00:00,001 --> 00:01:01,239" in srt
     assert "Olá" in srt and "字幕" in srt
+
+
+def test_source_separators_survive_json_srt_and_ass(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    text = "안녕하세요 세계"
+    words = [_word("안녕하세요", 0.0, 0.4), _word("세계", 0.5, 1.0)]
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="ko",
+        task="transcribe",
+        model_name="turbo",
+        full_text=text,
+        segments=tuple(
+            transcriber._build_subtitle_segments(
+                [{"start": 0.0, "end": 1.0, "text": text, "words": words}]
+            )
+        ),
+    )
+
+    json_path, srt_path, ass_path = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(None, appearance_values={"backdrop": "none"}),
+        geometry=GEOMETRY,
+    )
+
+    payload = json.loads(Path(json_path).read_text(encoding="utf-8"))
+    assert payload["transcription"]["text"] == text
+    assert payload["transcription"]["segments"][0]["text"] == text
+    assert payload["transcription"]["segments"][0]["display_text"] == text
+    assert text in Path(srt_path).read_text(encoding="utf-8")
+    assert text in Path(ass_path).read_text(encoding="utf-8")
+
+
+def test_incomplete_alignment_keeps_records_and_adds_fallback_diagnostics(
+    tmp_path: Path,
+):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    words = [
+        _word("字", 0.0, 0.3, score=0.9),
+        _word("幕", 0.3, 0.7, score=0.8),
+        {"word": "。", "score": 0.7},
+    ]
+    semantic = transcriber._build_subtitle_segments(
+        [{"start": 0.0, "end": 1.0, "text": "字幕。", "words": words}]
+    )
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="ja",
+        task="transcribe",
+        model_name="turbo",
+        full_text="字幕。",
+        segments=tuple(semantic),
+    )
+
+    paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(None, appearance_values={"backdrop": "none"}),
+        geometry=GEOMETRY,
+    )
+
+    payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
+    segment = payload["transcription"]["segments"][0]
+    assert segment["text"] == "字幕。"
+    assert segment["display_text"] == "字幕。"
+    assert segment["words"] == words
+    assert segment["alignment_mapping"]["status"] == "fallback"
+    assert "missing-or-invalid-alignment-time" in segment["alignment_mapping"]["reason"]
+    assert payload["metadata"]["rendering"]["text_mapping"] == {
+        "fallback_cues": 1,
+        "source_records": 3,
+        "mapped_records": 3,
+        "timed_records": 2,
+        "reasons": {
+            "missing-or-invalid-alignment-time": 1,
+            "incomplete-alignment-timing": 1,
+        },
+    }
+
+
+def test_lossy_source_mapping_suppresses_word_effects():
+    from multisubs.templates import get_subtitle_template
+
+    semantic = transcriber._build_subtitle_segments(
+        [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Hello.",
+                "words": [_word("Hello", 0.0, 1.0)],
+            }
+        ]
+    )
+    config = get_subtitle_template("amber-word").config
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+
+    display, _ = transcriber.layout_subtitle_cues(semantic, resolved, GEOMETRY)
+    prepared, fallback_count = transcriber.prepare_karaoke_cues(display, resolved)
+
+    assert fallback_count == 1
+    assert "_karaoke_cue" not in prepared[0]
 
 
 def test_model_loading_retries_transient_connection_failures(monkeypatch):

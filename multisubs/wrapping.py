@@ -2,19 +2,33 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from functools import cache
 from typing import Any
 
 from .layout import WrappingMetrics
-from .models import SubtitleDisplayFragment, SubtitleVisualLine, TextCase
+from .models import (
+    SubtitleDisplayFragment,
+    SubtitleDisplayUnit,
+    SubtitleVisualLine,
+    TextCase,
+)
+from .text_segmentation import (
+    grapheme_clusters as _unicode_grapheme_clusters,
+)
+from .text_segmentation import (
+    line_break_boundaries,
+)
+from .text_segmentation import (
+    normalise_display_text as _normalise_unicode_display_text,
+)
 
 PAUSE_BREAK_THRESHOLD = 0.45
 
 
 def normalise_display_text(text: str) -> str:
     """Normalize physical line endings and whitespace for display text."""
-    return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
+    return _normalise_unicode_display_text(text)
 
 
 def transform_display_text(text: str, text_case: TextCase) -> str:
@@ -102,9 +116,180 @@ def split_words_for_layout(
     return groups
 
 
-def words_to_text(words: Sequence[Mapping[str, Any]]) -> str:
-    """Join word-like records without inserting spaces into CJK text."""
-    return join_text_parts(str(word["word"]).strip() for word in words)
+def split_display_units_for_layout(
+    units: Sequence[SubtitleDisplayUnit],
+    metrics: WrappingMetrics,
+    *,
+    boundary_words: Sequence[Mapping[str, Any]] | None = None,
+) -> list[list[SubtitleDisplayUnit]]:
+    """Split mapped display units into groups that fit the visual budget."""
+    remaining = list(units)
+    groups: list[list[SubtitleDisplayUnit]] = []
+    offset = 0
+    while remaining:
+        _, fits = _layout_display_units(remaining, metrics)
+        if fits or len(remaining) == 1:
+            groups.append(remaining)
+            break
+        break_at = _find_best_display_unit_break(
+            remaining,
+            metrics,
+            boundary_words=(
+                boundary_words[offset:] if boundary_words is not None else None
+            ),
+        )
+        if break_at <= 0 or break_at >= len(remaining):
+            break_at = 1
+        groups.append(remaining[:break_at])
+        remaining = remaining[break_at:]
+        offset += break_at
+    return groups
+
+
+def _layout_display_units(
+    units: Sequence[SubtitleDisplayUnit],
+    metrics: WrappingMetrics,
+) -> tuple[list[list[SubtitleDisplayUnit]], bool]:
+    if not units:
+        return [], True
+    text = _join_display_units(units)
+    if _content_width(text, metrics) <= metrics.width_budget:
+        return [list(units)], True
+    if len(units) < 2 or metrics.line_capacity <= 1:
+        return [list(units)], False
+    allowed_breaks = {
+        index for index, unit in enumerate(units) if index > 0 and unit.can_break_before
+    }
+    ranges, fits = _partition_text_unit_ranges(
+        units,
+        _join_display_units,
+        metrics,
+        source_words=None,
+        allowed_breaks=allowed_breaks,
+    )
+    return (
+        [list(units[start:end]) for start, end in ranges] if ranges else [list(units)],
+        fits,
+    )
+
+
+def _find_best_display_unit_break(
+    units: Sequence[SubtitleDisplayUnit],
+    metrics: WrappingMetrics,
+    *,
+    boundary_words: Sequence[Mapping[str, Any]] | None,
+) -> int:
+    candidates: list[int] = []
+    for index in range(1, len(units)):
+        _, fits = _layout_display_units(units[:index], metrics)
+        if not fits:
+            break
+        candidates.append(index)
+    if not candidates:
+        return 1
+
+    def key(index: int) -> tuple[int, int, int]:
+        priority = (
+            boundary_priority(boundary_words, index)
+            if boundary_words is not None and len(boundary_words) == len(units)
+            else _display_boundary_priority(
+                [unit.display_token for unit in units], None, index
+            )
+        )
+        return _layout_break_key(
+            index=index,
+            unit_count=len(units),
+            priority=priority,
+        )
+
+    return max(candidates, key=key)
+
+
+def _join_display_units(units: Sequence[SubtitleDisplayUnit]) -> str:
+    """Join mapped units without inventing or deleting internal separators."""
+    return _trim_display_edges("".join(unit.display_text for unit in units))
+
+
+def _render_unit_line(
+    units: Sequence[SubtitleDisplayUnit],
+    *,
+    word_indexes: Mapping[int, int] | None,
+    trim_leading: bool,
+) -> tuple[str, tuple[SubtitleDisplayFragment, ...], str]:
+    if not units:
+        return "", (), ""
+    fragments: list[SubtitleDisplayFragment] = []
+    pieces: list[str] = []
+    first_prefix = units[0].display_prefix
+    # Keep the source separator for reverse-mapping diagnostics. Display line
+    # breaks may normalize CRLF/CR to LF and physical newlines to spaces.
+    replaced_separator = units[0].source_prefix
+    if trim_leading:
+        first_prefix = first_prefix.lstrip(" \t\r\n\v\f")
+    if first_prefix:
+        pieces.append(first_prefix)
+        fragments.append(SubtitleDisplayFragment(first_prefix))
+    for index, unit in enumerate(units):
+        if index:
+            if unit.display_prefix:
+                pieces.append(unit.display_prefix)
+                fragments.append(SubtitleDisplayFragment(unit.display_prefix))
+        if unit.display_token:
+            pieces.append(unit.display_token)
+            word_index = (
+                word_indexes.get(unit.record_index, unit.record_index)
+                if word_indexes is not None
+                else unit.record_index
+            )
+            fragments.append(SubtitleDisplayFragment(unit.display_token, word_index))
+        if index == len(units) - 1 and unit.display_suffix:
+            display_suffix = unit.display_suffix.strip(" \t\r\n\v\f")
+            if display_suffix:
+                pieces.append(display_suffix)
+                fragments.append(SubtitleDisplayFragment(display_suffix))
+    return _trim_display_edges("".join(pieces)), tuple(fragments), replaced_separator
+
+
+def render_display_units(
+    units: Sequence[SubtitleDisplayUnit],
+    metrics: WrappingMetrics,
+    *,
+    word_indexes: Mapping[int, int] | None = None,
+) -> tuple[str, tuple[SubtitleDisplayFragment, ...], tuple[str, ...]]:
+    """Wrap mapped units while preserving fragment and line-break provenance."""
+    lines, _ = _layout_display_units(units, metrics)
+    rendered_lines: list[str] = []
+    fragments: list[SubtitleDisplayFragment] = []
+    line_breaks: list[str] = []
+    for line_index, line in enumerate(lines):
+        rendered_line, line_fragments, replaced_separator = _render_unit_line(
+            line,
+            word_indexes=word_indexes,
+            trim_leading=True,
+        )
+        if line_index:
+            line_breaks.append(replaced_separator)
+        rendered_lines.append(rendered_line)
+        fragments.extend(line_fragments)
+        if line_index < len(lines) - 1:
+            fragments.append(SubtitleDisplayFragment("\n"))
+    return "\n".join(rendered_lines), tuple(fragments), tuple(line_breaks)
+
+
+def words_to_text(
+    words: Sequence[Mapping[str, Any]],
+    *,
+    source_text: str | None = None,
+) -> str:
+    """Join word-like records, using source text when the caller has it.
+
+    The source-aware path is lossless. The no-source form is a compatibility
+    adapter for direct Python callers and uses conservative script rules only
+    when there is no authoritative separator to preserve.
+    """
+    if source_text is not None:
+        return normalise_display_text(source_text)
+    return join_text_parts(str(word.get("word", "")) for word in words)
 
 
 def build_display_fragments(
@@ -126,7 +311,7 @@ def build_display_fragments(
     for index, word in enumerate(words):
         if not isinstance(word, Mapping):
             return None
-        token = str(word.get("word", "")).strip()
+        token = _trim_display_edges(str(word.get("word", "")))
         if not token:
             return None
         token_start = display_text.find(token, cursor)
@@ -193,16 +378,21 @@ def build_visual_lines(
 
 
 def join_text_parts(parts: Sequence[str] | Any) -> str:
-    """Join word-like parts using language-neutral separator heuristics."""
+    """Join word-like parts for legacy callers without a source string.
+
+    This compatibility path cannot recover omitted source separators. It only
+    supplies a conservative default; production aligned text uses the source
+    map and never reaches this heuristic.
+    """
     result = ""
     for raw_part in parts:
-        part = str(raw_part).strip()
+        part = _trim_join_part(str(raw_part))
         if not part:
             continue
         if result and _needs_text_separator(result[-1], part[0]):
             result += " "
         result += part
-    return result.strip()
+    return _trim_join_part(result)
 
 
 def is_cjk_or_emoji(character: str) -> bool:
@@ -216,24 +406,8 @@ def is_cjk_or_emoji(character: str) -> bool:
 
 
 def grapheme_clusters(text: str) -> list[str]:
-    """Group combining marks and zero-width joiner sequences."""
-    clusters: list[str] = []
-    current = ""
-    for character in text:
-        category = _category(character)
-        if current and (
-            category in {"Mn", "Me", "Cf"}
-            or character in {"\ufe0e", "\ufe0f"}
-            or current.endswith("\u200d")
-        ):
-            current += character
-            continue
-        if current:
-            clusters.append(current)
-        current = character
-    if current:
-        clusters.append(current)
-    return clusters
+    """Return extended grapheme clusters from the selected Unicode adapter."""
+    return _unicode_grapheme_clusters(text)
 
 
 def ends_sentence(word: str) -> bool:
@@ -353,13 +527,24 @@ def _layout_text_lines(
         return [normalised], True
 
     def join(parts: Sequence[str]) -> str:
-        return "".join(parts) if compact else join_text_parts(parts)
+        if compact:
+            return _trim_display_edges("".join(parts))
+        return join_text_parts(parts)
 
     if _content_width(join(units), metrics) <= metrics.width_budget:
         return [normalised], True
     if metrics.line_capacity <= 1:
         return [normalised], False
-    return _partition_text_units(units, join, metrics, source_words=source_words)
+    allowed_breaks = None
+    if compact and any(character.isspace() for character in normalised):
+        allowed_breaks = _text_unit_breaks(normalised, units)
+    return _partition_text_units(
+        units,
+        join,
+        metrics,
+        source_words=source_words,
+        allowed_breaks=allowed_breaks,
+    )
 
 
 def _text_units(
@@ -367,29 +552,67 @@ def _text_units(
     words: Sequence[Mapping[str, Any]] | None,
 ) -> tuple[list[str], bool, list[Mapping[str, Any]] | None]:
     if words:
-        source_words = [word for word in words if str(word.get("word", "")).strip()]
+        source_words = [
+            word for word in words if _trim_display_edges(str(word.get("word", "")))
+        ]
         return (
-            [str(word.get("word", "")).strip() for word in source_words],
+            [_trim_display_edges(str(word.get("word", ""))) for word in source_words],
             False,
             source_words,
         )
     if any(character.isspace() for character in text):
-        return text.split(), False, None
+        return _text_units_with_separators(text), True, None
     clusters = grapheme_clusters(text)
-    if len(clusters) > 1 and any(is_cjk_or_emoji(cluster[0]) for cluster in clusters):
+    cluster_ends: list[int] = []
+    cursor = 0
+    for cluster in clusters:
+        cursor += len(cluster)
+        cluster_ends.append(cursor)
+    break_boundaries = set(line_break_boundaries(text))
+    if (
+        len(clusters) > 1
+        and any(boundary in break_boundaries for boundary in cluster_ends[:-1])
+        and sum(boundary in break_boundaries for boundary in cluster_ends[:-1])
+        >= max(1, len(clusters) - 2)
+    ):
         return clusters, True, None
     return [text], True, None
 
 
 def _partition_text_units(
-    units: Sequence[str],
-    join: Callable[[Sequence[str]], str],
+    units: Sequence[Any],
+    join: Callable[[Sequence[Any]], str],
     metrics: WrappingMetrics,
     *,
     source_words: Sequence[Mapping[str, Any]] | None,
+    allowed_breaks: Collection[int] | None = None,
 ) -> tuple[list[str], bool]:
+    ranges, fits = _partition_text_unit_ranges(
+        units,
+        join,
+        metrics,
+        source_words=source_words,
+        allowed_breaks=allowed_breaks,
+    )
+    if not ranges:
+        return [join(units)], False
+    return [join(units[start:end]) for start, end in ranges], fits
+
+
+def _partition_text_unit_ranges(
+    units: Sequence[Any],
+    join: Callable[[Sequence[Any]], str],
+    metrics: WrappingMetrics,
+    *,
+    source_words: Sequence[Mapping[str, Any]] | None,
+    allowed_breaks: Collection[int] | None = None,
+) -> tuple[list[tuple[int, int]], bool]:
+    """Partition arbitrary units and return ranges for mapped renderers."""
     unit_count = len(units)
     maximum_lines = min(metrics.line_capacity, unit_count)
+    allowed = (
+        set(range(1, unit_count)) if allowed_breaks is None else set(allowed_breaks)
+    )
 
     @cache
     def line(start: int, end: int) -> tuple[str, float]:
@@ -415,6 +638,8 @@ def _partition_text_units(
         results: list[tuple[int, ...]] = []
         final_start = unit_count - lines_left + 1
         for end in range(start + 1, final_start + 1):
+            if end < unit_count and end not in allowed:
+                continue
             _, width = line(start, end)
             if not allow_overflow and not _line_fits(
                 width,
@@ -440,11 +665,11 @@ def _partition_text_units(
                     source_words,
                 ),
             )
-            return _partition_lines(best, line), True
+            return _ranges_from_endings(best), True
 
     candidates = partitions(0, maximum_lines, True)
     if not candidates:
-        return [join(units)], False
+        return [], False
     best = min(
         candidates,
         key=lambda endings: _partition_score(
@@ -456,7 +681,7 @@ def _partition_text_units(
             source_words,
         ),
     )
-    return _partition_lines(best, line), False
+    return _ranges_from_endings(best), False
 
 
 def _line_fits(width: float, *, unit_count: int, budget: int) -> bool:
@@ -480,12 +705,17 @@ def _partition_lines(
     return result
 
 
+def _ranges_from_endings(endings: Sequence[int]) -> list[tuple[int, int]]:
+    starts = (0, *endings[:-1])
+    return list(zip(starts, endings, strict=True))
+
+
 def _partition_score(
     endings: Sequence[int],
     line: Callable[[int, int], tuple[str, float]],
     unit_count: int,
     width_budget: int,
-    units: Sequence[str],
+    units: Sequence[Any],
     source_words: Sequence[Mapping[str, Any]] | None,
 ) -> tuple[int, float, float, int, float, float, tuple[int, ...]]:
     starts = (0, *endings[:-1])
@@ -514,14 +744,48 @@ def _partition_score(
     )
 
 
+def _text_units_with_separators(text: str) -> list[str]:
+    """Split text into tokens while keeping each following separator exact."""
+    units: list[str] = []
+    unit_start = 0
+    cursor = 0
+    while cursor < len(text):
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        if cursor == len(text):
+            break
+        while cursor < len(text) and not text[cursor].isspace():
+            cursor += 1
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        units.append(text[unit_start:cursor])
+        unit_start = cursor
+    return units or [text]
+
+
+def _text_unit_breaks(text: str, units: Sequence[str]) -> set[int]:
+    """Return unit boundaries permitted by Unicode line breaking."""
+    boundaries = set(line_break_boundaries(text))
+    result: set[int] = set()
+    offset = 0
+    for index, unit in enumerate(units[:-1], start=1):
+        offset += len(unit)
+        if offset in boundaries:
+            result.add(index)
+    return result
+
+
 def _display_boundary_priority(
-    units: Sequence[str],
+    units: Sequence[Any],
     source_words: Sequence[Mapping[str, Any]] | None,
     index: int,
 ) -> int:
     if source_words is not None and len(source_words) == len(units):
         return boundary_priority(source_words, index)
     previous = units[index - 1]
+    if isinstance(previous, SubtitleDisplayUnit):
+        previous = previous.display_token
+    previous = _trim_display_edges(str(previous))
     if ends_sentence(previous):
         return 3
     if ends_clause(previous):
@@ -535,9 +799,33 @@ def _needs_text_separator(previous: str, next_character: str) -> bool:
         or previous in "([{«「『【〈《"
     ):
         return False
-    if is_cjk_or_emoji(previous) and is_cjk_or_emoji(next_character):
+    if _is_cjk_join_character(previous) or _is_cjk_join_character(next_character):
         return False
     return True
+
+
+def _trim_join_part(text: str) -> str:
+    """Trim only physical/ordinary edge whitespace in the legacy adapter."""
+    return text.strip(" \t\r\n")
+
+
+def _trim_display_edges(text: str) -> str:
+    """Trim ordinary display padding without treating NBSP as disposable."""
+    return text.strip(" \t\r\n\v\f")
+
+
+def _is_cjk_join_character(character: str) -> bool:
+    """Identify ideographic/kana characters for no-source compatibility joins."""
+    if not character:
+        return False
+    codepoint = ord(character)
+    return (
+        0x3400 <= codepoint <= 0x4DBF
+        or 0x4E00 <= codepoint <= 0x9FFF
+        or 0xF900 <= codepoint <= 0xFAFF
+        or 0x3040 <= codepoint <= 0x30FF
+        or 0x31F0 <= codepoint <= 0x31FF
+    )
 
 
 def _is_wide_character(character: str) -> bool:

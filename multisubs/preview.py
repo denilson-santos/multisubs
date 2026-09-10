@@ -33,13 +33,13 @@ from .models import (
     SubtitlePosition,
     VideoGeometry,
 )
+from .text_segmentation import word_units
 from .wrapping import (
     build_display_fragments,
     ends_clause,
     ends_sentence,
     fit_first_text_segment,
     grapheme_clusters,
-    is_cjk_or_emoji,
     normalise_display_text,
     transform_display_text,
 )
@@ -227,18 +227,8 @@ def build_simulated_karaoke_cue(
 
 
 def _preview_timing_units(display_text: str) -> tuple[str, ...]:
-    if any(character.isspace() for character in display_text):
-        return tuple(match.group() for match in re.finditer(r"\S+", display_text))
-    clusters = grapheme_clusters(display_text)
-    if len(clusters) > 1 and any(is_cjk_or_emoji(cluster[0]) for cluster in clusters):
-        units: list[str] = []
-        for cluster in clusters:
-            if units and _is_punctuation_cluster(cluster):
-                units[-1] += cluster
-            else:
-                units.append(cluster)
-        return tuple(units)
-    return (display_text,)
+    units = word_units(display_text)
+    return units or (display_text,)
 
 
 def _is_punctuation_cluster(cluster: str) -> bool:
@@ -444,7 +434,7 @@ def _milliseconds_to_centiseconds(milliseconds: int) -> int:
 
 def _build_preview_word_cue(display_text: str) -> KaraokeCue | None:
     """Map sample words for a static, representative timed-emphasis snapshot."""
-    words = [{"word": match.group()} for match in re.finditer(r"\S+", display_text)]
+    words = [{"word": unit} for unit in word_units(display_text)]
     fragments = build_display_fragments(display_text, words)
     if fragments is None:
         return None

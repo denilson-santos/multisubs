@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from fractions import Fraction
@@ -45,6 +46,7 @@ from .models import (
     SubtitleElementAnimation,
     SubtitlePlacementMode,
     SubtitlePosition,
+    SubtitleSourceMap,
     SubtitleWordElementAnimation,
     TextCase,
     TranscriptDocument,
@@ -52,6 +54,12 @@ from .models import (
     VideoGeometry,
 )
 from .text_measurement import TextMeasurer
+from .text_segmentation import (
+    build_source_text_map,
+    display_units_for_records,
+    source_piece_for_record,
+    source_text_for_records,
+)
 from .utils import atomic_write_text, find_unique_stem
 from .wrapping import (
     PAUSE_BREAK_THRESHOLD as _WRAPPING_PAUSE_BREAK_THRESHOLD,
@@ -85,6 +93,12 @@ from .wrapping import (
 )
 from .wrapping import (
     normalise_display_text as _wrapping_normalise_display_text,
+)
+from .wrapping import (
+    render_display_units as _wrapping_render_display_units,
+)
+from .wrapping import (
+    split_display_units_for_layout as _wrapping_split_display_units_for_layout,
 )
 from .wrapping import (
     split_words_for_layout as _wrapping_split_words_for_layout,
@@ -125,6 +139,19 @@ _RETRYABLE_MODEL_ERROR_MARKERS = (
 
 ProgressReporter = Callable[[str], None] | None
 _SKIP_JSON_VALUE = object()
+
+
+@dataclass(frozen=True)
+class _MappedWord:
+    """A timed record carrying its source-map identity through cue splitting."""
+
+    record: dict[str, Any]
+    source_map: SubtitleSourceMap
+    record_index: int
+    token: str
+    start: float
+    end: float
+
 
 MODELS = _MODELS
 
@@ -591,7 +618,40 @@ def _result_full_text(
     text = result.get("text")
     if isinstance(text, str) and text.strip():
         return _normalise_display_text(text)
-    return " ".join(segment["text"].replace("\n", " ") for segment in segments).strip()
+    mapped_segments: list[str] = []
+    seen_maps: set[int] = set()
+    for segment in segments:
+        source_maps = segment.get("_source_maps")
+        if isinstance(source_maps, Sequence) and not isinstance(
+            source_maps, (str, bytes)
+        ):
+            for source_map in source_maps:
+                if not isinstance(source_map, SubtitleSourceMap):
+                    continue
+                map_identity = id(source_map)
+                if map_identity not in seen_maps:
+                    mapped_segments.append(source_map.normalized_text)
+                    seen_maps.add(map_identity)
+            continue
+        source_map = segment.get("_source_map")
+        if isinstance(source_map, SubtitleSourceMap):
+            map_identity = id(source_map)
+            if map_identity not in seen_maps:
+                mapped_segments.append(source_map.normalized_text)
+                seen_maps.add(map_identity)
+            continue
+        segment_text = segment.get("text", "")
+        if isinstance(segment_text, str):
+            mapped_segments.append(segment_text)
+    if mapped_segments:
+        return _normalise_display_text("".join(mapped_segments))
+    return _normalise_display_text(
+        " ".join(
+            str(segment.get("text", ""))
+            for segment in segments
+            if isinstance(segment.get("text", ""), str)
+        )
+    )
 
 
 def _choose_transcription_paths(
@@ -612,16 +672,44 @@ def _choose_transcription_paths(
 def _build_subtitle_segments(
     aligned_segments: Sequence[object],
 ) -> list[dict[str, Any]]:
-    """Build semantic cues from WhisperX word timestamps and coarse fallbacks."""
+    """Build semantic cues while retaining source text beside timed records."""
     cues: list[dict[str, Any]] = []
-    pending_words: list[dict[str, Any]] = []
+    pending_words: list[_MappedWord] = []
 
-    for raw_segment in aligned_segments:
+    for source_segment_index, raw_segment in enumerate(aligned_segments):
         segment = _require_mapping(raw_segment, "aligned segment")
-        words = _timed_words(segment)
-        if words:
-            _validate_word_order(pending_words, words)
-            pending_words.extend(words)
+        raw_records = _alignment_records(segment)
+        source_text = segment.get("text")
+        fallback_text = (
+            _words_to_text(raw_records)
+            if not isinstance(source_text, str) or (not source_text and raw_records)
+            else None
+        )
+        source_map = build_source_text_map(
+            source_text,
+            raw_records,
+            fallback_text=fallback_text,
+            source_segment_index=source_segment_index,
+        )
+        if source_map.timing_complete:
+            mapped_spans = {
+                span.record_index: span
+                for span in source_map.spans
+                if span.kind == "alignment" and span.record_index is not None
+            }
+            mapped_words = [
+                _MappedWord(
+                    record=raw_records[record_index],
+                    source_map=source_map,
+                    record_index=record_index,
+                    token=mapped_spans[record_index].text,
+                    start=_require_span_time(mapped_spans[record_index].start_time),
+                    end=_require_span_time(mapped_spans[record_index].end_time),
+                )
+                for record_index in source_map.timed_record_indexes
+            ]
+            _validate_word_order(pending_words, mapped_words)
+            pending_words.extend(mapped_words)
             continue
 
         if pending_words:
@@ -629,7 +717,21 @@ def _build_subtitle_segments(
             pending_words = []
 
         start, end = _segment_times(segment)
-        _append_cue(cues, segment.get("text", ""), start, end, [])
+        _append_cue_kwargs: dict[str, Any] = {}
+        if raw_records:
+            _append_cue_kwargs = {
+                "source_map": source_map,
+                "source_record_indexes": source_map.mapped_record_indexes,
+                "mapping_reason": ";".join(source_map.fallback_reasons),
+            }
+        _append_cue(
+            cues,
+            source_map.normalized_text,
+            start,
+            end,
+            raw_records,
+            **_append_cue_kwargs,
+        )
 
     if pending_words:
         cues.extend(_build_cues_from_words(pending_words))
@@ -637,6 +739,18 @@ def _build_subtitle_segments(
     for index, cue in enumerate(cues):
         cue["id"] = index
     return cues
+
+
+def _alignment_records(segment: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return JSON-safe copies of every aligned record, including untimed ones."""
+    raw_words = segment.get("words", [])
+    if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
+        return []
+    return [
+        _json_safe_mapping(raw_word)
+        for raw_word in raw_words
+        if isinstance(raw_word, Mapping)
+    ]
 
 
 def _timed_words(segment: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -670,15 +784,15 @@ def _timed_words(segment: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def _validate_word_order(
-    previous_words: Sequence[Mapping[str, Any]],
-    next_words: Sequence[Mapping[str, Any]],
+    previous_words: Sequence[Mapping[str, Any] | _MappedWord],
+    next_words: Sequence[Mapping[str, Any] | _MappedWord],
 ) -> None:
     words = [*previous_words, *next_words]
     previous_start: float | None = None
     for word in words:
-        start = _finite_time(word.get("start"))
-        end = _finite_time(word.get("end"))
-        if start is None or end is None or end < start:
+        start = _word_start(word)
+        end = _word_end(word)
+        if end < start:
             raise TranscriptionError("WhisperX returned invalid word timestamps")
         if previous_start is not None and start < previous_start:
             raise TranscriptionError(
@@ -704,12 +818,16 @@ def _finite_time(value: object) -> float | None:
     return result
 
 
-def _build_cues_from_words(words: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+def _build_cues_from_words(
+    words: Sequence[dict[str, Any] | _MappedWord],
+) -> list[dict[str, Any]]:
     cues: list[dict[str, Any]] = []
-    current_words: list[dict[str, Any]] = []
+    current_words: list[dict[str, Any] | _MappedWord] = []
 
     for word in words:
-        if current_words and _has_significant_pause(current_words[-1], word):
+        if current_words and _has_significant_pause(
+            _word_record(current_words[-1]), _word_record(word)
+        ):
             _append_words_cue(cues, current_words)
             current_words = []
 
@@ -726,7 +844,7 @@ def _build_cues_from_words(words: Sequence[dict[str, Any]]) -> list[dict[str, An
             _append_words_cue(cues, current_words[:break_at])
             current_words = current_words[break_at:]
 
-        if current_words and _ends_sentence(str(current_words[-1].get("word", ""))):
+        if current_words and _ends_sentence(_word_text(current_words[-1])):
             _append_words_cue(cues, current_words)
             current_words = []
 
@@ -736,28 +854,50 @@ def _build_cues_from_words(words: Sequence[dict[str, Any]]) -> list[dict[str, An
 
 
 def _append_words_cue(
-    cues: list[dict[str, Any]], words: Sequence[dict[str, Any]]
+    cues: list[dict[str, Any]],
+    words: Sequence[dict[str, Any] | _MappedWord],
 ) -> None:
     if not words:
         return
+    mapped_words = [word for word in words if isinstance(word, _MappedWord)]
+    source_map = (
+        mapped_words[0].source_map
+        if mapped_words
+        and len(mapped_words) == len(words)
+        and all(word.source_map is mapped_words[0].source_map for word in mapped_words)
+        else None
+    )
+    source_record_indexes = (
+        tuple(word.record_index for word in mapped_words) if source_map else None
+    )
+    source_maps: tuple[SubtitleSourceMap, ...] | None = None
+    if mapped_words:
+        source_maps = tuple(dict.fromkeys(word.source_map for word in mapped_words))
     _append_cue(
         cues,
-        _words_to_text(words),
-        float(words[0]["start"]),
-        float(words[-1]["end"]),
-        list(words),
+        _source_text_for_words(words),
+        _word_start(words[0]),
+        _word_end(words[-1]),
+        [_word_record(word) for word in words],
+        source_map=source_map,
+        source_record_indexes=source_record_indexes,
+        source_maps=source_maps,
     )
 
 
-def _cue_exceeds_limits(words: Sequence[Mapping[str, Any]]) -> bool:
+def _cue_exceeds_limits(
+    words: Sequence[Mapping[str, Any] | _MappedWord],
+) -> bool:
     return _words_duration(words) > MAX_CUE_DURATION
 
 
-def _words_duration(words: Sequence[Mapping[str, Any]]) -> float:
-    return float(words[-1]["end"]) - float(words[0]["start"])
+def _words_duration(words: Sequence[Mapping[str, Any] | _MappedWord]) -> float:
+    return _word_end(words[-1]) - _word_start(words[0])
 
 
-def _find_best_cue_break(words: Sequence[Mapping[str, Any]]) -> int:
+def _find_best_cue_break(
+    words: Sequence[Mapping[str, Any] | _MappedWord],
+) -> int:
     """Select the best valid word boundary before a cue exceeds its limits."""
     candidates = [
         index
@@ -770,7 +910,10 @@ def _find_best_cue_break(words: Sequence[Mapping[str, Any]]) -> int:
     def key(index: int) -> tuple[int, float]:
         prefix = words[:index]
         duration_distance = abs(MAX_CUE_DURATION - _words_duration(prefix))
-        return (_boundary_priority(words, index), -duration_distance)
+        return (
+            _boundary_priority([_word_record(word) for word in words], index),
+            -duration_distance,
+        )
 
     return max(candidates, key=key)
 
@@ -781,6 +924,11 @@ def _append_cue(
     start: float,
     end: float,
     words: Sequence[Mapping[str, Any]],
+    *,
+    source_map: SubtitleSourceMap | None = None,
+    source_record_indexes: Sequence[int] | None = None,
+    mapping_reason: str | None = None,
+    source_maps: Sequence[SubtitleSourceMap] | None = None,
 ) -> None:
     if not isinstance(text, str):
         return
@@ -789,15 +937,66 @@ def _append_cue(
         return
     if end < start or start < 0:
         raise TranscriptionError("Subtitle cue has invalid timestamps")
-    cues.append(
-        {
-            "id": len(cues),
-            "start": start,
-            "end": end,
-            "text": normalised_text,
-            "words": [dict(word) for word in words],
-        }
+    cue: dict[str, Any] = {
+        "id": len(cues),
+        "start": start,
+        "end": end,
+        "text": normalised_text,
+        "words": [dict(word) for word in words],
+    }
+    if source_map is not None:
+        cue["_source_map"] = source_map
+        cue["_source_record_indexes"] = tuple(source_record_indexes or ())
+    if source_maps:
+        cue["_source_maps"] = tuple(source_maps)
+    if mapping_reason:
+        cue["_alignment_fallback_reason"] = mapping_reason
+    cues.append(cue)
+
+
+def _word_record(word: Mapping[str, Any] | _MappedWord) -> Mapping[str, Any]:
+    return word.record if isinstance(word, _MappedWord) else word
+
+
+def _word_start(word: Mapping[str, Any] | _MappedWord) -> float:
+    value = (
+        word.start if isinstance(word, _MappedWord) else _finite_time(word.get("start"))
     )
+    if value is None:
+        raise TranscriptionError("WhisperX returned invalid word timestamps")
+    return value
+
+
+def _word_end(word: Mapping[str, Any] | _MappedWord) -> float:
+    value = word.end if isinstance(word, _MappedWord) else _finite_time(word.get("end"))
+    if value is None:
+        raise TranscriptionError("WhisperX returned invalid word timestamps")
+    return value
+
+
+def _word_text(word: Mapping[str, Any] | _MappedWord) -> str:
+    if isinstance(word, _MappedWord):
+        return word.token
+    return str(word.get("word", ""))
+
+
+def _source_text_for_words(
+    words: Sequence[Mapping[str, Any] | _MappedWord],
+) -> str:
+    if not words or not all(isinstance(word, _MappedWord) for word in words):
+        return _words_to_text([_word_record(word) for word in words])
+    mapped_words = cast(Sequence[_MappedWord], words)
+    pieces = [
+        source_piece_for_record(word.source_map, word.record_index)
+        for word in mapped_words
+    ]
+    return "".join(pieces)
+
+
+def _require_span_time(value: float | None) -> float:
+    if value is None:
+        raise TranscriptionError("WhisperX returned invalid word timestamps")
+    return value
 
 
 def layout_subtitle_cues(
@@ -835,13 +1034,10 @@ def layout_subtitle_cues(
     )
     text_case = resolved_config.style.typography.text_case
     display_cues: list[dict[str, Any]] = []
-    for segment in segments:
-        semantic_text = segment.get("semantic_text", segment.get("text", ""))
-        if not isinstance(semantic_text, str):
-            continue
-        semantic_text = _normalise_display_text(semantic_text)
-        if not semantic_text:
-            continue
+    for segment_index, segment in enumerate(segments):
+        source_text = segment.get("text")
+        if not isinstance(source_text, str):
+            source_text = segment.get("semantic_text")
         raw_words = segment.get("words", [])
         words = (
             [dict(word) for word in raw_words if isinstance(word, Mapping)]
@@ -849,34 +1045,99 @@ def layout_subtitle_cues(
             and not isinstance(raw_words, (str, bytes))
             else []
         )
-        if words:
-            display_words = _transform_display_words(words, text_case)
-            display_groups = _split_words_for_layout(display_words, metrics)
-            source_offset = 0
-            for display_group in display_groups:
-                source_group = words[source_offset : source_offset + len(display_group)]
-                source_offset += len(display_group)
-                _append_display_cue(
-                    display_cues,
-                    _words_to_text(source_group),
-                    _words_to_text(display_group),
-                    float(source_group[0]["start"]),
-                    float(source_group[-1]["end"]),
-                    source_group,
-                    display_group,
+        existing_map = segment.get("_source_map")
+        source_map = (
+            existing_map
+            if isinstance(existing_map, SubtitleSourceMap)
+            else build_source_text_map(
+                source_text,
+                words,
+                fallback_text=_words_to_text(words)
+                if not isinstance(source_text, str) or (not source_text and words)
+                else None,
+                source_segment_index=segment_index,
+            )
+        )
+        existing_indexes = segment.get("_source_record_indexes")
+        record_indexes = (
+            tuple(index for index in existing_indexes if isinstance(index, int))
+            if isinstance(existing_indexes, Sequence)
+            and not isinstance(existing_indexes, (str, bytes))
+            else source_map.mapped_record_indexes
+        )
+        words_by_record = {
+            record_index: word
+            for record_index, word in zip(record_indexes, words, strict=False)
+        }
+        if source_map.timing_complete and words and record_indexes:
+            units = display_units_for_records(
+                source_map,
+                record_indexes,
+                transform=lambda value: _transform_display_text(value, text_case),
+            )
+            if len(units) == len(record_indexes) and all(
+                index in words_by_record for index in record_indexes
+            ):
+                groups = _wrapping_split_display_units_for_layout(
+                    units,
                     metrics,
+                    boundary_words=[words_by_record[index] for index in record_indexes],
                 )
-            continue
+                for group in groups:
+                    group_indexes = tuple(unit.record_index for unit in group)
+                    source_group = source_text_for_records(
+                        source_map,
+                        group_indexes,
+                    )
+                    display_text, fragments, line_breaks = (
+                        _wrapping_render_display_units(
+                            group,
+                            metrics,
+                            word_indexes={
+                                record_index: offset
+                                for offset, record_index in enumerate(group_indexes)
+                            },
+                        )
+                    )
+                    group_words = [words_by_record[index] for index in group_indexes]
+                    _append_display_cue(
+                        display_cues,
+                        source_group,
+                        display_text,
+                        _word_start(group_words[0]),
+                        _word_end(group_words[-1]),
+                        group_words,
+                        [],
+                        metrics,
+                        display_fragments=fragments,
+                        generated_line_breaks=line_breaks,
+                        source_map=source_map,
+                        source_record_indexes=group_indexes,
+                    )
+                continue
 
+        semantic_text = source_map.normalized_text
+        if not semantic_text and isinstance(source_text, str):
+            semantic_text = source_text
+        if not semantic_text:
+            continue
+        try:
+            start = float(segment["start"])
+            end = float(segment["end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise TranscriptionError("Subtitle cue has invalid timestamps") from exc
         _append_display_cue(
             display_cues,
             semantic_text,
-            _transform_display_text(semantic_text, text_case),
-            float(segment["start"]),
-            float(segment["end"]),
-            [],
+            _transform_display_text(_normalise_display_text(semantic_text), text_case),
+            start,
+            end,
+            words,
             [],
             metrics,
+            mapping_reason=";".join(source_map.fallback_reasons) or None,
+            source_map=source_map,
+            source_record_indexes=record_indexes,
         )
 
     for index, cue in enumerate(display_cues):
@@ -893,31 +1154,47 @@ def _append_display_cue(
     words: Sequence[Mapping[str, Any]],
     display_words: Sequence[Mapping[str, Any]],
     metrics: WrappingMetrics,
+    *,
+    display_fragments: tuple[SubtitleDisplayFragment, ...] | None = None,
+    generated_line_breaks: Sequence[str] = (),
+    mapping_reason: str | None = None,
+    source_map: SubtitleSourceMap | None = None,
+    source_record_indexes: Sequence[int] | None = None,
 ) -> None:
     if end < start or start < 0:
         raise TranscriptionError("Subtitle cue has invalid timestamps")
-    display_text = _wrap_subtitle_text(
-        unwrapped_display_text,
-        display_words or None,
-        metrics=metrics,
+    rendered_display_text = (
+        unwrapped_display_text
+        if display_fragments is not None
+        else _wrap_subtitle_text(
+            unwrapped_display_text,
+            display_words or None,
+            metrics=metrics,
+        )
     )
-    display_fragments = (
-        _wrapping_build_display_fragments(display_text, display_words)
-        if display_words
-        else None
-    )
-    cues.append(
-        {
-            "id": len(cues),
-            "start": start,
-            "end": end,
-            "text": display_text,
-            "semantic_text": semantic_text,
-            "display_text": display_text,
-            "words": [dict(word) for word in words],
-            "display_fragments": display_fragments,
-        }
-    )
+    if display_fragments is None and display_words:
+        display_fragments = _wrapping_build_display_fragments(
+            rendered_display_text,
+            display_words,
+        )
+    cue: dict[str, Any] = {
+        "id": len(cues),
+        "start": start,
+        "end": end,
+        "text": rendered_display_text,
+        "semantic_text": semantic_text,
+        "display_text": rendered_display_text,
+        "words": [dict(word) for word in words],
+        "display_fragments": display_fragments,
+    }
+    if generated_line_breaks:
+        cue["_generated_line_breaks"] = tuple(generated_line_breaks)
+    if mapping_reason:
+        cue["_alignment_fallback_reason"] = mapping_reason
+    if source_map is not None:
+        cue["_source_map"] = source_map
+        cue["_source_record_indexes"] = tuple(source_record_indexes or ())
+    cues.append(cue)
 
 
 def _transform_display_words(
@@ -959,6 +1236,8 @@ def prepare_karaoke_cues(
 def _prepare_karaoke_cue(
     segment: Mapping[str, Any], text_case: TextCase = TextCase.ORIGINAL
 ) -> KaraokeCue | None:
+    if segment.get("_alignment_fallback_reason"):
+        return None
     raw_words = segment.get("words")
     if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
         return None
@@ -1250,6 +1529,9 @@ def _write_json(
         },
     }
     rendering = json_data["metadata"]["rendering"]
+    mapping_metadata = _serialize_alignment_mapping_metadata(segments)
+    if mapping_metadata is not None:
+        rendering["text_mapping"] = mapping_metadata
     if template_source != "builtin":
         rendering["template"].update(
             {
@@ -1417,11 +1699,67 @@ def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
             "display_text",
             "display_fragments",
             "_karaoke_cue",
+            "_source_map",
+            "_source_maps",
+            "_source_record_indexes",
+            "_generated_line_breaks",
+            "_alignment_fallback_reason",
         }
     }
     serializable["text"] = segment.get("semantic_text", segment.get("text", ""))
     serializable["display_text"] = segment.get("display_text", segment.get("text", ""))
+    reason = segment.get("_alignment_fallback_reason")
+    source_map = segment.get("_source_map")
+    if isinstance(reason, str) and reason:
+        mapping: dict[str, Any] = {
+            "status": "fallback",
+            "reason": reason.split(";"),
+        }
+        if isinstance(source_map, SubtitleSourceMap):
+            mapping.update(
+                {
+                    "source_records": source_map.record_count,
+                    "mapped_records": len(source_map.mapped_record_indexes),
+                    "timed_records": len(source_map.timed_record_indexes),
+                }
+            )
+        serializable["alignment_mapping"] = mapping
     return serializable
+
+
+def _serialize_alignment_mapping_metadata(
+    segments: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Aggregate mapping fallbacks without exposing transcript content."""
+    fallback_segments = [
+        segment
+        for segment in segments
+        if isinstance(segment.get("_alignment_fallback_reason"), str)
+        and segment.get("_alignment_fallback_reason")
+    ]
+    if not fallback_segments:
+        return None
+    reasons: dict[str, int] = {}
+    mapped_records = 0
+    timed_records = 0
+    source_records = 0
+    for segment in fallback_segments:
+        raw_reason = str(segment["_alignment_fallback_reason"])
+        for reason in raw_reason.split(";"):
+            if reason:
+                reasons[reason] = reasons.get(reason, 0) + 1
+        source_map = segment.get("_source_map")
+        if isinstance(source_map, SubtitleSourceMap):
+            source_records += source_map.record_count
+            mapped_records += len(source_map.mapped_record_indexes)
+            timed_records += len(source_map.timed_record_indexes)
+    return {
+        "fallback_cues": len(fallback_segments),
+        "source_records": source_records,
+        "mapped_records": mapped_records,
+        "timed_records": timed_records,
+        "reasons": reasons,
+    }
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
