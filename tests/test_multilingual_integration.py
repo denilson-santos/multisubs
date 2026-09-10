@@ -2,15 +2,18 @@
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from PIL import Image, ImageChops
 
 from multisubs.config import validate_subtitle_config
+from multisubs.errors import ValidationError
 from multisubs.models import TranscriptDocument
 from multisubs.subtitler import probe_video_geometry
 from multisubs.templates import get_subtitle_template
@@ -26,6 +29,9 @@ FREE_SANS = Path("/usr/share/fonts/truetype/freefont/FreeSans.ttf")
 FREE_SANS_SHA256 = "b59dd5eeab73f77897ae0144a6b443a004efa6a90a5e1a5b550ea28978cd38e8"
 NIRMALA = Path("/mnt/c/Windows/Fonts/Nirmala.ttc")
 NIRMALA_SHA256 = "ad02cdfc06e144ac45f318e8e5a64cbe04c7479d4beb91d25f5a319a466b1767"
+REQUIRE_MULTILINGUAL_FONTS = (
+    os.environ.get("MULTISUBS_REQUIRE_MULTILINGUAL_FONTS") == "1"
+)
 
 
 def _require_renderer():
@@ -33,7 +39,12 @@ def _require_renderer():
         pytest.skip("FFmpeg/ffprobe are required")
 
 
-def _frame(ass: Path, fonts: Path) -> tuple[Image.Image, str]:
+def _frame(
+    ass: Path,
+    fonts: Path,
+    *,
+    timestamp: float = 0.0,
+) -> tuple[Image.Image, str]:
     # Both paths are pytest-owned and the bundled trusted fixture directory.
     result = subprocess.run(
         [
@@ -47,7 +58,10 @@ def _frame(ass: Path, fonts: Path) -> tuple[Image.Image, str]:
             "-i",
             "color=black:s=1080x1920:r=30",
             "-vf",
-            f"subtitles=filename='{ass}':fontsdir='{fonts}'",
+            (
+                f"setpts=PTS+{timestamp}/TB,"
+                f"subtitles=filename='{ass}':fontsdir='{fonts}'"
+            ),
             "-frames:v",
             "1",
             "-pix_fmt",
@@ -61,6 +75,39 @@ def _frame(ass: Path, fonts: Path) -> tuple[Image.Image, str]:
         timeout=20,
     )
     return Image.frombytes("L", (1080, 1920), result.stdout), result.stderr.decode()
+
+
+def _controlled_font(language: str) -> tuple[str, Path]:
+    fc_match = shutil.which("fc-match")
+    if fc_match is None:
+        message = "fontconfig is required for controlled multilingual font evidence"
+        if REQUIRE_MULTILINGUAL_FONTS:
+            pytest.fail(message)
+        pytest.skip(message)
+        raise AssertionError("pytest skip unexpectedly returned")
+    result = subprocess.run(
+        [fc_match, "-f", "%{family[0]}|%{file}\n", f":lang={language}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    family, separator, raw_path = result.stdout.strip().partition("|")
+    path = Path(raw_path)
+    if not separator or not family or not path.is_file():
+        message = f"No controlled fontconfig fixture is available for {language}"
+        if REQUIRE_MULTILINGUAL_FONTS:
+            pytest.fail(message)
+        pytest.skip(message)
+    return family, path
+
+
+def _font_validation_unavailable(language: str, exc: ValidationError) -> NoReturn:
+    message = f"Controlled font fixture for {language} lacks sample coverage: {exc}"
+    if REQUIRE_MULTILINGUAL_FONTS:
+        pytest.fail(message)
+    pytest.skip(message)
+    raise AssertionError("pytest skip unexpectedly returned")
 
 
 def test_japanese_fragment_advances_fit_rendered_glyphs(tmp_path, record_property):
@@ -241,3 +288,150 @@ def test_shaping_fallback_matches_full_line_libass_geometry(
         "reasons": {"unsupported-word-shaping": 1},
         "renderer_strategies": {"full-line": 1},
     }
+
+
+@pytest.mark.parametrize(
+    ("language", "sample", "expected_strategy"),
+    [
+        ("ja", "字幕AI第1回。", "positioned-fragments"),
+        ("zh", "我們今天學習中文。", "positioned-fragments"),
+        ("ko", "안녕하세요 세계", "positioned-fragments"),
+        ("ka", "ქართული 123", "positioned-fragments"),
+        ("ar", "العربية 123 (test)", "full-line"),
+        ("fa", "فارسی ۱۲۳ (test)", "full-line"),
+        ("ur", "اردو ۱۲۳ (test)", "full-line"),
+        ("he", "עברית 123 (test)", "full-line"),
+        ("hi", "हिन्दी 123 (test)", "full-line"),
+        ("te", "తెలుగు 123 (test)", "full-line"),
+        ("ml", "മലയാളം 123 (test)", "full-line"),
+    ],
+)
+def test_controlled_fonts_render_high_risk_scripts(
+    tmp_path, record_property, language, sample, expected_strategy
+):
+    _require_renderer()
+    family, font_path = _controlled_font(language)
+    words = [
+        {"word": part, "start": index * 0.3, "end": (index + 1) * 0.3}
+        for index, part in enumerate(sample.split() or [sample])
+    ]
+    duration = max(0.3, len(words) * 0.3)
+    document = TranscriptDocument(
+        Path("synthetic.mp4"),
+        language,
+        "transcribe",
+        "synthetic",
+        sample,
+        ({"text": sample, "start": 0.0, "end": duration, "words": words},),
+    )
+    geometry = _geometry(
+        {"rendering": {"render_width": 1080, "render_height": 1920}}, document
+    )
+    config = validate_subtitle_config(
+        None,
+        defaults=get_subtitle_template("amber-word").config,
+        appearance_values={"font": family, "fonts_dir": font_path.parent},
+        position="center",
+    )
+    try:
+        paths = write_transcription_artifacts(
+            document,
+            tmp_path,
+            config,
+            geometry=geometry,
+            verify_font_coverage=True,
+        )
+    except ValidationError as exc:
+        _font_validation_unavailable(language, exc)
+    metadata = json.loads(Path(paths[0]).read_text())["metadata"]["rendering"]
+    selected_font = metadata["text_measurement"]
+    frame, log = _frame(Path(paths[2]), font_path.parent, timestamp=0.1)
+    bounds = frame.point(lambda value: 255 if value > 32 else 0).getbbox()
+
+    record_property("language", language)
+    record_property("font_family", selected_font["resolved_font"])
+    record_property("font_sha256", hashlib.sha256(font_path.read_bytes()).hexdigest())
+    record_property(
+        "font_selection",
+        "\n".join(line for line in log.splitlines() if "fontselect" in line),
+    )
+    assert selected_font["coverage"] == "verified"
+    assert bounds is not None
+    assert 0 <= bounds[0] < bounds[2] <= geometry.render_width
+    assert 0 <= bounds[1] < bounds[3] <= geometry.render_height
+    assert metadata["word_effects"]["renderer_strategies"] == {expected_strategy: 1}
+
+
+def test_historical_japanese_observation_points_render_synthetic_equivalent(
+    tmp_path, record_property
+):
+    _require_renderer()
+    if not WQY.is_file() or hashlib.sha256(WQY.read_bytes()).hexdigest() != WQY_SHA256:
+        message = "Pinned fonts-wqy-zenhei 0.9.45-8 fixture is unavailable"
+        if REQUIRE_MULTILINGUAL_FONTS:
+            pytest.fail(message)
+        pytest.skip(message)
+    observations = (
+        (11.832, "今日は寒くなかった。"),
+        (34.288, "デフォルト設定を使用する。"),
+        (36.210, "字幕AI第1回。"),
+    )
+    segments = []
+    for timestamp, text in observations:
+        units = list(text)
+        start = timestamp - 0.6
+        step = 1.2 / len(units)
+        words = [
+            {
+                "word": unit,
+                "start": start + index * step,
+                "end": start + (index + 1) * step,
+            }
+            for index, unit in enumerate(units)
+        ]
+        segments.append(
+            {
+                "text": text,
+                "start": start,
+                "end": timestamp + 0.6,
+                "words": words,
+            }
+        )
+    document = TranscriptDocument(
+        Path("synthetic-historical-replay.mp4"),
+        "ja",
+        "transcribe",
+        "synthetic",
+        "".join(text for _, text in observations),
+        tuple(segments),
+    )
+    geometry = _geometry(
+        {"rendering": {"render_width": 1080, "render_height": 1920}}, document
+    )
+    config = validate_subtitle_config(
+        None,
+        defaults=get_subtitle_template("amber-word").config,
+        appearance_values={"fonts_dir": WQY.parent},
+        position="center",
+    )
+    paths = write_transcription_artifacts(
+        document,
+        tmp_path,
+        config,
+        geometry=geometry,
+        verify_font_coverage=True,
+    )
+    payload = json.loads(Path(paths[0]).read_text())
+    rendered_bounds = []
+    for timestamp, _ in observations:
+        frame, _ = _frame(Path(paths[2]), WQY.parent, timestamp=timestamp)
+        bounds = frame.point(lambda value: 255 if value > 32 else 0).getbbox()
+        assert bounds is not None
+        assert 0 <= bounds[0] < bounds[2] <= geometry.render_width
+        assert 0 <= bounds[1] < bounds[3] <= geometry.render_height
+        rendered_bounds.append(bounds)
+
+    record_property("observation_points", json.dumps(observations, ensure_ascii=False))
+    record_property("rendered_bounds", json.dumps(rendered_bounds))
+    assert payload["transcription"]["text"] == document.full_text
+    assert payload["metadata"]["rendering"]["word_effects"]["fallback_cues"] == 0

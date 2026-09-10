@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from multisubs.config import validate_subtitle_config
+from multisubs.config import SUPPORTED_LANGUAGES, validate_subtitle_config
 from multisubs.errors import ValidationError
 from multisubs.render_capabilities import assess_renderer_capability
 from multisubs.text_measurement import build_text_measurer
@@ -25,21 +25,29 @@ CASES = json.loads(
 
 def _cases(name):
     return [
-        pytest.param(
-            case,
-            id=case["id"],
-            marks=(
-                pytest.mark.xfail(
-                    strict=True,
-                    raises=AssertionError,
-                    reason=f"Multilingual Plan {case['owner']}: {case['id']}",
-                )
-                if case["owner"] not in {None, 2, 3}
-                else ()
-            ),
-        )
+        pytest.param(case, id=case.get("id", case.get("language")))
         for case in CASES[name]
     ]
+
+
+def test_language_smoke_fixture_exactly_matches_supported_languages():
+    fixture_languages = tuple(case["language"] for case in CASES["languages"])
+
+    assert fixture_languages == SUPPORTED_LANGUAGES
+    assert len(fixture_languages) == len(set(fixture_languages))
+
+
+@pytest.mark.parametrize("case", _cases("languages"))
+def test_supported_language_smoke_preserves_source_and_render_strategy(case):
+    text = case["text"]
+    capability = assess_renderer_capability(text, word_effects_requested=True)
+    cues = _build_subtitle_segments(
+        [{"start": 0.0, "end": 1.0, "text": text, "words": []}],
+        language=case["language"],
+    )
+
+    assert "".join(cue["text"] for cue in cues) == text
+    assert capability.renderer_strategy == case["word_effect_strategy"]
 
 
 @pytest.mark.parametrize("case", _cases("joins"))
