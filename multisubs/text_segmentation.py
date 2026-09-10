@@ -13,7 +13,7 @@ from contextlib import redirect_stderr
 from importlib.metadata import version
 from numbers import Real
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, cast
 
 from uniseg.graphemecluster import (
     grapheme_cluster_boundaries as _grapheme_cluster_boundaries,
@@ -289,7 +289,9 @@ class LinguisticSegmenter:
         if chinese is None:
             self._jieba_cache = TemporaryDirectory(prefix="multisubs-jieba-")
             chinese = jieba.Tokenizer()
-            chinese.tmp_dir = self._jieba_cache.name
+            # jieba initializes this dynamic attribute to None, then accepts a
+            # temporary-directory path before initialize() builds its cache.
+            cast(Any, chinese).tmp_dir = self._jieba_cache.name
             try:
                 with redirect_stderr(io.StringIO()):
                     chinese.initialize()
