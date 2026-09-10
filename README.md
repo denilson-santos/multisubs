@@ -347,9 +347,15 @@ multisubs -i ./video.mp4 -l pt \
 leaves pauses undecorated. `progressive` keeps each affected record visible
 through the end of the cue. Word behavior requires source-language alignment
 and therefore cannot be combined with translation. Cues with incomplete timing
-or record-to-fragment mappings fall back to ordinary subtitles. Preview does
-not invent production timing: it shows the first simulated effect unit for
-`active-word` and the first half of the cue for `progressive`.
+or record-to-fragment mappings fall back to ordinary subtitles. The positioned
+word renderer also conservatively suppresses both word tracks for
+bidirectional and contextual-shaping text, including Arabic, Persian, Urdu,
+Hebrew, Hindi, Telugu, and Malayalam. Those cues remain complete logical-line
+events so libass preserves joining, marks, and visual order; cue-level styling
+and animation remain active. Preview uses the same decision and reports a
+warning outside the image or clip. It does not invent production timing: safe
+text shows the first simulated effect unit for `active-word` and the first half
+of the cue for `progressive`.
 
 ### Customize typography
 
@@ -722,7 +728,9 @@ subdivision count, and bounded fallback information. When word-dependent effects
 are requested, each mapped cue additionally records `word_effect` diagnostics;
 the `units` value is `alignment-records`, and aggregate
 `metadata.rendering.word_effects` counts only cues that actually suppress those
-tracks. Original `words` are not replaced by linguistic groups.
+tracks, records their fallback reasons, and summarizes whether cues used
+`positioned-fragments` or shaping-safe `full-line` rendering. Original `words`
+are not replaced by linguistic groups.
 Rendering diagnostics also record the
 requested and resolved template names; omitted selection is recorded as
 requested `null` and resolved `default`. A custom selection additionally
@@ -802,7 +810,10 @@ and system tools retain their own licenses.
   be visible in every frame, while its timestamp remains unchanged.
 - Aligned-word behavior is unavailable for translated transcription output;
   static PNG previews suppress all motion and show one representative state for
-  each configured word track, while animated MP4 previews use simulated timing.
+  each supported word track, while animated MP4 previews use simulated timing.
+  Bidirectional and contextual-shaping samples use the same complete-line
+  word-effect fallback as production; arbitrary per-word RTL/Indic effects are
+  not claimed as supported.
 - A static preview shows only the first fitting sample cue; later hypothetical
   cues are not rendered in the same frame.
 - Animation distance, scale, and easing are fixed per semantic type; phase
