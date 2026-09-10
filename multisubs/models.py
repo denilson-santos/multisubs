@@ -244,7 +244,7 @@ class SubtitleAnimation:
 
 @dataclass(frozen=True)
 class SubtitleDisplayFragment:
-    """One exact display fragment, optionally backed by an aligned word."""
+    """One exact display fragment, optionally backed by an effect unit."""
 
     text: str
     word_index: int | None = None
@@ -326,6 +326,25 @@ class SubtitleDisplayUnit:
     def display_text(self) -> str:
         """Return the transformed text represented by this display unit."""
         return self.display_prefix + self.display_token + self.display_suffix
+
+
+@dataclass(frozen=True)
+class SubtitleDisplayGroup:
+    """One linguistic display group derived from immutable source records."""
+
+    identity: int
+    source_segment_index: int
+    record_indexes: tuple[int, ...]
+    source_start: int
+    source_end: int
+    source_text: str
+    start_time: float
+    end_time: float
+    boundary_class: str
+    strategy: str
+    backend_version: str
+    alignment_granularity: str
+    emergency_subdivision: bool = False
 
 
 @dataclass(frozen=True)

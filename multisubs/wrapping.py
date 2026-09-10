@@ -9,6 +9,7 @@ from typing import Any
 from .layout import WrappingMetrics
 from .models import (
     SubtitleDisplayFragment,
+    SubtitleDisplayGroup,
     SubtitleDisplayUnit,
     SubtitleVisualLine,
     TextCase,
@@ -24,6 +25,8 @@ from .text_segmentation import (
 )
 
 PAUSE_BREAK_THRESHOLD = 0.45
+_MAX_EXHAUSTIVE_PARTITION_UNITS = 32
+_MAX_BOUNDED_BREAK_CANDIDATES = 24
 
 
 def normalise_display_text(text: str) -> str:
@@ -121,13 +124,19 @@ def split_display_units_for_layout(
     metrics: WrappingMetrics,
     *,
     boundary_words: Sequence[Mapping[str, Any]] | None = None,
+    display_groups: Sequence[SubtitleDisplayGroup] | None = None,
 ) -> list[list[SubtitleDisplayUnit]]:
     """Split mapped display units into groups that fit the visual budget."""
     remaining = list(units)
     groups: list[list[SubtitleDisplayUnit]] = []
     offset = 0
     while remaining:
-        _, fits = _layout_display_units(remaining, metrics)
+        preferred_breaks = _group_break_indexes(remaining, display_groups)
+        _, fits = _layout_display_units(
+            remaining,
+            metrics,
+            preferred_breaks=preferred_breaks,
+        )
         if fits or len(remaining) == 1:
             groups.append(remaining)
             break
@@ -137,6 +146,7 @@ def split_display_units_for_layout(
             boundary_words=(
                 boundary_words[offset:] if boundary_words is not None else None
             ),
+            preferred_breaks=preferred_breaks,
         )
         if break_at <= 0 or break_at >= len(remaining):
             break_at = 1
@@ -149,6 +159,8 @@ def split_display_units_for_layout(
 def _layout_display_units(
     units: Sequence[SubtitleDisplayUnit],
     metrics: WrappingMetrics,
+    *,
+    preferred_breaks: Collection[int] = (),
 ) -> tuple[list[list[SubtitleDisplayUnit]], bool]:
     if not units:
         return [], True
@@ -166,6 +178,7 @@ def _layout_display_units(
         metrics,
         source_words=None,
         allowed_breaks=allowed_breaks,
+        preferred_breaks=preferred_breaks,
     )
     return (
         [list(units[start:end]) for start, end in ranges] if ranges else [list(units)],
@@ -178,17 +191,26 @@ def _find_best_display_unit_break(
     metrics: WrappingMetrics,
     *,
     boundary_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int] = (),
 ) -> int:
+    if len(units) > _MAX_EXHAUSTIVE_PARTITION_UNITS:
+        return _find_bounded_display_unit_break(
+            units,
+            metrics,
+            boundary_words=boundary_words,
+            preferred_breaks=preferred_breaks,
+        )
     candidates: list[int] = []
     for index in range(1, len(units)):
+        if index not in preferred_breaks and not units[index].can_break_before:
+            continue
         _, fits = _layout_display_units(units[:index], metrics)
-        if not fits:
-            break
-        candidates.append(index)
+        if fits:
+            candidates.append(index)
     if not candidates:
         return 1
 
-    def key(index: int) -> tuple[int, int, int]:
+    def key(index: int) -> tuple[int, int, int, int]:
         priority = (
             boundary_priority(boundary_words, index)
             if boundary_words is not None and len(boundary_words) == len(units)
@@ -196,13 +218,119 @@ def _find_best_display_unit_break(
                 [unit.display_token for unit in units], None, index
             )
         )
-        return _layout_break_key(
-            index=index,
-            unit_count=len(units),
-            priority=priority,
+        return (
+            int(index in preferred_breaks),
+            *_layout_break_key(
+                index=index,
+                unit_count=len(units),
+                priority=priority,
+            ),
         )
 
     return max(candidates, key=key)
+
+
+def _find_bounded_display_unit_break(
+    units: Sequence[SubtitleDisplayUnit],
+    metrics: WrappingMetrics,
+    *,
+    boundary_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+) -> int:
+    """Choose a large-cue prefix with linear line-filling work."""
+    maximum = _greedy_display_prefix_break(units, metrics)
+    if maximum <= 0:
+        return 1
+    candidates = {index for index in preferred_breaks if 0 < index <= maximum}
+    candidates.add(maximum)
+    legal = {
+        index
+        for index in range(1, maximum + 1)
+        if index == maximum or units[index].can_break_before
+    }
+    candidates.intersection_update(legal)
+    if not candidates:
+        return maximum
+
+    def key(index: int) -> tuple[int, int, int, int]:
+        priority = (
+            boundary_priority(boundary_words, index)
+            if boundary_words is not None and len(boundary_words) == len(units)
+            else _display_boundary_priority(
+                [unit.display_token for unit in units], None, index
+            )
+        )
+        return (
+            int(index in preferred_breaks),
+            *_layout_break_key(
+                index=index,
+                unit_count=len(units),
+                priority=priority,
+            ),
+        )
+
+    return max(candidates, key=key)
+
+
+def _greedy_display_prefix_break(
+    units: Sequence[SubtitleDisplayUnit], metrics: WrappingMetrics
+) -> int:
+    """Return the longest legal prefix that fits the available visual lines."""
+    line_start = 0
+    line_count = 1
+    next_end = 1
+    last_break: int | None = None
+    while next_end <= len(units):
+        width = _content_width(_join_display_units(units[line_start:next_end]), metrics)
+        line_unit_count = next_end - line_start
+        if width <= metrics.width_budget or line_unit_count == 1:
+            if next_end < len(units) and units[next_end].can_break_before:
+                last_break = next_end
+            next_end += 1
+            continue
+
+        if last_break is not None:
+            line_count += 1
+            if line_count > metrics.line_capacity:
+                return last_break
+            line_start = last_break
+            next_end = line_start + 1
+            last_break = None
+            continue
+
+        # An indivisible unit may exceed the width budget; keep it on its own
+        # line and continue only when the next unit has a legal break before it.
+        if next_end < len(units) and units[next_end].can_break_before:
+            line_count += 1
+            if line_count > metrics.line_capacity:
+                return next_end
+            line_start = next_end
+            next_end += 1
+            last_break = None
+            continue
+        next_end += 1
+
+    return len(units)
+
+
+def _group_break_indexes(
+    units: Sequence[SubtitleDisplayUnit],
+    display_groups: Sequence[SubtitleDisplayGroup] | None,
+) -> set[int]:
+    if not display_groups:
+        return set()
+    record_to_group = {
+        record_index: group.identity
+        for group in display_groups
+        for record_index in group.record_indexes
+    }
+    return {
+        index
+        for index in range(1, len(units))
+        if units[index].can_break_before
+        and record_to_group.get(units[index - 1].record_index)
+        != record_to_group.get(units[index].record_index)
+    }
 
 
 def _join_display_units(units: Sequence[SubtitleDisplayUnit]) -> str:
@@ -255,9 +383,14 @@ def render_display_units(
     metrics: WrappingMetrics,
     *,
     word_indexes: Mapping[int, int] | None = None,
+    display_groups: Sequence[SubtitleDisplayGroup] | None = None,
 ) -> tuple[str, tuple[SubtitleDisplayFragment, ...], tuple[str, ...]]:
     """Wrap mapped units while preserving fragment and line-break provenance."""
-    lines, _ = _layout_display_units(units, metrics)
+    lines, _ = _layout_display_units(
+        units,
+        metrics,
+        preferred_breaks=_group_break_indexes(units, display_groups),
+    )
     rendered_lines: list[str] = []
     fragments: list[SubtitleDisplayFragment] = []
     line_breaks: list[str] = []
@@ -273,7 +406,32 @@ def render_display_units(
         fragments.extend(line_fragments)
         if line_index < len(lines) - 1:
             fragments.append(SubtitleDisplayFragment("\n"))
-    return "\n".join(rendered_lines), tuple(fragments), tuple(line_breaks)
+    return (
+        "\n".join(rendered_lines),
+        _coalesce_display_fragments(fragments),
+        tuple(line_breaks),
+    )
+
+
+def _coalesce_display_fragments(
+    fragments: Sequence[SubtitleDisplayFragment],
+) -> tuple[SubtitleDisplayFragment, ...]:
+    """Join adjacent fragments assigned to the same timed effect unit."""
+    result: list[SubtitleDisplayFragment] = []
+    for fragment in fragments:
+        if (
+            result
+            and fragment.word_index is not None
+            and result[-1].word_index == fragment.word_index
+        ):
+            previous = result[-1]
+            result[-1] = SubtitleDisplayFragment(
+                previous.text + fragment.text,
+                previous.word_index,
+            )
+        else:
+            result.append(fragment)
+    return tuple(result)
 
 
 def words_to_text(
@@ -412,12 +570,36 @@ def grapheme_clusters(text: str) -> list[str]:
 
 def ends_sentence(word: str) -> bool:
     """Return whether a word has a sentence-ending mark."""
-    return word.rstrip().endswith((".", "!", "?", "…"))
+    stripped = _strip_closing_punctuation(word)
+    if not stripped:
+        return False
+    if stripped.casefold() in {
+        "mr.",
+        "mrs.",
+        "ms.",
+        "dr.",
+        "prof.",
+        "sr.",
+        "jr.",
+        "st.",
+        "vs.",
+        "etc.",
+        "e.g.",
+        "i.e.",
+    }:
+        return False
+    return stripped.endswith((".", "!", "?", "…", "。", "！", "？", "؟", "।", "॥"))
 
 
 def ends_clause(word: str) -> bool:
     """Return whether a word has a clause boundary mark."""
-    return word.rstrip().endswith((",", ";", ":", "—", "–"))
+    return _strip_closing_punctuation(word).endswith(
+        (",", ";", ":", "—", "–", "、", "，", "؛", "،", "：")
+    )
+
+
+def _strip_closing_punctuation(text: str) -> str:
+    return text.rstrip().rstrip("”’\"'»」』】〉》）)]}").rstrip()
 
 
 def has_significant_pause(
@@ -456,10 +638,8 @@ def _find_best_layout_break(
         _, fits = _layout_text_lines(
             words_to_text(words[:index]), words[:index], metrics
         )
-        # For a multi-unit prefix, adding ordered text cannot make it fit again.
-        if not fits:
-            break
-        candidates.append(index)
+        if fits:
+            candidates.append(index)
     if not candidates:
         return 1
 
@@ -482,10 +662,8 @@ def _find_best_text_layout_break(
     candidates: list[int] = []
     for index in range(1, len(units)):
         _, fits = _layout_text_lines(join(units[:index]), None, metrics)
-        # For a multi-unit prefix, adding ordered text cannot make it fit again.
-        if not fits:
-            break
-        candidates.append(index)
+        if fits:
+            candidates.append(index)
     if not candidates:
         return 1
 
@@ -586,6 +764,7 @@ def _partition_text_units(
     *,
     source_words: Sequence[Mapping[str, Any]] | None,
     allowed_breaks: Collection[int] | None = None,
+    preferred_breaks: Collection[int] = (),
 ) -> tuple[list[str], bool]:
     ranges, fits = _partition_text_unit_ranges(
         units,
@@ -593,6 +772,7 @@ def _partition_text_units(
         metrics,
         source_words=source_words,
         allowed_breaks=allowed_breaks,
+        preferred_breaks=preferred_breaks,
     )
     if not ranges:
         return [join(units)], False
@@ -606,6 +786,7 @@ def _partition_text_unit_ranges(
     *,
     source_words: Sequence[Mapping[str, Any]] | None,
     allowed_breaks: Collection[int] | None = None,
+    preferred_breaks: Collection[int] = (),
 ) -> tuple[list[tuple[int, int]], bool]:
     """Partition arbitrary units and return ranges for mapped renderers."""
     unit_count = len(units)
@@ -618,6 +799,18 @@ def _partition_text_unit_ranges(
     def line(start: int, end: int) -> tuple[str, float]:
         value = join(units[start:end])
         return value, _content_width(value, metrics)
+
+    if unit_count > _MAX_EXHAUSTIVE_PARTITION_UNITS:
+        return _bounded_partition_text_unit_ranges(
+            unit_count=unit_count,
+            maximum_lines=maximum_lines,
+            allowed=allowed,
+            line=line,
+            metrics=metrics,
+            units=units,
+            source_words=source_words,
+            preferred_breaks=preferred_breaks,
+        )
 
     @cache
     def partitions(
@@ -663,6 +856,7 @@ def _partition_text_unit_ranges(
                     metrics.width_budget,
                     units,
                     source_words,
+                    preferred_breaks,
                 ),
             )
             return _ranges_from_endings(best), True
@@ -679,9 +873,110 @@ def _partition_text_unit_ranges(
             metrics.width_budget,
             units,
             source_words,
+            preferred_breaks,
         ),
     )
     return _ranges_from_endings(best), False
+
+
+def _bounded_partition_text_unit_ranges(
+    *,
+    unit_count: int,
+    maximum_lines: int,
+    allowed: set[int],
+    line: Callable[[int, int], tuple[str, float]],
+    metrics: WrappingMetrics,
+    units: Sequence[Any],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+) -> tuple[list[tuple[int, int]], bool]:
+    """Find a readable large partition with bounded line-fill work."""
+
+    def priority(end: int) -> int:
+        return _display_boundary_priority(units, source_words, end)
+
+    def choose_break(
+        start: int,
+        lines_left: int,
+        allow_overflow: bool,
+    ) -> int | None:
+        final_start = unit_count - lines_left + 1
+        possible = [
+            end
+            for end in range(start + 1, final_start + 1)
+            if end < unit_count and end in allowed
+        ]
+        if not possible:
+            return None
+        target = start + (unit_count - start) / lines_left
+        if len(possible) > _MAX_BOUNDED_BREAK_CANDIDATES:
+            nearby = sorted(possible, key=lambda end: (abs(end - target), -end))
+            preferred = sorted(
+                (end for end in possible if end in preferred_breaks),
+                key=lambda end: (abs(end - target), -end),
+            )
+            semantic = sorted(
+                possible,
+                key=lambda end: (-priority(end), abs(end - target), -end),
+            )
+            selected = {
+                *nearby[:_MAX_BOUNDED_BREAK_CANDIDATES],
+                *preferred[:8],
+                *semantic[:8],
+                *possible[:2],
+                *possible[-2:],
+            }
+            possible = sorted(selected)
+        if not allow_overflow:
+            fitting = [
+                end
+                for end in possible
+                if _line_fits(
+                    line(start, end)[1],
+                    unit_count=end - start,
+                    budget=metrics.width_budget,
+                )
+            ]
+            if not fitting:
+                return None
+            possible = fitting
+        return max(
+            possible,
+            key=lambda end: (
+                int(end in preferred_breaks),
+                priority(end),
+                -abs(end - target),
+                end,
+            ),
+        )
+
+    def build_ranges(
+        line_count: int, allow_overflow: bool
+    ) -> list[tuple[int, int]] | None:
+        ranges: list[tuple[int, int]] = []
+        start = 0
+        for lines_left in range(line_count, 1, -1):
+            end = choose_break(start, lines_left, allow_overflow)
+            if end is None:
+                return None
+            ranges.append((start, end))
+            start = end
+        if allow_overflow or _line_fits(
+            line(start, unit_count)[1],
+            unit_count=unit_count - start,
+            budget=metrics.width_budget,
+        ):
+            ranges.append((start, unit_count))
+            return ranges
+        return None
+
+    for line_count in range(2, maximum_lines + 1):
+        ranges = build_ranges(line_count, False)
+        if ranges is not None:
+            return ranges, True
+
+    ranges = build_ranges(maximum_lines, True)
+    return (ranges or [], False)
 
 
 def _line_fits(width: float, *, unit_count: int, budget: int) -> bool:
@@ -717,7 +1012,8 @@ def _partition_score(
     width_budget: int,
     units: Sequence[Any],
     source_words: Sequence[Mapping[str, Any]] | None,
-) -> tuple[int, float, float, int, float, float, tuple[int, ...]]:
+    preferred_breaks: Collection[int] = (),
+) -> tuple[int, int, float, float, int, float, float, tuple[int, ...]]:
     starts = (0, *endings[:-1])
     widths = [line(start, end)[1] for start, end in zip(starts, endings, strict=True)]
     counts = [end - start for start, end in zip(starts, endings, strict=True)]
@@ -733,7 +1029,9 @@ def _partition_score(
     short_line_penalty = max(0.0, widest * 0.35 - shortest)
     raggedness = sum((widest - width) ** 2 for width in widths)
     semantic_penalty = sum(3 - priority for priority in priorities)
+    group_penalty = sum(end not in preferred_breaks for end in endings[:-1])
     return (
+        group_penalty,
         semantic_penalty,
         max(overflows),
         sum(overflows),

@@ -1,12 +1,24 @@
+from pathlib import Path
+
 from multisubs.text_segmentation import (
+    LinguisticSegmenter,
     build_source_text_map,
     display_text_for_records,
     grapheme_boundaries,
     grapheme_clusters,
+    linguistic_units,
     normalize_line_endings,
+    simulated_effect_units,
     source_text_for_records,
     word_units,
 )
+
+
+def _character_records(text: str, *, step: float = 0.1):
+    return [
+        {"word": character, "start": index * step, "end": (index + 1) * step}
+        for index, character in enumerate(text)
+    ]
 
 
 def test_line_endings_keep_bidirectional_source_offsets():
@@ -17,6 +29,11 @@ def test_line_endings_keep_bidirectional_source_offsets():
     assert normalized == "A\nB\nC"
     assert raw_to_normalized == (0, 1, 1, 2, 3, 4)
     assert normalized_to_raw == (0, 1, 3, 4, 5)
+
+
+def test_simulated_cjk_effect_units_model_character_alignment():
+    assert simulated_effect_units("装置は") == ("装", "置", "は")
+    assert simulated_effect_units("你好世界") == ("你", "好", "世", "界")
 
 
 def test_repeated_alignment_records_use_monotonic_source_offsets():
@@ -156,3 +173,88 @@ def test_unicode_adapter_keeps_extended_graphemes_and_word_units():
     assert grapheme_boundaries("😀a") == (0, 1, 2)
     assert word_units("안녕하세요 세계") == ("안녕하세요", "세계")
     assert word_units("字幕AI") == ("字", "幕", "AI")
+
+
+def test_japanese_groups_join_inflectional_tails_and_punctuation():
+    text = "今日は寒くなかった。"
+    records = _character_records(text)
+    source_map = build_source_text_map(text, records)
+
+    with LinguisticSegmenter() as segmenter:
+        groups = segmenter.group_source_map(source_map, records, language="ja")
+
+    assert "".join(group.source_text for group in groups) == text
+    assert any(group.source_text == "寒くなかった。" for group in groups)
+    assert groups[-1].boundary_class == "sentence"
+    assert groups[-1].strategy == "sudachi-b"
+    assert "SudachiDict-small/20260723" in groups[-1].backend_version
+
+
+def test_japanese_groups_join_prefix_number_and_counter():
+    text = "字幕AI第1回"
+    records = _character_records(text)
+    source_map = build_source_text_map(text, records)
+
+    with LinguisticSegmenter() as segmenter:
+        groups = segmenter.group_source_map(source_map, records, language="ja")
+
+    assert "".join(group.source_text for group in groups) == text
+    assert any(group.source_text == "第1回" for group in groups)
+
+
+def test_chinese_groups_use_hmm_and_remove_invocation_cache():
+    text = "我們今天學習中文。"
+    records = _character_records(text)
+    source_map = build_source_text_map(text, records)
+    segmenter = LinguisticSegmenter()
+
+    groups = segmenter.group_source_map(source_map, records, language="zh")
+    assert segmenter._jieba_cache is not None
+    cache_path = Path(segmenter._jieba_cache.name)
+    assert cache_path.is_dir()
+    segmenter.close()
+
+    assert "".join(group.source_text for group in groups) == text
+    assert any(group.source_text == "學習" for group in groups)
+    assert groups[-1].source_text == "中文。"
+    assert not cache_path.exists()
+
+
+def test_preview_lexical_units_reuse_dictionary_grouping():
+    assert "デフォルト" in linguistic_units("デフォルト設定を使用する。")
+    assert "學習" in linguistic_units("我們今天學習中文。", language="zh")
+    assert linguistic_units("字幕", language="en") == ("字", "幕")
+
+
+def test_lexical_group_splits_at_a_significant_source_pause():
+    text = "なかった"
+    records = _character_records(text)
+    records[2]["start"] = 1.0
+    records[2]["end"] = 1.1
+    records[3]["start"] = 1.1
+    records[3]["end"] = 1.2
+    source_map = build_source_text_map(text, records)
+
+    with LinguisticSegmenter() as segmenter:
+        groups = segmenter.group_source_map(source_map, records, language="ja")
+
+    assert [group.source_text for group in groups] == ["なか", "った"]
+    assert groups[0].boundary_class == "pause"
+    assert groups[0].end_time == 0.2
+    assert groups[1].start_time == 1.0
+
+
+def test_alignment_records_never_split_one_grapheme_group():
+    text = "कि"
+    records = [
+        {"word": "क", "start": 0.0, "end": 0.1},
+        {"word": "ि", "start": 1.0, "end": 1.1},
+    ]
+    source_map = build_source_text_map(text, records)
+
+    with LinguisticSegmenter() as segmenter:
+        groups = segmenter.group_source_map(source_map, records, language="hi")
+
+    assert len(groups) == 1
+    assert groups[0].source_text == text
+    assert groups[0].record_indexes == (0, 1)

@@ -33,7 +33,7 @@ def _cases(name):
                     raises=AssertionError,
                     reason=f"Multilingual Plan {case['owner']}: {case['id']}",
                 )
-                if case["owner"] not in {None, 2}
+                if case["owner"] not in {None, 2, 3}
                 else ()
             ),
         )
@@ -52,21 +52,18 @@ def test_display_units_preserve_extended_graphemes(case):
 
 
 @pytest.mark.parametrize("mark", ["。", "！", "？", "؟", "।", "。」"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="Multilingual Plan 3: sentence boundaries",
-)
 def test_unicode_sentence_endings(mark):
     assert ends_sentence("text" + mark)
 
 
 @pytest.mark.parametrize("mark", ["、", "،", "؛"])
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="Multilingual Plan 3: clause boundaries"
-)
 def test_unicode_clause_endings(mark):
     assert ends_clause("text" + mark)
+
+
+@pytest.mark.parametrize("text", ["Dr.", "e.g.", "3.14"])
+def test_decimal_and_common_abbreviation_periods_are_not_sentence_endings(text):
+    assert not ends_sentence(text)
 
 
 def test_missing_japanese_glyphs_are_not_measured_as_exact_inter():
@@ -108,9 +105,6 @@ def test_partially_aligned_segment_keeps_untimed_text():
     assert "".join(c["text"] for c in cues) == source["text"]
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="Multilingual Plan 3: lexical cue cuts"
-)
 def test_duration_boundary_does_not_cut_a_fitting_japanese_lexical_group():
     # The second word spans the six-second boundary but fits by itself.
     words = [
@@ -145,3 +139,4 @@ def test_missing_alignment_uses_static_word_effect_fallback():
     assert fallback_count == 1
     assert cues[0]["text"] == "字幕。"
     assert "_karaoke_cue" not in cues[0]
+    assert cues[0]["_word_effect"]["fallback_reason"] == "missing-alignment-records"

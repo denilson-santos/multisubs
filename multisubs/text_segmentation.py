@@ -7,8 +7,13 @@ between source text and alignment records.
 
 from __future__ import annotations
 
+import io
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import redirect_stderr
+from importlib.metadata import version
 from numbers import Real
+from tempfile import TemporaryDirectory
+from typing import Any, cast
 
 from uniseg.graphemecluster import (
     grapheme_cluster_boundaries as _grapheme_cluster_boundaries,
@@ -19,7 +24,18 @@ from uniseg.sentencebreak import sentence_boundaries as _sentence_boundaries
 from uniseg.wordbreak import word_boundaries as _word_boundaries
 from uniseg.wordbreak import words as _unicode_words
 
-from .models import SubtitleDisplayUnit, SubtitleSourceMap, SubtitleSourceSpan
+from .models import (
+    SubtitleDisplayGroup,
+    SubtitleDisplayUnit,
+    SubtitleSourceMap,
+    SubtitleSourceSpan,
+)
+
+PAUSE_BREAK_THRESHOLD = 0.45
+_SENTENCE_MARKS = frozenset(".!?…。！？؟।॥")
+_CLAUSE_MARKS = frozenset(",;:—–、，؛،：")
+_CLOSING_MARKS = frozenset("”’\"'»」』】〉》）)]}")
+_OPENING_MARKS = frozenset("“‘\"'«「『【〈《（([{")
 
 
 def normalize_line_endings(
@@ -117,6 +133,333 @@ def word_units(text: str) -> tuple[str, ...]:
 def sentence_boundaries(text: str) -> tuple[int, ...]:
     """Return Python code-point offsets from Unicode sentence breaking."""
     return tuple(_sentence_boundaries(text))
+
+
+def linguistic_units(
+    text: str,
+    *,
+    language: str | None = None,
+) -> tuple[str, ...]:
+    """Return offline lexical preview units through the production adapter."""
+    effective_language = _segmentation_language(text, language)
+    if effective_language is None:
+        return word_units(text)
+    with LinguisticSegmenter() as segmenter:
+        boundaries, _, _ = segmenter._lexical_boundaries(text, effective_language)
+    ordered = sorted({0, len(text), *boundaries})
+    return tuple(
+        piece
+        for start, end in zip(ordered[:-1], ordered[1:], strict=True)
+        if (piece := text[start:end].strip(" \t\r\n\v\f"))
+    )
+
+
+def simulated_effect_units(
+    text: str,
+    *,
+    language: str | None = None,
+) -> tuple[str, ...]:
+    """Return deterministic preview effect units without real alignments.
+
+    Production effects follow validated WhisperX records. A preview has no such
+    records, so CJK chunks use grapheme-like units to model the common
+    character-aligned case while whitespace-delimited Latin and other-script
+    chunks remain intact. Separators stay untimed and are reconstructed by the
+    preview fragment mapper.
+    """
+    effective_language = _segmentation_language(text, language)
+    units = word_units(text)
+    if effective_language not in {"ja", "zh"}:
+        return units
+    result: list[str] = []
+    for unit in units:
+        if any(_is_cjk_script_character(character) for character in unit):
+            result.extend(grapheme_clusters(unit))
+        else:
+            result.append(unit)
+    return tuple(result)
+
+
+def _is_cjk_script_character(character: str) -> bool:
+    codepoint = ord(character)
+    return (
+        0x2E80 <= codepoint <= 0x9FFF
+        or 0xAC00 <= codepoint <= 0xD7AF
+        or 0xF900 <= codepoint <= 0xFAFF
+        or 0x3040 <= codepoint <= 0x30FF
+    )
+
+
+class LinguisticSegmenter:
+    """Invocation-scoped, offline Japanese/Chinese lexical segmenter."""
+
+    def __init__(self) -> None:
+        self._japanese: Any | None = None
+        self._chinese: Any | None = None
+        self._jieba_cache: TemporaryDirectory[str] | None = None
+
+    def close(self) -> None:
+        """Remove the invocation-local jieba cache, if it was initialized."""
+        if self._jieba_cache is not None:
+            self._jieba_cache.cleanup()
+            self._jieba_cache = None
+        self._japanese = None
+        self._chinese = None
+
+    def __enter__(self) -> LinguisticSegmenter:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    def group_source_map(
+        self,
+        source_map: SubtitleSourceMap,
+        records: Sequence[Mapping[str, Any]],
+        *,
+        language: str | None,
+    ) -> tuple[SubtitleDisplayGroup, ...]:
+        """Derive timed display groups without changing source records."""
+        spans = _alignment_spans(source_map)
+        if (
+            not source_map.timing_complete
+            or not spans
+            or source_map.record_count != len(records)
+        ):
+            return ()
+        effective_language = _segmentation_language(
+            source_map.normalized_text, language
+        )
+        if effective_language is None:
+            safe_boundaries = set(grapheme_boundaries(source_map.normalized_text))
+            boundaries = {span.end for span in spans if span.end in safe_boundaries}
+            strategy, backend_version = "alignment-records", "none"
+        else:
+            boundaries, strategy, backend_version = self._lexical_boundaries(
+                source_map.normalized_text, effective_language
+            )
+        return _groups_from_boundaries(
+            source_map,
+            boundaries,
+            strategy=strategy,
+            backend_version=backend_version,
+        )
+
+    def _lexical_boundaries(
+        self, text: str, language: str | None
+    ) -> tuple[set[int], str, str]:
+        if language == "ja":
+            return self._japanese_boundaries(text)
+        if language == "zh":
+            return self._chinese_boundaries(text)
+        return {len(text)}, "alignment-records", "none"
+
+    def _japanese_boundaries(self, text: str) -> tuple[set[int], str, str]:
+        from sudachipy import dictionary, tokenizer
+
+        japanese = self._japanese
+        if japanese is None:
+            japanese = dictionary.Dictionary(dict="small").create()
+            self._japanese = japanese
+        tokens = japanese.tokenize(text, tokenizer.Tokenizer.SplitMode.B)
+        boundaries = {0, len(text), *(token.end() for token in tokens)}
+        for token in tokens:
+            part = token.part_of_speech()
+            if part and (
+                part[0] == "助動詞"
+                or (part[0] in {"動詞", "形容詞"} and part[1] == "非自立可能")
+                or (part[0] == "名詞" and part[2] == "助数詞可能")
+            ):
+                boundaries.discard(token.begin())
+            if part and part[0] == "接頭辞":
+                boundaries.discard(token.end())
+        _tailor_punctuation_boundaries(text, boundaries)
+        boundaries.intersection_update(grapheme_boundaries(text))
+        return (
+            boundaries,
+            "sudachi-b",
+            f"SudachiPy/{version('SudachiPy')};"
+            f"SudachiDict-small/{version('SudachiDict-small')}",
+        )
+
+    def _chinese_boundaries(self, text: str) -> tuple[set[int], str, str]:
+        import jieba
+
+        chinese = self._chinese
+        if chinese is None:
+            self._jieba_cache = TemporaryDirectory(prefix="multisubs-jieba-")
+            chinese = jieba.Tokenizer()
+            # jieba initializes this dynamic attribute to None, then accepts a
+            # temporary-directory path before initialize() builds its cache.
+            cast(Any, chinese).tmp_dir = self._jieba_cache.name
+            try:
+                with redirect_stderr(io.StringIO()):
+                    chinese.initialize()
+            except Exception:
+                self.close()
+                raise
+            self._chinese = chinese
+        tokens = tuple(chinese.tokenize(text, HMM=True))
+        boundaries = {0, len(text), *(end for _, _, end in tokens)}
+        _tailor_punctuation_boundaries(text, boundaries)
+        boundaries.intersection_update(grapheme_boundaries(text))
+        return boundaries, "jieba-hmm", f"jieba/{version('jieba')}"
+
+
+def _segmentation_language(text: str, language: str | None) -> str | None:
+    canonical = (language or "").lower().split("-", 1)[0]
+    if language is not None:
+        return canonical if canonical in {"ja", "zh"} else None
+    if any("\u3040" <= character <= "\u30ff" for character in text):
+        return "ja"
+    if any("\u3400" <= character <= "\u9fff" for character in text):
+        return "zh"
+    return None
+
+
+def _tailor_punctuation_boundaries(text: str, boundaries: set[int]) -> None:
+    """Attach closing marks left and opening marks right, including quote runs."""
+    for index, character in enumerate(text):
+        if character in _SENTENCE_MARKS | _CLAUSE_MARKS | _CLOSING_MARKS:
+            boundaries.discard(index)
+        if character in _OPENING_MARKS:
+            boundaries.discard(index + 1)
+
+
+def _groups_from_boundaries(
+    source_map: SubtitleSourceMap,
+    lexical_boundaries: set[int],
+    *,
+    strategy: str,
+    backend_version: str,
+) -> tuple[SubtitleDisplayGroup, ...]:
+    spans = _alignment_spans(source_map)
+    source_pieces = _source_pieces_by_record(source_map)
+    alignment_granularity = _alignment_granularity(spans)
+    safe_pause_boundaries = set(grapheme_boundaries(source_map.normalized_text))
+    groups: list[SubtitleDisplayGroup] = []
+    pending: list[SubtitleSourceSpan] = []
+    for span in spans:
+        if (
+            pending
+            and pending[-1].end in safe_pause_boundaries
+            and _spans_have_significant_pause(pending[-1], span)
+        ):
+            groups.append(
+                _display_group(
+                    pending,
+                    len(groups),
+                    "pause",
+                    strategy,
+                    backend_version,
+                    source_pieces,
+                    alignment_granularity,
+                )
+            )
+            pending = []
+        pending.append(span)
+        assert span.end is not None
+        if span.end in lexical_boundaries:
+            boundary_class = _boundary_class(
+                _source_text_for_group(source_pieces, pending)
+            )
+            groups.append(
+                _display_group(
+                    pending,
+                    len(groups),
+                    boundary_class,
+                    strategy,
+                    backend_version,
+                    source_pieces,
+                    alignment_granularity,
+                )
+            )
+            pending = []
+    if pending:
+        groups.append(
+            _display_group(
+                pending,
+                len(groups),
+                _boundary_class(_source_text_for_group(source_pieces, pending)),
+                strategy,
+                backend_version,
+                source_pieces,
+                alignment_granularity,
+            )
+        )
+    return tuple(groups)
+
+
+def _display_group(
+    spans: Sequence[SubtitleSourceSpan],
+    identity: int,
+    boundary_class: str,
+    strategy: str,
+    backend_version: str,
+    source_pieces: Mapping[int, str],
+    alignment_granularity: str,
+) -> SubtitleDisplayGroup:
+    indexes = tuple(
+        span.record_index for span in spans if span.record_index is not None
+    )
+    first, last = spans[0], spans[-1]
+    assert first.start is not None and last.end is not None
+    assert first.start_time is not None and last.end_time is not None
+    return SubtitleDisplayGroup(
+        identity=identity,
+        source_segment_index=first.source_segment_index,
+        record_indexes=indexes,
+        source_start=first.start,
+        source_end=last.end,
+        source_text=_source_text_for_group(source_pieces, spans),
+        start_time=first.start_time,
+        end_time=last.end_time,
+        boundary_class=boundary_class,
+        strategy=strategy,
+        backend_version=backend_version,
+        alignment_granularity=alignment_granularity,
+    )
+
+
+def _spans_have_significant_pause(
+    previous: SubtitleSourceSpan, next_span: SubtitleSourceSpan
+) -> bool:
+    return (
+        previous.end_time is not None
+        and next_span.start_time is not None
+        and next_span.start_time - previous.end_time >= PAUSE_BREAK_THRESHOLD
+    )
+
+
+def _source_text_for_group(
+    source_pieces: Mapping[int, str],
+    spans: Sequence[SubtitleSourceSpan],
+) -> str:
+    return "".join(
+        source_pieces.get(span.record_index, "")
+        for span in spans
+        if span.record_index is not None
+    )
+
+
+def _alignment_granularity(spans: Sequence[SubtitleSourceSpan]) -> str:
+    character_flags = [len(grapheme_clusters(span.text)) == 1 for span in spans]
+    if all(character_flags):
+        return "character"
+    if any(character_flags):
+        return "mixed"
+    return "word"
+
+
+def _boundary_class(text: str) -> str:
+    stripped = text.rstrip()
+    while stripped and stripped[-1] in _CLOSING_MARKS:
+        stripped = stripped[:-1].rstrip()
+    if stripped and stripped[-1] in _SENTENCE_MARKS:
+        return "sentence"
+    if stripped and stripped[-1] in _CLAUSE_MARKS:
+        return "clause"
+    return "lexical"
 
 
 def build_source_text_map(
@@ -308,11 +651,8 @@ def source_text_for_records(
         if record_indexes is None
         else tuple(record_indexes)
     )
-    pieces = [
-        source_piece_for_record(source_map, index)
-        for index in indexes
-        if _record_span(source_map, index) is not None
-    ]
+    source_pieces = _source_pieces_by_record(source_map)
+    pieces = [source_pieces[index] for index in indexes if index in source_pieces]
     return _trim_display_edges("".join(pieces))
 
 
@@ -353,14 +693,20 @@ def display_units_for_records(
     selected = set(requested)
     units: list[SubtitleDisplayUnit] = []
     line_breaks = set(line_break_boundaries(source_map.normalized_text))
-    for span in _alignment_spans(source_map):
+    alignment_spans = _alignment_spans(source_map)
+    previous_end = 0
+    for span_index, span in enumerate(alignment_spans):
+        assert span.start is not None and span.end is not None
         if span.record_index not in selected:
+            previous_end = span.end
             continue
         assert span.record_index is not None
-        assert span.start is not None and span.end is not None
-        previous_end = _previous_record_end(source_map, span)
         source_prefix = source_map.normalized_text[previous_end : span.start]
-        source_suffix = _trailing_source(source_map, span)
+        source_suffix = (
+            source_map.normalized_text[span.end :]
+            if span_index == len(alignment_spans) - 1
+            else ""
+        )
         units.append(
             SubtitleDisplayUnit(
                 source_segment_index=span.source_segment_index,
@@ -376,6 +722,7 @@ def display_units_for_records(
                 can_break_before=span.start in line_breaks and span.start > 0,
             )
         )
+        previous_end = span.end
     return tuple(units)
 
 
@@ -401,6 +748,25 @@ def _record_span(
         ),
         None,
     )
+
+
+def _source_pieces_by_record(source_map: SubtitleSourceMap) -> dict[int, str]:
+    spans = _alignment_spans(source_map)
+    result: dict[int, str] = {}
+    previous_end = 0
+    for span_index, span in enumerate(spans):
+        assert span.record_index is not None
+        assert span.end is not None
+        suffix = (
+            source_map.normalized_text[span.end :]
+            if span_index == len(spans) - 1
+            else ""
+        )
+        result[span.record_index] = (
+            source_map.normalized_text[previous_end : span.end] + suffix
+        )
+        previous_end = span.end
+    return result
 
 
 def _previous_record_end(

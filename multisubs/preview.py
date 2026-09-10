@@ -33,7 +33,7 @@ from .models import (
     SubtitlePosition,
     VideoGeometry,
 )
-from .text_segmentation import word_units
+from .text_segmentation import simulated_effect_units
 from .wrapping import (
     build_display_fragments,
     ends_clause,
@@ -227,7 +227,7 @@ def build_simulated_karaoke_cue(
 
 
 def _preview_timing_units(display_text: str) -> tuple[str, ...]:
-    units = word_units(display_text)
+    units = simulated_effect_units(display_text)
     return units or (display_text,)
 
 
@@ -434,7 +434,7 @@ def _milliseconds_to_centiseconds(milliseconds: int) -> int:
 
 def _build_preview_word_cue(display_text: str) -> KaraokeCue | None:
     """Map sample words for a static, representative timed-emphasis snapshot."""
-    words = [{"word": unit} for unit in word_units(display_text)]
+    words = [{"word": unit} for unit in simulated_effect_units(display_text)]
     fragments = build_display_fragments(display_text, words)
     if fragments is None:
         return None

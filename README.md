@@ -40,9 +40,11 @@ WhisperX must download model assets that are not already cached.
 - An FFmpeg build with the `subtitles` filter and libass support; animated
   previews additionally require the `libx264` H.264 encoder.
 - Enough CPU or GPU memory for the selected Whisper model.
-- The Python package installs `fontTools` for bounded Unicode cmap checks and
-  `uniseg` 0.10.1 for pinned Unicode boundary data. No font or dictionary is
-  downloaded at runtime.
+- The Python package installs `fontTools` for bounded Unicode cmap checks,
+  `uniseg` 0.10.1 for pinned Unicode boundary data, SudachiPy/SudachiDict-small
+  for Japanese grouping, and jieba for Chinese grouping. Their dictionaries
+  are installed with the package dependencies; no font or dictionary is
+  downloaded while multisubs runs.
 
 CUDA with float16 is selected automatically when PyTorch reports an available
 GPU. CPU runs use int8 inference and can take substantially longer.
@@ -341,12 +343,13 @@ multisubs -i ./video.mp4 -l pt \
   --animation-word-text-highlight-color '#111827'
 ```
 
-`active-word` affects only the current validated word interval and leaves pauses
-undecorated. `progressive` keeps each affected word visible through the end of
-the cue. Word behavior requires source-language alignment and therefore cannot
-be combined with translation. Cues with incomplete timing mappings fall back
-to ordinary subtitles. Preview does not invent timing: it shows the first word
-for `active-word` and the first half of the cue for `progressive`.
+`active-word` affects only the current validated alignment-record interval and
+leaves pauses undecorated. `progressive` keeps each affected record visible
+through the end of the cue. Word behavior requires source-language alignment
+and therefore cannot be combined with translation. Cues with incomplete timing
+or record-to-fragment mappings fall back to ordinary subtitles. Preview does
+not invent production timing: it shows the first simulated effect unit for
+`active-word` and the first half of the cue for `progressive`.
 
 ### Customize typography
 
@@ -629,17 +632,23 @@ font size, weight, letter spacing, line height, maximum dimensions, backdrop,
 and shadow into account.
 
 The aligned segment's source text is authoritative for separators and adjacency;
-the alignment records provide timing and stable identity, not permission to
-insert spaces or to retokenize transformed text. Korean spaces, CJK/Latin
+the alignment records provide timing and stable identity, not lexical words.
+Japanese character records are grouped with Sudachi mode B and Chinese records
+with jieba's packaged dictionary/HMM. Unicode sentence/clause marks, pauses,
+and derived groups guide cue boundaries and preferred line breaks; visual line
+breaks remain a separate Unicode decision. Word text and word backdrops still
+use each validated alignment record as their timing unit, even when one
+linguistic group spans multiple visual lines. Korean spaces, CJK/Latin
 adjacency, punctuation, NBSP, combining sequences, and emoji joiners are
-preserved through wrapping. Readable punctuation and timing boundaries are
-preferred. Text is never truncated, and long indivisible tokens remain intact
-even when they exceed the estimated width. SRT and ASS receive the same
-intentional line breaks; JSON keeps original cue text and aligned records beside
-the rendered `display_text`. If a source-to-alignment map is incomplete, the
-complete source cue remains at its coarse segment time, word-dependent effects
-are disabled, and JSON records a bounded fallback reason/count instead of
-inventing timestamps.
+preserved through wrapping. Text is never truncated. An oversized linguistic
+group is subdivided only where a legal grapheme/line boundary coincides with
+existing source timing; otherwise it remains intact and may overflow the
+approximate budget. SRT and ASS receive the same intentional line breaks; JSON
+keeps original cue text and aligned records beside the rendered `display_text`.
+If a source-to-alignment map or record-to-fragment effect mapping is incomplete,
+the complete source cue remains at its coarse segment time, word-dependent
+effects are disabled, and JSON records separate bounded mapping/effect
+diagnostics instead of inventing timestamps.
 
 ## 🌍 Supported languages
 
@@ -707,6 +716,13 @@ records, including records without usable times, are retained as supplied. A
 lossy source-to-alignment map adds per-cue `alignment_mapping` counts/reasons
 and aggregate `metadata.rendering.text_mapping` diagnostics; internal spans,
 offset tables, font objects, paths, and generated ASS tags are not serialized.
+Mapped cues also include additive `segmentation` diagnostics with the strategy,
+backend version, alignment granularity, derived-group count, emergency
+subdivision count, and bounded fallback information. When word-dependent effects
+are requested, each mapped cue additionally records `word_effect` diagnostics;
+the `units` value is `alignment-records`, and aggregate
+`metadata.rendering.word_effects` counts only cues that actually suppress those
+tracks. Original `words` are not replaced by linguistic groups.
 Rendering diagnostics also record the
 requested and resolved template names; omitted selection is recorded as
 requested `null` and resolved `default`. A custom selection additionally
@@ -779,6 +795,11 @@ and system tools retain their own licenses.
   cannot use word-dependent effects; the retained JSON reports the fallback
   reason and count. Source distinctions already normalized or omitted by
   WhisperX cannot be recovered from audio after alignment.
+- Japanese and Chinese grouping is deterministic for the pinned local
+  dictionaries but is not guaranteed to match every human editorial choice.
+  Very short aligned intervals remain short; grouping never invents a minimum
+  highlight duration. An interval shorter than the video frame cadence may not
+  be visible in every frame, while its timestamp remains unchanged.
 - Aligned-word behavior is unavailable for translated transcription output;
   static PNG previews suppress all motion and show one representative state for
   each configured word track, while animated MP4 previews use simulated timing.

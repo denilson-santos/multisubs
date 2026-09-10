@@ -8,7 +8,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from fractions import Fraction
@@ -43,6 +43,7 @@ from .models import (
     SubtitleAnimationPhase,
     SubtitleConfig,
     SubtitleDisplayFragment,
+    SubtitleDisplayGroup,
     SubtitleElementAnimation,
     SubtitlePlacementMode,
     SubtitlePosition,
@@ -55,9 +56,9 @@ from .models import (
 )
 from .text_measurement import TextMeasurer
 from .text_segmentation import (
+    LinguisticSegmenter,
     build_source_text_map,
     display_units_for_records,
-    source_piece_for_record,
     source_text_for_records,
 )
 from .utils import atomic_write_text, find_unique_stem
@@ -143,14 +144,23 @@ _SKIP_JSON_VALUE = object()
 
 @dataclass(frozen=True)
 class _MappedWord:
-    """A timed record carrying its source-map identity through cue splitting."""
+    """A linguistic group carrying source-record identity through cue splitting."""
 
-    record: dict[str, Any]
+    records: tuple[dict[str, Any], ...]
     source_map: SubtitleSourceMap
-    record_index: int
+    display_group: SubtitleDisplayGroup
     token: str
     start: float
     end: float
+
+    @property
+    def record(self) -> dict[str, Any]:
+        """Return the final record for legacy boundary helpers."""
+        return self.records[-1]
+
+    @property
+    def record_indexes(self) -> tuple[int, ...]:
+        return self.display_group.record_indexes
 
 
 MODELS = _MODELS
@@ -323,7 +333,10 @@ def transcribe_video(
     aligned_segments = _require_sequence(
         aligned_mapping.get("segments"), "aligned segments"
     )
-    segments = _build_subtitle_segments(aligned_segments)
+    segments = _build_subtitle_segments(
+        aligned_segments,
+        language="en" if task == "translate" else source_language,
+    )
     _validate_subtitle_segments(segments)
 
     full_text = _result_full_text(result_mapping, segments)
@@ -671,67 +684,65 @@ def _choose_transcription_paths(
 
 def _build_subtitle_segments(
     aligned_segments: Sequence[object],
+    *,
+    language: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build semantic cues while retaining source text beside timed records."""
     cues: list[dict[str, Any]] = []
     pending_words: list[_MappedWord] = []
 
-    for source_segment_index, raw_segment in enumerate(aligned_segments):
-        segment = _require_mapping(raw_segment, "aligned segment")
-        raw_records = _alignment_records(segment)
-        source_text = segment.get("text")
-        fallback_text = (
-            _words_to_text(raw_records)
-            if not isinstance(source_text, str) or (not source_text and raw_records)
-            else None
-        )
-        source_map = build_source_text_map(
-            source_text,
-            raw_records,
-            fallback_text=fallback_text,
-            source_segment_index=source_segment_index,
-        )
-        if source_map.timing_complete:
-            mapped_spans = {
-                span.record_index: span
-                for span in source_map.spans
-                if span.kind == "alignment" and span.record_index is not None
-            }
-            mapped_words = [
-                _MappedWord(
-                    record=raw_records[record_index],
-                    source_map=source_map,
-                    record_index=record_index,
-                    token=mapped_spans[record_index].text,
-                    start=_require_span_time(mapped_spans[record_index].start_time),
-                    end=_require_span_time(mapped_spans[record_index].end_time),
+    with LinguisticSegmenter() as segmenter:
+        for source_segment_index, raw_segment in enumerate(aligned_segments):
+            segment = _require_mapping(raw_segment, "aligned segment")
+            raw_records = _alignment_records(segment)
+            source_text = segment.get("text")
+            fallback_text = (
+                _words_to_text(raw_records)
+                if not isinstance(source_text, str) or (not source_text and raw_records)
+                else None
+            )
+            source_map = build_source_text_map(
+                source_text,
+                raw_records,
+                fallback_text=fallback_text,
+                source_segment_index=source_segment_index,
+            )
+            if source_map.timing_complete:
+                display_groups = segmenter.group_source_map(
+                    source_map, raw_records, language=language
                 )
-                for record_index in source_map.timed_record_indexes
-            ]
-            _validate_word_order(pending_words, mapped_words)
-            pending_words.extend(mapped_words)
-            continue
+                mapped_words = [
+                    _MappedWord(
+                        records=tuple(
+                            raw_records[index] for index in group.record_indexes
+                        ),
+                        source_map=source_map,
+                        display_group=group,
+                        token=group.source_text,
+                        start=group.start_time,
+                        end=group.end_time,
+                    )
+                    for group in display_groups
+                ]
+                _validate_word_order(pending_words, mapped_words)
+                pending_words.extend(mapped_words)
+                continue
 
-        if pending_words:
-            cues.extend(_build_cues_from_words(pending_words))
-            pending_words = []
+            if pending_words:
+                cues.extend(_build_cues_from_words(pending_words))
+                pending_words = []
 
-        start, end = _segment_times(segment)
-        _append_cue_kwargs: dict[str, Any] = {}
-        if raw_records:
-            _append_cue_kwargs = {
-                "source_map": source_map,
-                "source_record_indexes": source_map.mapped_record_indexes,
-                "mapping_reason": ";".join(source_map.fallback_reasons),
-            }
-        _append_cue(
-            cues,
-            source_map.normalized_text,
-            start,
-            end,
-            raw_records,
-            **_append_cue_kwargs,
-        )
+            start, end = _segment_times(segment)
+            _append_cue(
+                cues,
+                source_map.normalized_text,
+                start,
+                end,
+                raw_records,
+                source_map=source_map,
+                source_record_indexes=source_map.mapped_record_indexes,
+                mapping_reason=";".join(source_map.fallback_reasons) or None,
+            )
 
     if pending_words:
         cues.extend(_build_cues_from_words(pending_words))
@@ -825,9 +836,7 @@ def _build_cues_from_words(
     current_words: list[dict[str, Any] | _MappedWord] = []
 
     for word in words:
-        if current_words and _has_significant_pause(
-            _word_record(current_words[-1]), _word_record(word)
-        ):
+        if current_words and _words_have_significant_pause(current_words[-1], word):
             _append_words_cue(cues, current_words)
             current_words = []
 
@@ -868,7 +877,9 @@ def _append_words_cue(
         else None
     )
     source_record_indexes = (
-        tuple(word.record_index for word in mapped_words) if source_map else None
+        tuple(index for word in mapped_words for index in word.record_indexes)
+        if source_map
+        else None
     )
     source_maps: tuple[SubtitleSourceMap, ...] | None = None
     if mapped_words:
@@ -878,10 +889,14 @@ def _append_words_cue(
         _source_text_for_words(words),
         _word_start(words[0]),
         _word_end(words[-1]),
-        [_word_record(word) for word in words],
+        [record for word in words for record in _word_records(word)],
         source_map=source_map,
         source_record_indexes=source_record_indexes,
         source_maps=source_maps,
+        display_groups=_cue_local_display_groups(
+            mapped_words,
+            preserve_record_indexes=source_map is not None,
+        ),
     )
 
 
@@ -911,7 +926,7 @@ def _find_best_cue_break(
         prefix = words[:index]
         duration_distance = abs(MAX_CUE_DURATION - _words_duration(prefix))
         return (
-            _boundary_priority([_word_record(word) for word in words], index),
+            _cue_boundary_priority(words, index),
             -duration_distance,
         )
 
@@ -929,6 +944,7 @@ def _append_cue(
     source_record_indexes: Sequence[int] | None = None,
     mapping_reason: str | None = None,
     source_maps: Sequence[SubtitleSourceMap] | None = None,
+    display_groups: Sequence[SubtitleDisplayGroup] | None = None,
 ) -> None:
     if not isinstance(text, str):
         return
@@ -949,13 +965,54 @@ def _append_cue(
         cue["_source_record_indexes"] = tuple(source_record_indexes or ())
     if source_maps:
         cue["_source_maps"] = tuple(source_maps)
+    if display_groups:
+        cue["_display_groups"] = tuple(display_groups)
     if mapping_reason:
         cue["_alignment_fallback_reason"] = mapping_reason
+        cue["_segmentation"] = {
+            "strategy": "static-fallback",
+            "backend_version": None,
+            "alignment_granularity": "source-record",
+            "group_count": 0,
+            "emergency_subdivisions": 0,
+            "fallback_reason": mapping_reason.split(";"),
+            "fallback_count": 1,
+        }
     cues.append(cue)
 
 
 def _word_record(word: Mapping[str, Any] | _MappedWord) -> Mapping[str, Any]:
     return word.record if isinstance(word, _MappedWord) else word
+
+
+def _word_records(
+    word: Mapping[str, Any] | _MappedWord,
+) -> tuple[Mapping[str, Any], ...]:
+    return word.records if isinstance(word, _MappedWord) else (word,)
+
+
+def _cue_local_display_groups(
+    words: Sequence[_MappedWord],
+    *,
+    preserve_record_indexes: bool,
+) -> tuple[SubtitleDisplayGroup, ...]:
+    groups: list[SubtitleDisplayGroup] = []
+    record_offset = 0
+    for identity, word in enumerate(words):
+        record_indexes = (
+            word.record_indexes
+            if preserve_record_indexes
+            else tuple(range(record_offset, record_offset + len(word.record_indexes)))
+        )
+        groups.append(
+            replace(
+                word.display_group,
+                identity=identity,
+                record_indexes=record_indexes,
+            )
+        )
+        record_offset += len(record_indexes)
+    return tuple(groups)
 
 
 def _word_start(word: Mapping[str, Any] | _MappedWord) -> float:
@@ -986,11 +1043,28 @@ def _source_text_for_words(
     if not words or not all(isinstance(word, _MappedWord) for word in words):
         return _words_to_text([_word_record(word) for word in words])
     mapped_words = cast(Sequence[_MappedWord], words)
-    pieces = [
-        source_piece_for_record(word.source_map, word.record_index)
-        for word in mapped_words
-    ]
-    return "".join(pieces)
+    return "".join(word.token for word in mapped_words)
+
+
+def _words_have_significant_pause(
+    previous: Mapping[str, Any] | _MappedWord,
+    next_word: Mapping[str, Any] | _MappedWord,
+) -> bool:
+    return _word_start(next_word) - _word_end(previous) >= PAUSE_BREAK_THRESHOLD
+
+
+def _cue_boundary_priority(
+    words: Sequence[Mapping[str, Any] | _MappedWord], index: int
+) -> int:
+    previous = words[index - 1]
+    if isinstance(previous, _MappedWord):
+        if previous.display_group.boundary_class == "sentence":
+            return 3
+        if previous.display_group.boundary_class == "clause":
+            return 2
+    if _words_have_significant_pause(previous, words[index]):
+        return 1
+    return _boundary_priority([_word_record(word) for word in words], index)
 
 
 def _require_span_time(value: float | None) -> float:
@@ -1069,6 +1143,17 @@ def layout_subtitle_cues(
             record_index: word
             for record_index, word in zip(record_indexes, words, strict=False)
         }
+        raw_display_groups = segment.get("_display_groups")
+        display_groups = (
+            tuple(
+                group
+                for group in raw_display_groups
+                if isinstance(group, SubtitleDisplayGroup)
+            )
+            if isinstance(raw_display_groups, Sequence)
+            and not isinstance(raw_display_groups, (str, bytes))
+            else ()
+        )
         if source_map.timing_complete and words and record_indexes:
             units = display_units_for_records(
                 source_map,
@@ -1082,6 +1167,7 @@ def layout_subtitle_cues(
                     units,
                     metrics,
                     boundary_words=[words_by_record[index] for index in record_indexes],
+                    display_groups=display_groups,
                 )
                 for group in groups:
                     group_indexes = tuple(unit.record_index for unit in group)
@@ -1089,14 +1175,27 @@ def layout_subtitle_cues(
                         source_map,
                         group_indexes,
                     )
+                    cue_display_groups = _display_groups_for_records(
+                        display_groups,
+                        group_indexes,
+                        source_map,
+                        words_by_record,
+                    )
+                    # Linguistic groups choose preferred cue/line boundaries,
+                    # but every original alignment record remains an effect
+                    # unit. A group can occupy multiple visual lines; mapping
+                    # its records to one group index would then repeat an
+                    # effect index and trigger static fallback in ASS.
+                    record_to_effect_unit = {
+                        record_index: offset
+                        for offset, record_index in enumerate(group_indexes)
+                    }
                     display_text, fragments, line_breaks = (
                         _wrapping_render_display_units(
                             group,
                             metrics,
-                            word_indexes={
-                                record_index: offset
-                                for offset, record_index in enumerate(group_indexes)
-                            },
+                            word_indexes=record_to_effect_unit,
+                            display_groups=cue_display_groups,
                         )
                     )
                     group_words = [words_by_record[index] for index in group_indexes]
@@ -1113,6 +1212,7 @@ def layout_subtitle_cues(
                         generated_line_breaks=line_breaks,
                         source_map=source_map,
                         source_record_indexes=group_indexes,
+                        display_groups=cue_display_groups,
                     )
                 continue
 
@@ -1138,6 +1238,7 @@ def layout_subtitle_cues(
             mapping_reason=";".join(source_map.fallback_reasons) or None,
             source_map=source_map,
             source_record_indexes=record_indexes,
+            display_groups=display_groups,
         )
 
     for index, cue in enumerate(display_cues):
@@ -1160,6 +1261,7 @@ def _append_display_cue(
     mapping_reason: str | None = None,
     source_map: SubtitleSourceMap | None = None,
     source_record_indexes: Sequence[int] | None = None,
+    display_groups: Sequence[SubtitleDisplayGroup] = (),
 ) -> None:
     if end < start or start < 0:
         raise TranscriptionError("Subtitle cue has invalid timestamps")
@@ -1191,10 +1293,90 @@ def _append_display_cue(
         cue["_generated_line_breaks"] = tuple(generated_line_breaks)
     if mapping_reason:
         cue["_alignment_fallback_reason"] = mapping_reason
+        cue["_segmentation"] = {
+            "strategy": "static-fallback",
+            "backend_version": None,
+            "alignment_granularity": "source-record",
+            "group_count": 0,
+            "emergency_subdivisions": 0,
+            "fallback_reason": mapping_reason.split(";"),
+            "fallback_count": 1,
+        }
     if source_map is not None:
         cue["_source_map"] = source_map
         cue["_source_record_indexes"] = tuple(source_record_indexes or ())
+    if display_groups:
+        cue["_display_groups"] = tuple(display_groups)
+        cue["_segmentation"] = _segmentation_metadata(display_groups)
     cues.append(cue)
+
+
+def _display_groups_for_records(
+    display_groups: Sequence[SubtitleDisplayGroup],
+    record_indexes: Sequence[int],
+    source_map: SubtitleSourceMap,
+    words_by_record: Mapping[int, Mapping[str, Any]],
+) -> tuple[SubtitleDisplayGroup, ...]:
+    selected = set(record_indexes)
+    units_by_record = {
+        unit.record_index: unit
+        for unit in display_units_for_records(source_map, record_indexes)
+    }
+    result: list[SubtitleDisplayGroup] = []
+    for display_group in display_groups:
+        retained = tuple(
+            index for index in display_group.record_indexes if index in selected
+        )
+        if not retained:
+            continue
+        first_unit = units_by_record[retained[0]]
+        last_unit = units_by_record[retained[-1]]
+        emergency = retained != display_group.record_indexes
+        result.append(
+            replace(
+                display_group,
+                identity=len(result),
+                record_indexes=retained,
+                source_start=first_unit.source_start,
+                source_end=last_unit.source_end,
+                source_text=source_text_for_records(source_map, retained),
+                start_time=_word_start(words_by_record[retained[0]]),
+                end_time=_word_end(words_by_record[retained[-1]]),
+                boundary_class=(
+                    "emergency" if emergency else display_group.boundary_class
+                ),
+                emergency_subdivision=(
+                    emergency or display_group.emergency_subdivision
+                ),
+            )
+        )
+    return tuple(result)
+
+
+def _segmentation_metadata(
+    display_groups: Sequence[SubtitleDisplayGroup],
+) -> dict[str, Any]:
+    strategies = tuple(dict.fromkeys(group.strategy for group in display_groups))
+    versions = tuple(
+        dict.fromkeys(
+            group.backend_version
+            for group in display_groups
+            if group.backend_version != "none"
+        )
+    )
+    return {
+        "strategy": "+".join(strategies),
+        "backend_version": "+".join(versions) if versions else None,
+        "alignment_granularity": "+".join(
+            dict.fromkeys(group.alignment_granularity for group in display_groups)
+        ),
+        "group_count": len(display_groups),
+        "emergency_subdivisions": sum(
+            group.emergency_subdivision for group in display_groups
+        ),
+        "fallback_reason": None,
+        "fallback_count": 0,
+    }
 
 
 def _transform_display_words(
@@ -1221,14 +1403,31 @@ def prepare_karaoke_cues(
     for segment in segments:
         prepared_segment = dict(segment)
         prepared_segment.pop("_karaoke_cue", None)
+        prepared_segment.pop("_word_effect", None)
         if _requires_word_timing(resolved_config):
-            karaoke_cue = _prepare_karaoke_cue(
+            karaoke_cue, fallback_reason = _build_karaoke_cue(
                 segment, resolved_config.style.typography.text_case
             )
             if karaoke_cue is None:
                 fallback_cues += 1
+                prepared_segment["_word_effect"] = {
+                    "strategy": "static-fallback",
+                    "status": "fallback",
+                    "units": "alignment-records",
+                    "unit_count": _segment_record_count(segment),
+                    "fallback_reason": fallback_reason or "invalid-effect-contract",
+                    "fallback_count": 1,
+                }
             else:
                 prepared_segment["_karaoke_cue"] = karaoke_cue
+                prepared_segment["_word_effect"] = {
+                    "strategy": "alignment-records",
+                    "status": "active",
+                    "units": "alignment-records",
+                    "unit_count": len(karaoke_cue.durations),
+                    "fallback_reason": None,
+                    "fallback_count": 0,
+                }
         prepared.append(prepared_segment)
     return prepared, fallback_cues
 
@@ -1236,19 +1435,31 @@ def prepare_karaoke_cues(
 def _prepare_karaoke_cue(
     segment: Mapping[str, Any], text_case: TextCase = TextCase.ORIGINAL
 ) -> KaraokeCue | None:
+    """Prepare record-timed effects while retaining the legacy return type."""
+    karaoke_cue, _ = _build_karaoke_cue(segment, text_case)
+    return karaoke_cue
+
+
+def _build_karaoke_cue(
+    segment: Mapping[str, Any], text_case: TextCase = TextCase.ORIGINAL
+) -> tuple[KaraokeCue | None, str | None]:
     if segment.get("_alignment_fallback_reason"):
-        return None
+        return None, "incomplete-alignment-mapping"
     raw_words = segment.get("words")
     if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
-        return None
+        return None, "missing-alignment-records"
     words = [word for word in raw_words if isinstance(word, Mapping)]
-    if len(words) != len(raw_words) or not words:
-        return None
+    if not words:
+        return None, "missing-alignment-records"
+    if len(words) != len(raw_words):
+        return None, "invalid-alignment-record"
     if any(
         not isinstance(word.get("word"), str) or not word["word"].strip()
         for word in words
     ):
-        return None
+        return None, "invalid-alignment-record"
+    if any(_word_has_invalid_timing(word) for word in words):
+        return None, "invalid-alignment-timing"
 
     raw_fragments = segment.get("display_fragments")
     if (
@@ -1265,12 +1476,12 @@ def _prepare_karaoke_cue(
             _transform_display_words(words, text_case),
         )
     if fragments is None:
-        return None
+        return None, "record-fragment-mapping"
     timed_indexes = [
         fragment.word_index for fragment in fragments if fragment.word_index is not None
     ]
     if timed_indexes != list(range(len(words))):
-        return None
+        return None, "record-fragment-mapping"
     try:
         durations = allocate_karaoke_durations(
             segment.get("start"),
@@ -1283,12 +1494,28 @@ def _prepare_karaoke_cue(
             words,
         )
     except ArtifactError:
-        return None
-    return KaraokeCue(
-        fragments=fragments,
-        durations=durations,
-        active_intervals=active_intervals,
+        return None, "invalid-effect-intervals"
+    return (
+        KaraokeCue(
+            fragments=fragments,
+            durations=durations,
+            active_intervals=active_intervals,
+        ),
+        None,
     )
+
+
+def _segment_record_count(segment: Mapping[str, Any]) -> int:
+    raw_words = segment.get("words")
+    if not isinstance(raw_words, Sequence) or isinstance(raw_words, (str, bytes)):
+        return 0
+    return sum(isinstance(word, Mapping) for word in raw_words)
+
+
+def _word_has_invalid_timing(word: Mapping[str, Any]) -> bool:
+    start = _finite_time(word.get("start"))
+    end = _finite_time(word.get("end"))
+    return start is None or end is None or end < start
 
 
 def _validate_subtitle_segments(segments: Sequence[Mapping[str, Any]]) -> None:
@@ -1532,6 +1759,9 @@ def _write_json(
     mapping_metadata = _serialize_alignment_mapping_metadata(segments)
     if mapping_metadata is not None:
         rendering["text_mapping"] = mapping_metadata
+    effect_metadata = _serialize_word_effect_metadata(segments)
+    if effect_metadata is not None:
+        rendering["word_effects"] = effect_metadata
     if template_source != "builtin":
         rendering["template"].update(
             {
@@ -1704,10 +1934,19 @@ def _serializable_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
             "_source_record_indexes",
             "_generated_line_breaks",
             "_alignment_fallback_reason",
+            "_display_groups",
+            "_segmentation",
+            "_word_effect",
         }
     }
     serializable["text"] = segment.get("semantic_text", segment.get("text", ""))
     serializable["display_text"] = segment.get("display_text", segment.get("text", ""))
+    segmentation = segment.get("_segmentation")
+    if isinstance(segmentation, Mapping):
+        serializable["segmentation"] = _json_safe_mapping(segmentation)
+    word_effect = segment.get("_word_effect")
+    if isinstance(word_effect, Mapping):
+        serializable["word_effect"] = _json_safe_mapping(word_effect)
     reason = segment.get("_alignment_fallback_reason")
     source_map = segment.get("_source_map")
     if isinstance(reason, str) and reason:
@@ -1758,6 +1997,34 @@ def _serialize_alignment_mapping_metadata(
         "source_records": source_records,
         "mapped_records": mapped_records,
         "timed_records": timed_records,
+        "reasons": reasons,
+    }
+
+
+def _serialize_word_effect_metadata(
+    segments: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Aggregate per-cue record-timed effect diagnostics."""
+    diagnostics = [
+        diagnostic
+        for segment in segments
+        if isinstance(diagnostic := segment.get("_word_effect"), Mapping)
+    ]
+    if not diagnostics:
+        return None
+    reasons: dict[str, int] = {}
+    fallback_cues = 0
+    for diagnostic in diagnostics:
+        if diagnostic.get("status") != "fallback":
+            continue
+        fallback_cues += 1
+        reason = diagnostic.get("fallback_reason")
+        if isinstance(reason, str) and reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+    return {
+        "units": "alignment-records",
+        "cues": len(diagnostics),
+        "fallback_cues": fallback_cues,
         "reasons": reasons,
     }
 

@@ -66,11 +66,11 @@ flowchart LR
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, validates native or explicit envelopes, and positions measured visual-line fragments on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement(), position_visual_lines() |
 | multisubs/font_catalog.py | Loads the immutable bundled-font manifest, performs bounded family lookup, exposes unpacked package resources, and materializes only a selected family when required by the importer. | load_bundled_font_catalog(), bundled_font_directory(), verify_bundled_font_assets() |
 | multisubs/text_measurement.py | Resolves the nearest custom, bundled, or fontconfig family/weight face, measures glyph advances and ascent/descent metrics with Pillow/RAQM, caches per-run values, and owns the Unicode-aware fallback. | build_text_measurer(), TextMeasurer, TextMeasurementInfo |
-| multisubs/text_segmentation.py | Isolates the pinned Unicode boundary adapter, normalizes only physical line endings with source offsets, maps aligned records monotonically onto source spans, and creates provenance-bearing display units. | build_source_text_map(), grapheme_clusters(), word_units(), display_units_for_records() |
+| multisubs/text_segmentation.py | Isolates pinned Unicode and offline linguistic adapters, maps aligned records monotonically onto source spans, and derives provenance-bearing Japanese/Chinese display groups, display units, and preview effect units. | build_source_text_map(), LinguisticSegmenter, linguistic_units(), simulated_effect_units(), display_units_for_records() |
 | multisubs/wrapping.py | Applies typed Unicode display casing, shares font-aware bounded adaptive wrapping between transcription and preview without importing the model runtime, and partitions mapped display units into visual lines. | transform_display_text(), wrap_subtitle_text(), line_count(), build_visual_lines(), render_display_units() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, template-catalog, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
-| multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
+| multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
 | multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
 
 ## Execution flow
@@ -84,8 +84,8 @@ flowchart LR
 7. The normal transcription path reports the resolved dimensions and semantic position or explicit envelope, then creates a private temporary work directory inside the output directory.
 8. transcribe_video() selects CUDA with float16 when available, otherwise CPU with int8; WhisperX is imported only at the transcription boundary.
 9. WhisperX loads the requested model with the Silero VAD method, extracts audio from the input, transcribes it, and aligns the result at word level. Omitted `--lang` is `None` in `RunRequest` and in the programmatic transcription entry points: multilingual models receive `language=None`, allowing WhisperX to detect one source language from the beginning of the audio. An explicit code takes precedence over the returned language. English-only `.en` models resolve to `en` and reject explicit non-English codes before model loading. Missing or unsupported detected codes raise an actionable error before alignment-model loading. `TranscriptDocument.language` always contains the resolved source code; the CLI uses it for publication and all artifact names. Wrapping metrics are rebuilt after transcription with the subtitle-text language and display-cased sample text while retaining the pre-model layout validation. Translation aligns and measures English text while keeping the source code in names and metadata. During Silero setup, the transcriber isolates WhisperX's unused optional Pyannote ONNX import so ONNX Runtime does not probe an incomplete Linux DRM sysfs tree. Model, VAD, and alignment asset loads retry transient connection failures up to three attempts with a short exponential backoff; deterministic loading errors are surfaced immediately.
-10. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. `text_segmentation.py` first treats each aligned segment's text as authoritative, normalizes only CRLF/CR to logical LF with bidirectional offsets, and maps records monotonically from a cursor so repeated tokens cannot reuse an earlier occurrence. Immutable spans distinguish timed alignment records, intentional separators, unmatched source text, and unusable records. Adjoining source segments may form one cue when timing permits; their boundary never inserts a separator. The builder preserves every JSON-safe source record, including untimed records, and applies locale-independent casing only to provenance-bearing display units after mapping. If mapping or timing is incomplete, the cue keeps complete source text at its coarse segment interval and records a bounded reason instead of fabricating word times. The resolved layout then creates display cues using maximum width, maximum height, natural first-line metrics, configured baseline line height, letter spacing, and backdrop/shadow allowances. The text-measurement boundary normalizes named, aliased, or numeric font weights to an OpenType rank, first searches the validated custom font directory, then the selected bundled family, and finally a bounded fontconfig candidate list with the corresponding weight/slant and language preference where available. fontTools checks each candidate's cmap against the complete display-cased sample, including mixed scripts, before Pillow/RAQM measures it. If a covering face is selected as a fallback, its effective family is compiled into ASS and its custom resource directory remains available to FFmpeg. The same face drives horizontal and vertical metrics; an actionable validation error is raised when positioned output has no covering face. A Unicode estimate remains explicit and unverified when no concrete face can be loaded. Both measurement modes add spacing between rendered grapheme clusters through one shared layer, resetting at explicit line breaks. Complete cues that fit remain unbroken; required multi-line layouts use bounded global partition scoring rather than greedy first-line filling. Length-changing casing can therefore change a line or timed-cue boundary without changing source timestamps. wrapping.py supplies the same case transform and layout algorithm to preview mode, where only the first fitting lexical group is rendered when the sample would require later timed cues. Explicit line-height percentages use the natural measured line height as their basis and explicit values below that natural metric are rejected after font resolution.
-11. When active word behavior requires alignment, each display cue preserves a lossless sequence of `SubtitleDisplayFragment` values built from `SubtitleSourceMap` display units before wrapping: transformed timed fragments retain indexes into original aligned records, while separators and intentional generated line breaks remain untimed and reversible. The timing preparation refuses fallback-marked or otherwise incomplete maps, validates identity without retokenizing transformed strings, quantizes cue/word bounds to ASS centiseconds, and prepares progressive and non-overlapping active-word intervals. Progressive intervals persist through the cue; active-word intervals end at the earlier of the aligned word end or next start. It records per-cue fallback instead of inventing timestamps and prepares the same immutable result before JSON, SRT, and ASS serialization.
+10. The cue builder combines consecutive aligned segments, prefers sentence endings, clauses, and meaningful pauses, and applies the duration ceiling as a fallback. `text_segmentation.py` first treats each aligned segment's text as authoritative, normalizes only CRLF/CR to logical LF with bidirectional offsets, and maps records monotonically from a cursor so repeated tokens cannot reuse an earlier occurrence. Immutable spans distinguish timed alignment records, intentional separators, unmatched source text, and unusable records. Complete Japanese maps are grouped with Sudachi mode B plus presentation-tail joining; complete Chinese maps use jieba's packaged dictionary with HMM. Both providers are loaded lazily, remain offline, reconcile boundaries with complete uniseg graphemes, and are cached only for the invocation. The jieba cache lives in an invocation-scoped temporary directory that is removed on completion. Other languages retain their available alignment-word boundaries. Adjoining source segments may form one cue when timing permits; their boundary never inserts a separator. The builder preserves every JSON-safe source record, including untimed records, and applies locale-independent casing only to provenance-bearing display units after mapping. If mapping or timing is incomplete, the cue keeps complete source text at its coarse segment interval and records a bounded reason instead of fabricating word times. The resolved layout then creates display cues using maximum width, maximum height, natural first-line metrics, configured baseline line height, letter spacing, and backdrop/shadow allowances. The text-measurement boundary normalizes named, aliased, or numeric font weights to an OpenType rank, first searches the validated custom font directory, then the selected bundled family, and finally a bounded fontconfig candidate list with the corresponding weight/slant and language preference where available. fontTools checks each candidate's cmap against the complete display-cased sample, including mixed scripts, before Pillow/RAQM measures it. If a covering face is selected as a fallback, its effective family is compiled into ASS and its custom resource directory remains available to FFmpeg. The same face drives horizontal and vertical metrics; an actionable validation error is raised when positioned output has no covering face. A Unicode estimate remains explicit and unverified when no concrete face can be loaded. Both measurement modes add spacing between rendered grapheme clusters through one shared layer, resetting at explicit line breaks. Complete cues that fit remain unbroken; required multi-line layouts use bounded global partition scoring rather than greedy first-line filling. Length-changing casing can therefore change a line or timed-cue boundary without changing source timestamps. wrapping.py supplies the same case transform and linguistic-unit adapter to preview mode, where only the first fitting group is rendered when the sample would require later timed cues. Explicit line-height percentages use the natural measured line height as their basis and explicit values below that natural metric are rejected after font resolution.
+11. When active word behavior requires alignment, each display cue preserves a lossless sequence of `SubtitleDisplayFragment` values built from `SubtitleSourceMap` display units before wrapping. Linguistic groups provide preferred cue and line boundaries, but each original alignment record retains its own effect index and interval; separators and intentional generated line breaks remain untimed and reversible. Progressive activation uses record starts, while active-word intervals use each record's validated end capped at the next record start. Timing preparation refuses fallback-marked or otherwise incomplete maps, validates identity without retokenizing transformed strings, and quantizes bounds to ASS centiseconds. A significant pause splits a group. If an oversized group cannot fit, layout may subdivide it only at a legal uniseg line/grapheme boundary that maps exactly to an existing record boundary; the subdivision is diagnosed and does not become a claimed lexical word. A visual line break inside a group never repeats its effect index or causes fallback by itself. It records per-cue effect strategy/reason separately from segmentation metadata and prepares the same immutable result before JSON, SRT, and ASS serialization.
 12. write_transcription_artifacts() validates external timestamps and writes UTF-8 JSON and SRT files atomically. SRT consumes transformed display cues, while JSON keeps original full/cue text and aligned words and adds per-cue `display_text` plus requested/resolved TextCase metadata. It delegates unit resolution, placement validation, and wrapping metrics to layout.py, then delegates ASS serialization to ass.py. The ASS compiler resolves one base/effective palette, native or explicit placement, exact font-weight overrides, and the effective family reported by the verified wrapping measurer, so the style used by libass matches the face that supplied advances. Word fragments use the same measured advances as wrapping and render as independent positioned text layers so local movement, scale, highlighting, outline, or boxes do not reflow surrounding glyphs. Cue backdrop, word decoration, and text occupy layers 0, 1, and 2. A private typed dialogue-event contract retains logical and derived intervals. animation.py fits three phases inside each cue or word interval, repeats emphasis within the stable region, adds bounded phase/cycle boundaries, and samples each of the four tracks from its original timeline. ass.py composes the resulting trusted movement, opacity, and scale tags around separately escaped text. Preview uses the same compiler with motion suppressed. JSON preserves placement, dimensions, wrapping metrics, palette, and resolved four-track animation diagnostics, including coverage and fallback metadata without local paths.
 13. embed_subtitles() selects the same probed stream, explicitly enables autorotation, supplies the normalized canvas as original_size to the structured FFmpeg subtitles filter, and supplies `fontsdir` when measurement selected a custom or bundled provider directory. The bundled resource context remains alive through preview or final rendering, so Pillow/RAQM and libass consume the same family directory. Available audio streams are copied into a temporary rendered output when present. render_subtitle_preview() uses the same subtitles filter options, seeks to the validated timestamp, requests one PNG frame, captures bounded diagnostics, and publishes it with get_unique_path(). render_subtitle_animation_preview() first extracts an uncaptioned frame, feeds it to a looped 30 fps input, applies the temporary ASS through the same filter options, encodes only video with H.264/faststart and the compatible pixel format, and publishes the complete MP4 collision-safely.
 14. After normal rendering succeeds, the CLI publishes a collision-safe set of final artifacts and removes the private work directory. Failed normal runs retain transcription artifacts in that directory for diagnosis; preview runs remove their temporary ASS directory, while the renderer removes partial media in either mode.
@@ -95,6 +95,10 @@ flowchart LR
 The subtitle builder is intentionally separate from raw WhisperX segmentation:
 
 - It joins adjacent WhisperX word streams so an ASR segment boundary does not force a poor subtitle break.
+- It keeps alignment records, derived linguistic display groups, and legal
+  visual line-break opportunities as separate units. Japanese uses Sudachi
+  mode B with predicate-tail presentation joining; Chinese uses jieba with its
+  packaged dictionary and HMM. Other languages retain aligned word boundaries.
 - It emits a cue at a sentence end or a pause of at least 0.45 seconds when possible.
 - It targets no more than 6 seconds per semantic cue; width no longer uses a
   fixed character count.
@@ -125,11 +129,12 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   required multi-line break searches no more partitions than both the derived
   line capacity and the number of text units, then scores semantic class,
   overflow, avoidable orphan lines, raggedness, and deterministic source order.
-- When a preview or aligned-word split must choose among fitting cue prefixes,
-  it stops once the ordered prefix no longer fits, preserves sentence, clause,
-  and pause priorities, avoids a one-word tail when possible, and otherwise
-  retains the longest fitting prefix. This lets a multi-line envelope consume
-  its available visual capacity without changing source timing or word order.
+- When a preview or aligned-group split must choose among fitting cue prefixes,
+  it evaluates the bounded candidate set because shaped widths need not be
+  monotonic. It preserves sentence, clause, and pause priorities, avoids a
+  one-group tail when possible, and otherwise retains the longest fitting
+  legal prefix. This lets a multi-line envelope consume its available visual
+  capacity without changing source timing or record order.
 - It prefers a new timed cue over exceeding the derived visual line capacity
   when aligned word boundaries are available. Semantic sentence, clause, and
   pause priorities remain higher than line balancing.
@@ -156,11 +161,17 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   that first group again. Its guide and retained JSON report the same
   `positioned-lines` strategy that ASS uses for a nonempty box, positioned word
   behavior, or multiple visual lines.
-- A long indivisible display token remains intact and may overflow the
-  approximate width budget; original transcript content is never removed or
-  replaced by its display transformation.
+- A long indivisible display group remains intact and may overflow the
+  approximate width budget. It is subdivided only at a legal visual/grapheme
+  boundary backed by an exact source-record timing boundary, and that emergency
+  path is diagnosed rather than labeled as a lexical word. Original transcript
+  content is never removed or replaced by its display transformation.
 - If word timestamps are unavailable for a WhisperX segment, it flushes pending aligned words and uses that segment's coarse start and end times as a safe fallback.
-- Karaoke never retokenizes the final display string. If a display cue cannot be mapped to every original word in order, it remains a plain cue and contributes to one aggregate fallback warning.
+- Karaoke never retokenizes the final display string. It animates original
+  alignment records while preserving linguistic groups for boundary guidance.
+  If a display cue cannot be mapped to every record in order, it remains plain
+  and contributes to one aggregate effect fallback warning; a visual line
+  break inside a group is not itself a fallback condition.
 
 Semantic cue rules reside in multisubs/transcriber.py, source mapping and pinned
 Unicode boundaries reside in multisubs/text_segmentation.py, and shared visual
@@ -396,6 +407,13 @@ full/cue text and every JSON-safe aligned record, adds each cue's
 without storing compiled tags. Incomplete maps add per-cue
 `alignment_mapping` and aggregate `metadata.rendering.text_mapping` counts and
 reasons; internal span objects and offset tables remain private.
+Complete mapped cues add a `segmentation` object containing the linguistic
+strategy, pinned backend version, alignment granularity, derived-group count,
+emergency-subdivision count, and bounded fallback fields. Cues prepared for
+word-dependent effects additionally expose `word_effect` with the explicit
+`alignment-records` unit and bounded strategy/reason fields; the aggregate
+`metadata.rendering.word_effects` count is separate from source-map diagnostics.
+These additive objects do not replace or rewrite the original `words` array.
 
 RelativeLength margins use render width or height, font size uses render height,
 and letter spacing, line-height percentages, cue/word backdrop padding, and
@@ -471,7 +489,9 @@ text is forbidden because their shaping advances can differ. Because an outline
 is bound to the glyph rather than an independent rectangular surface, each
 fragmented outline also samples the corresponding cue-text and word-text timing,
 movement, and scale. Preview uses that same fragmented topology while
-suppressing only its temporal motion.
+suppressing only its temporal motion. Static preview selection uses linguistic
+boundaries for representative content, while simulated effect timing uses
+script-appropriate units and is never reused as production speech timing.
 
 Four animation tracks—cue text, cue backdrop, word text, and word backdrop—are
 calculated independently in animation.py after ASS timestamp quantization.
@@ -666,6 +686,17 @@ the render authority and integration tests use an explicit tolerance.
 subtitle layout. It depends on `uniseg==0.10.1` (Unicode 16.0.0 data) for
 extended grapheme, word, line, and sentence boundaries; it does not import
 WhisperX, PyTorch, Pillow, or FFmpeg, so preview remains transcription-free.
+It lazily loads SudachiPy 0.6.11 with SudachiDict-small 20260723 for Japanese
+mode-B boundaries and jieba 0.42.1 with its packaged dictionary/HMM for Chinese.
+These resources install as Python dependencies and never download transcript
+data or dictionaries at runtime. Sudachi and jieba boundaries are intersected
+with complete uniseg graphemes; Japanese auxiliary and non-independent
+predicate tails and compatible numeric counters attach to their presentation
+group unless whitespace, punctuation, or a significant source pause requires
+a boundary. The jieba
+tokenizer writes only to an invocation-local temporary cache, removed when the
+segmenter closes. Preview text uses the same adapter with script inference when
+no source language exists.
 Offsets are Python code-point positions. The adapter normalizes only CRLF/CR to
 LF and retains raw-to-logical and logical-to-raw offset tables. A cursor-based
 source map assigns the next matching aligned record to its source span,

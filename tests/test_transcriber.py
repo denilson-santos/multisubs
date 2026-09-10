@@ -8,7 +8,7 @@ import pytest
 from multisubs import transcriber
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import TranscriptionError
-from multisubs.layout import resolve_subtitle_config
+from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
 from multisubs.models import TranscriptDocument, VideoGeometry
 from multisubs.text_measurement import (
     TextMeasurementInfo,
@@ -96,14 +96,230 @@ def test_adjoining_source_segments_do_not_invent_a_separator():
     assert [word["word"] for word in segments[0]["words"]] == ["第", "1"]
 
 
+@pytest.mark.parametrize("mode", ["active-word", "progressive"])
+def test_japanese_display_groups_guide_cues_but_records_drive_karaoke(mode):
+    text = "デフォルト設定を使用する。"
+    words = [
+        _word(character, index * 0.1, (index + 1) * 0.1, score=0.9)
+        for index, character in enumerate(text)
+    ]
+    semantic = transcriber._build_subtitle_segments(
+        [{"start": 0.0, "end": len(text) * 0.1, "text": text, "words": words}],
+        language="ja",
+    )
+    config = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            animation_values={
+                "word_text_emphasis": "highlight",
+                "word_text_mode": mode,
+            },
+        ),
+        GEOMETRY,
+    )
+
+    display, _ = transcriber.layout_subtitle_cues(
+        semantic,
+        config,
+        GEOMETRY,
+        language="ja",
+    )
+    prepared, fallback_count = transcriber.prepare_karaoke_cues(display, config)
+
+    assert fallback_count == 0
+    assert display[0]["words"] == words
+    groups = display[0]["_display_groups"]
+    assert [group.source_text for group in groups] == [
+        "デフォルト",
+        "設定",
+        "を",
+        "使用する。",
+    ]
+    karaoke = prepared[0]["_karaoke_cue"]
+    assert len(karaoke.durations) == len(words)
+    assert [
+        fragment.word_index
+        for fragment in karaoke.fragments
+        if fragment.word_index is not None
+    ] == list(range(len(words)))
+    assert prepared[0]["_word_effect"] == {
+        "strategy": "alignment-records",
+        "status": "active",
+        "units": "alignment-records",
+        "unit_count": len(words),
+        "fallback_reason": None,
+        "fallback_count": 0,
+    }
+    assert transcriber._serialize_word_effect_metadata(prepared) == {
+        "units": "alignment-records",
+        "cues": 1,
+        "fallback_cues": 0,
+        "reasons": {},
+    }
+    assert transcriber._serializable_segment(prepared[0])["segmentation"] == {
+        "strategy": "sudachi-b",
+        "backend_version": "SudachiPy/0.6.11;SudachiDict-small/20260723",
+        "alignment_granularity": "character",
+        "group_count": 4,
+        "emergency_subdivisions": 0,
+        "fallback_reason": None,
+        "fallback_count": 0,
+    }
+
+
+def test_group_internal_visual_wrap_keeps_record_timed_effects():
+    text = "デフォルト"
+    words = [
+        _word(character, index * 0.1, (index + 1) * 0.1)
+        for index, character in enumerate(text)
+    ]
+    semantic = transcriber._build_subtitle_segments(
+        [{"start": 0.0, "end": len(text) * 0.1, "text": text, "words": words}],
+        language="ja",
+    )
+    config = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            appearance_values={"backdrop": "none"},
+            relative_values={
+                "font_size": "20px",
+                "max_width": "20px",
+                "max_height": "40px",
+                "shadow_weight": "0px",
+            },
+            animation_values={"word_text_emphasis": "highlight"},
+        ),
+        GEOMETRY,
+    )
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="raqm",
+        metric_size=20,
+    )
+    metrics = resolve_wrapping_metrics(
+        config,
+        GEOMETRY,
+        text_measurer=TextMeasurer(
+            info,
+            lambda value: len(value) * 10,
+            line_height=20,
+        ),
+    )
+
+    display, _ = transcriber.layout_subtitle_cues(
+        semantic,
+        config,
+        GEOMETRY,
+        language="ja",
+        wrapping_metrics=metrics,
+    )
+    prepared, fallback_count = transcriber.prepare_karaoke_cues(display, config)
+
+    assert len(display) >= 1
+    assert any("\n" in cue["text"] for cue in display)
+    assert fallback_count == 0
+    for prepared_cue in prepared:
+        karaoke = prepared_cue["_karaoke_cue"]
+        assert [
+            fragment.word_index
+            for fragment in karaoke.fragments
+            if fragment.word_index is not None
+        ] == list(range(len(karaoke.durations)))
+
+
+def test_oversized_linguistic_group_uses_timed_emergency_subdivision():
+    text = "使用"
+    words = [_word("使", 0.0, 0.2), _word("用", 0.2, 0.4)]
+    semantic = transcriber._build_subtitle_segments(
+        [{"start": 0.0, "end": 0.4, "text": text, "words": words}],
+        language="ja",
+    )
+    config = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            appearance_values={"backdrop": "none"},
+            relative_values={
+                "font_size": "20px",
+                "max_width": "15px",
+                "max_height": "20px",
+                "shadow_weight": "0px",
+            },
+        ),
+        GEOMETRY,
+    )
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="raqm",
+        metric_size=20,
+    )
+    metrics = resolve_wrapping_metrics(
+        config,
+        GEOMETRY,
+        text_measurer=TextMeasurer(info, lambda value: len(value) * 10, line_height=20),
+    )
+
+    display, _ = transcriber.layout_subtitle_cues(
+        semantic,
+        config,
+        GEOMETRY,
+        language="ja",
+        wrapping_metrics=metrics,
+    )
+
+    assert [cue["text"] for cue in display] == ["使", "用"]
+    assert all(cue["_segmentation"]["emergency_subdivisions"] == 1 for cue in display)
+    assert [(cue["start"], cue["end"]) for cue in display] == [
+        (0.0, 0.2),
+        (0.2, 0.4),
+    ]
+
+
+def test_duration_split_keeps_source_record_indexes_for_later_groups():
+    words = [
+        _word("はい", 0.0, 5.7),
+        _word("使", 5.7, 5.9),
+        _word("用", 5.9, 6.1),
+    ]
+    semantic = transcriber._build_subtitle_segments(
+        [{"start": 0.0, "end": 6.1, "text": "はい使用", "words": words}],
+        language="ja",
+    )
+    config = resolve_subtitle_config(validate_subtitle_config(None), GEOMETRY)
+
+    display, _ = transcriber.layout_subtitle_cues(
+        semantic,
+        config,
+        GEOMETRY,
+        language="ja",
+    )
+
+    assert [cue["text"] for cue in display] == ["はい", "使用"]
+    assert display[1]["_source_record_indexes"] == (1, 2)
+    assert display[1]["_display_groups"][0].record_indexes == (1, 2)
+
+
 def test_build_subtitle_segments_uses_coarse_fallback_without_word_timestamps():
     segments = transcriber._build_subtitle_segments(
         [{"start": 1, "end": 2.5, "text": "Fallback text"}]
     )
 
-    assert segments == [
-        {"id": 0, "start": 1.0, "end": 2.5, "text": "Fallback text", "words": []}
-    ]
+    assert len(segments) == 1
+    assert {
+        key: value for key, value in segments[0].items() if not key.startswith("_")
+    } == {"id": 0, "start": 1.0, "end": 2.5, "text": "Fallback text", "words": []}
+    assert set(segments[0]["_alignment_fallback_reason"].split(";")) == {
+        "missing-alignment",
+        "unmatched-source-text",
+    }
+    assert segments[0]["_segmentation"]["fallback_count"] == 1
 
 
 def test_build_subtitle_segments_uses_record_text_when_source_text_is_empty():
@@ -243,6 +459,46 @@ def test_adaptive_wrapping_splits_aligned_words_into_timed_cues_when_needed():
         word["word"] for word in words
     ]
     assert metrics.line_capacity == 1
+
+
+def test_programmatic_cue_split_remaps_karaoke_indexes_without_display_groups():
+    words = [
+        _word(word, index * 0.4, index * 0.4 + 0.3)
+        for index, word in enumerate("one two three four five six".split())
+    ]
+    semantic = [
+        {
+            "start": 0.0,
+            "end": words[-1]["end"],
+            "text": "one two three four five six",
+            "words": words,
+        }
+    ]
+    config = resolve_subtitle_config(
+        validate_subtitle_config(
+            None,
+            appearance_values={"backdrop": "none"},
+            relative_values={"max_width": "20%", "max_height": "54px"},
+            animation_values={"word_text_emphasis": "highlight"},
+        ),
+        GEOMETRY,
+    )
+
+    display, _ = transcriber.layout_subtitle_cues(semantic, config, GEOMETRY)
+    prepared, fallback_count = transcriber.prepare_karaoke_cues(display, config)
+
+    assert len(display) > 1
+    assert fallback_count == 0
+    assert all("_karaoke_cue" in cue for cue in prepared)
+    assert all(
+        [
+            fragment.word_index
+            for fragment in cue["_karaoke_cue"].fragments
+            if fragment.word_index is not None
+        ]
+        == list(range(len(cue["_karaoke_cue"].durations)))
+        for cue in prepared
+    )
 
 
 def test_text_case_expansion_is_measured_before_timed_cue_splitting():
@@ -561,6 +817,14 @@ def test_lossy_source_mapping_suppresses_word_effects():
 
     assert fallback_count == 1
     assert "_karaoke_cue" not in prepared[0]
+    assert prepared[0]["_word_effect"] == {
+        "strategy": "static-fallback",
+        "status": "fallback",
+        "units": "alignment-records",
+        "unit_count": 1,
+        "fallback_reason": "incomplete-alignment-mapping",
+        "fallback_count": 1,
+    }
 
 
 def test_model_loading_retries_transient_connection_failures(monkeypatch):
