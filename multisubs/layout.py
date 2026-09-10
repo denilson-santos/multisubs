@@ -22,6 +22,7 @@ from .models import (
     VideoGeometry,
 )
 from .text_measurement import TextMeasurer, build_text_measurer
+from .text_segmentation import grapheme_clusters as _unicode_grapheme_clusters
 
 _MAX_FONT_SIZE_PIXELS = 512
 _MAX_LETTER_SPACING_FACTOR = 4
@@ -772,23 +773,7 @@ def unicode_display_width(text: str) -> int:
 
 
 def _grapheme_clusters(text: str) -> list[str]:
-    clusters: list[str] = []
-    current = ""
-    for character in text:
-        category = unicodedata.category(character)
-        if current and (
-            category in {"Mn", "Me", "Cf"}
-            or character in {"\ufe0e", "\ufe0f"}
-            or current.endswith("\u200d")
-        ):
-            current += character
-            continue
-        if current:
-            clusters.append(current)
-        current = character
-    if current:
-        clusters.append(current)
-    return clusters
+    return _unicode_grapheme_clusters(text)
 
 
 def _is_wide_character(character: str) -> bool:

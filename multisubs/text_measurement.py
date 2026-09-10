@@ -18,6 +18,7 @@ from typing import Any
 from .errors import DependencyError, ValidationError
 from .font_catalog import bundled_filesystem_directory
 from .models import FontWeight, FontWeightInputForm, SubtitleTypography
+from .text_segmentation import grapheme_clusters as _unicode_grapheme_clusters
 
 _FONT_SUFFIXES = frozenset({".otf", ".ttc", ".ttf"})
 _FONT_COLLECTION_LIMIT = 32
@@ -1011,23 +1012,7 @@ def _estimated_cluster_factor(cluster: str) -> float:
 
 
 def _grapheme_clusters(text: str) -> list[str]:
-    clusters: list[str] = []
-    current = ""
-    for character in text:
-        category = unicodedata.category(character)
-        if current and (
-            category in {"Mn", "Me", "Cf"}
-            or character in {"\ufe0e", "\ufe0f"}
-            or current.endswith("\u200d")
-        ):
-            current += character
-            continue
-        if current:
-            clusters.append(current)
-        current = character
-    if current:
-        clusters.append(current)
-    return clusters
+    return _unicode_grapheme_clusters(text)
 
 
 def _letter_spacing_gaps(text: str) -> int:

@@ -1,0 +1,467 @@
+"""Unicode boundaries and lossless source/alignment mapping.
+
+This module deliberately has no WhisperX, PyTorch, font, or FFmpeg imports. It
+owns only bounded text normalization, Unicode boundary data, and the mapping
+between source text and alignment records.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from numbers import Real
+
+from uniseg.graphemecluster import (
+    grapheme_cluster_boundaries as _grapheme_cluster_boundaries,
+)
+from uniseg.graphemecluster import grapheme_clusters as _grapheme_clusters
+from uniseg.linebreak import line_break_boundaries as _line_break_boundaries
+from uniseg.sentencebreak import sentence_boundaries as _sentence_boundaries
+from uniseg.wordbreak import word_boundaries as _word_boundaries
+from uniseg.wordbreak import words as _unicode_words
+
+from .models import SubtitleDisplayUnit, SubtitleSourceMap, SubtitleSourceSpan
+
+
+def normalize_line_endings(
+    text: str,
+) -> tuple[str, tuple[int | None, ...], tuple[int, ...]]:
+    """Normalize CRLF/CR to LF and return bidirectional code-point offsets."""
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+
+    normalized: list[str] = []
+    raw_to_normalized: list[int | None] = [None] * len(text)
+    normalized_to_raw: list[int] = []
+    raw_index = 0
+    while raw_index < len(text):
+        if text.startswith("\r\n", raw_index):
+            normalized_index = len(normalized)
+            normalized.append("\n")
+            normalized_to_raw.append(raw_index)
+            raw_to_normalized[raw_index] = normalized_index
+            raw_to_normalized[raw_index + 1] = normalized_index
+            raw_index += 2
+            continue
+        if text[raw_index] == "\r":
+            normalized_index = len(normalized)
+            normalized.append("\n")
+            normalized_to_raw.append(raw_index)
+            raw_to_normalized[raw_index] = normalized_index
+            raw_index += 1
+            continue
+        character = text[raw_index]
+        normalized_index = len(normalized)
+        normalized.append(character)
+        normalized_to_raw.append(raw_index)
+        raw_to_normalized[raw_index] = normalized_index
+        raw_index += 1
+    return (
+        "".join(normalized),
+        tuple(raw_to_normalized),
+        tuple(normalized_to_raw),
+    )
+
+
+def normalise_display_text(text: str) -> str:
+    """Normalize physical line endings without collapsing meaningful spacing."""
+    normalized, _, _ = normalize_line_endings(text)
+    return _trim_display_edges(normalized.replace("\n", " "))
+
+
+def grapheme_clusters(text: str) -> list[str]:
+    """Return Unicode extended grapheme clusters from the pinned UAX data."""
+    return list(_grapheme_clusters(text))
+
+
+def grapheme_boundaries(text: str) -> tuple[int, ...]:
+    """Return Python code-point offsets at grapheme boundaries."""
+    return tuple(_grapheme_cluster_boundaries(text))
+
+
+def line_break_boundaries(text: str) -> tuple[int, ...]:
+    """Return Python code-point offsets where UAX #14 permits a line break."""
+    return tuple(_line_break_boundaries(text))
+
+
+def word_boundaries(text: str) -> tuple[int, ...]:
+    """Return Python code-point offsets from Unicode word breaking."""
+    return tuple(_word_boundaries(text))
+
+
+def word_units(text: str) -> tuple[str, ...]:
+    """Return non-whitespace Unicode word units with trailing punctuation."""
+    units: list[str] = []
+    separated = False
+    for unit in _unicode_words(text):
+        if not unit:
+            continue
+        if unit.isspace():
+            separated = True
+            continue
+        has_alphanumeric = any(character.isalnum() for character in unit)
+        previous_has_alphanumeric = bool(units) and any(
+            character.isalnum() for character in units[-1]
+        )
+        if separated:
+            units.append(unit)
+        elif has_alphanumeric and previous_has_alphanumeric:
+            units.append(unit)
+        elif units:
+            units[-1] += unit
+        else:
+            units.append(unit)
+        separated = False
+    return tuple(units)
+
+
+def sentence_boundaries(text: str) -> tuple[int, ...]:
+    """Return Python code-point offsets from Unicode sentence breaking."""
+    return tuple(_sentence_boundaries(text))
+
+
+def build_source_text_map(
+    source_text: object,
+    records: Sequence[object],
+    *,
+    fallback_text: str | None = None,
+    source_segment_index: int = 0,
+) -> SubtitleSourceMap:
+    """Map aligned record text monotonically onto one source segment.
+
+    Matching is intentionally cursor-based. Repeated tokens therefore resolve
+    to their next occurrence instead of an unconstrained global match. Every
+    unmatched source range and every unusable record remains represented in the
+    returned map so callers can choose a coarse, untimed fallback.
+    """
+    # An empty segment text accompanied by an explicit fallback is the
+    # compatibility form used by direct callers with records but no source
+    # string. Keep an explicitly empty transcript authoritative when no
+    # fallback was requested so callers can distinguish it from missing text.
+    if isinstance(source_text, str) and not (
+        source_text == "" and isinstance(fallback_text, str)
+    ):
+        source_provided = True
+        raw_text = source_text
+    else:
+        source_provided = False
+        raw_text = fallback_text if isinstance(fallback_text, str) else ""
+    normalized_text, raw_to_normalized, normalized_to_raw = normalize_line_endings(
+        raw_text
+    )
+
+    spans: list[SubtitleSourceSpan] = []
+    mapped_record_indexes: list[int] = []
+    timed_record_indexes: list[int] = []
+    meaningful_record_indexes: list[int] = []
+    reasons: list[str] = []
+    cursor = 0
+    previous_start: float | None = None
+
+    for record_index, raw_record in enumerate(records):
+        if not isinstance(raw_record, Mapping):
+            spans.append(
+                SubtitleSourceSpan(
+                    source_segment_index,
+                    record_index,
+                    None,
+                    None,
+                    "",
+                    "unmatched-record",
+                    matched=False,
+                    granularity="alignment-record",
+                )
+            )
+            reasons.append("unmatched-alignment-record")
+            continue
+
+        raw_word = raw_record.get("word")
+        token = raw_word.strip(" \t\r\n\v\f") if isinstance(raw_word, str) else ""
+        token, _, _ = normalize_line_endings(token)
+        if token:
+            meaningful_record_indexes.append(record_index)
+        match_start = normalized_text.find(token, cursor) if token else -1
+        start_time = _finite_time(raw_record.get("start"))
+        end_time = _finite_time(raw_record.get("end"))
+        timed = (
+            start_time is not None and end_time is not None and end_time >= start_time
+        )
+        if not timed:
+            reasons.append("missing-or-invalid-alignment-time")
+        elif previous_start is not None:
+            assert start_time is not None
+            if start_time < previous_start:
+                reasons.append("non-chronological-alignment")
+        if timed:
+            assert start_time is not None
+            previous_start = start_time
+
+        if not token or match_start < 0:
+            spans.append(
+                SubtitleSourceSpan(
+                    source_segment_index,
+                    record_index,
+                    None,
+                    None,
+                    token,
+                    "unmatched-record",
+                    start_time if timed else None,
+                    end_time if timed else None,
+                    matched=False,
+                    granularity="alignment-record",
+                )
+            )
+            reasons.append("unmatched-alignment-record")
+            continue
+
+        if match_start > cursor:
+            spans.append(
+                _gap_span(
+                    normalized_text[cursor:match_start],
+                    cursor,
+                    match_start,
+                    source_segment_index,
+                )
+            )
+        match_end = match_start + len(token)
+        matched_text = normalized_text[match_start:match_end]
+        spans.append(
+            SubtitleSourceSpan(
+                source_segment_index,
+                record_index,
+                match_start,
+                match_end,
+                matched_text,
+                "alignment",
+                start_time if timed else None,
+                end_time if timed else None,
+            )
+        )
+        mapped_record_indexes.append(record_index)
+        if timed:
+            timed_record_indexes.append(record_index)
+        cursor = match_end
+
+    if cursor < len(normalized_text):
+        spans.append(
+            _gap_span(
+                normalized_text[cursor:],
+                cursor,
+                len(normalized_text),
+                source_segment_index,
+            )
+        )
+
+    if not meaningful_record_indexes:
+        reasons.append("missing-alignment")
+    if len(mapped_record_indexes) != len(meaningful_record_indexes):
+        reasons.append("unmatched-alignment-record")
+    if any(span.kind == "unmatched-source" for span in spans):
+        reasons.append("unmatched-source-text")
+
+    unique_reasons = tuple(dict.fromkeys(reasons))
+    complete = not unique_reasons or set(unique_reasons) <= {
+        "missing-or-invalid-alignment-time",
+        "non-chronological-alignment",
+    }
+    # A source map is text-complete only when every meaningful source character
+    # belongs to a matched record or an intentional separator. Invalid timing
+    # does not erase the text, but it does make timing-dependent effects unsafe.
+    complete = complete and not any(
+        span.kind in {"unmatched-source", "unmatched-record"} and bool(span.text)
+        for span in spans
+    )
+    timing_complete = (
+        complete
+        and bool(mapped_record_indexes)
+        and len(timed_record_indexes) == len(mapped_record_indexes)
+        and "non-chronological-alignment" not in unique_reasons
+    )
+    if not timing_complete and complete and mapped_record_indexes:
+        # Keep the reason additive and stable even when the invalid-time reason
+        # was already collected for several records.
+        if "incomplete-alignment-timing" not in unique_reasons:
+            unique_reasons = (*unique_reasons, "incomplete-alignment-timing")
+
+    return SubtitleSourceMap(
+        raw_text=raw_text,
+        normalized_text=normalized_text,
+        spans=tuple(spans),
+        raw_to_normalized=raw_to_normalized,
+        normalized_to_raw=normalized_to_raw,
+        source_provided=source_provided,
+        complete=complete,
+        timing_complete=timing_complete,
+        fallback_reasons=unique_reasons,
+        record_count=len(records),
+        mapped_record_indexes=tuple(mapped_record_indexes),
+        timed_record_indexes=tuple(timed_record_indexes),
+    )
+
+
+def source_text_for_records(
+    source_map: SubtitleSourceMap,
+    record_indexes: Sequence[int] | None = None,
+) -> str:
+    """Reconstruct source text for selected records without adding separators."""
+    indexes = (
+        source_map.mapped_record_indexes
+        if record_indexes is None
+        else tuple(record_indexes)
+    )
+    pieces = [
+        source_piece_for_record(source_map, index)
+        for index in indexes
+        if _record_span(source_map, index) is not None
+    ]
+    return _trim_display_edges("".join(pieces))
+
+
+def display_text_for_records(
+    source_map: SubtitleSourceMap,
+    record_indexes: Sequence[int] | None = None,
+    *,
+    transform: Callable[[str], str] | None = None,
+) -> str:
+    """Reconstruct transformed display text while retaining source identity."""
+    units = display_units_for_records(source_map, record_indexes, transform=transform)
+    return _trim_display_edges("".join(unit.display_text for unit in units))
+
+
+def source_piece_for_record(source_map: SubtitleSourceMap, record_index: int) -> str:
+    """Return the source piece assigned to one record, including its gap."""
+    span = _record_span(source_map, record_index)
+    if span is None or span.start is None or span.end is None:
+        return ""
+    previous_end = _previous_record_end(source_map, span)
+    suffix = _trailing_source(source_map, span)
+    return source_map.normalized_text[previous_end : span.end] + suffix
+
+
+def display_units_for_records(
+    source_map: SubtitleSourceMap,
+    record_indexes: Sequence[int] | None = None,
+    *,
+    transform: Callable[[str], str] | None = None,
+) -> tuple[SubtitleDisplayUnit, ...]:
+    """Create transformed units with exact source separators and offsets."""
+    transform = transform or (lambda value: value)
+    requested = (
+        source_map.mapped_record_indexes
+        if record_indexes is None
+        else tuple(record_indexes)
+    )
+    selected = set(requested)
+    units: list[SubtitleDisplayUnit] = []
+    line_breaks = set(line_break_boundaries(source_map.normalized_text))
+    for span in _alignment_spans(source_map):
+        if span.record_index not in selected:
+            continue
+        assert span.record_index is not None
+        assert span.start is not None and span.end is not None
+        previous_end = _previous_record_end(source_map, span)
+        source_prefix = source_map.normalized_text[previous_end : span.start]
+        source_suffix = _trailing_source(source_map, span)
+        units.append(
+            SubtitleDisplayUnit(
+                source_segment_index=span.source_segment_index,
+                record_index=span.record_index,
+                source_start=span.start,
+                source_end=span.end,
+                source_prefix=source_prefix,
+                source_token=span.text,
+                source_suffix=source_suffix,
+                display_prefix=_display_separator(source_prefix),
+                display_token=transform(span.text),
+                display_suffix=_display_separator(source_suffix),
+                can_break_before=span.start in line_breaks and span.start > 0,
+            )
+        )
+    return tuple(units)
+
+
+def _alignment_spans(source_map: SubtitleSourceMap) -> tuple[SubtitleSourceSpan, ...]:
+    return tuple(
+        span
+        for span in source_map.spans
+        if span.kind == "alignment"
+        and span.record_index is not None
+        and span.start is not None
+        and span.end is not None
+    )
+
+
+def _record_span(
+    source_map: SubtitleSourceMap, record_index: int
+) -> SubtitleSourceSpan | None:
+    return next(
+        (
+            span
+            for span in _alignment_spans(source_map)
+            if span.record_index == record_index
+        ),
+        None,
+    )
+
+
+def _previous_record_end(
+    source_map: SubtitleSourceMap, span: SubtitleSourceSpan
+) -> int:
+    assert span.start is not None
+    previous = [
+        item
+        for item in _alignment_spans(source_map)
+        if item.end is not None and item.end <= span.start
+    ]
+    if not previous:
+        return 0
+    assert previous[-1].end is not None
+    return previous[-1].end
+
+
+def _trailing_source(source_map: SubtitleSourceMap, span: SubtitleSourceSpan) -> str:
+    alignment_spans = _alignment_spans(source_map)
+    if not alignment_spans or alignment_spans[-1] != span:
+        return ""
+    assert span.end is not None
+    return source_map.normalized_text[span.end :]
+
+
+def _gap_span(
+    text: str,
+    start: int,
+    end: int,
+    source_segment_index: int,
+) -> SubtitleSourceSpan:
+    is_separator = bool(text) and all(character.isspace() for character in text)
+    return SubtitleSourceSpan(
+        source_segment_index,
+        None,
+        start,
+        end,
+        text,
+        "separator" if is_separator else "unmatched-source",
+        matched=is_separator,
+        granularity="separator" if is_separator else "source-text",
+    )
+
+
+def _display_separator(text: str) -> str:
+    return text.replace("\n", " ")
+
+
+def _trim_display_edges(text: str) -> str:
+    """Trim ordinary display padding without treating NBSP as disposable."""
+    return text.strip(" \t\r\n\v\f")
+
+
+def _finite_time(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    number = float(value)
+    return (
+        number
+        if number >= 0
+        and number == number
+        and number not in {float("inf"), float("-inf")}
+        else None
+    )
