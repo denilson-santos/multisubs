@@ -44,7 +44,10 @@ local `bkp_dev_*` branches unless their owner explicitly requests deletion.
 - `_verify.yml` is the shared trusted builder. It tests Python 3.10 and 3.13 on
   `ubuntu-24.04`, uses CPU PyTorch wheels, removes `dist/` immediately before
   building, verifies the complete bundled-font manifest from the clean wheel,
-  and keeps FFmpeg/libass checks in staging. This ensures checksums,
+  and keeps FFmpeg/libass checks in staging. The integration runner provisions
+  DejaVu, FreeFont, Noto Core, and WenQuanYi Zen Hei from the Ubuntu inventory;
+  multilingual tests record selected font hashes and treat a missing covering
+  fixture as a required-job failure. This ensures checksums,
   attestations, and uploads contain only artifacts from the current build.
 
 All third-party workflow actions are pinned to full reviewed SHAs. Dependabot

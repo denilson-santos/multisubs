@@ -21,16 +21,18 @@ lossless source-text and alignment mapping and was merged as
 [PR #77](https://github.com/denilson-santos/multisubs/pull/77). Plan 3 implemented
 linguistic cue/line boundaries while preserving alignment-record timing for
 word text and backdrop highlights and was merged as
-[PR #78](https://github.com/denilson-santos/multisubs/pull/78). Plan 4 now makes
-effects and previews safe for shaping-sensitive and bidirectional text.
+[PR #78](https://github.com/denilson-santos/multisubs/pull/78). Plan 4 made
+effects and previews safe for shaping-sensitive and bidirectional text and was
+merged as [PR #79](https://github.com/denilson-santos/multisubs/pull/79). Plan 5
+now verifies the complete multilingual matrix and rollout gates.
 
 ## Plans and progress
 
-Progress: 3/6 plans merged. Current plan: Plan 4, in review on
-`fix/shaping-safe-subtitle-effects`.
+Progress: 5/6 plans merged. Current plan: Plan 5, in review on
+`test/multilingual-render-validation`.
 Regression fixtures, local replay tooling, and backend evaluation are
-available. Plan 4 is active; Plan 5 has not started. Plan 0 records the selected
-libraries and their limits.
+available. Plan 5 is active. Plan 0 records the selected libraries and their
+limits.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
@@ -38,8 +40,8 @@ libraries and their limits.
 | [1 — Font coverage and consistent metrics](01-font-coverage-and-metrics.md) | Done | Plan 0 | [PR #76](https://github.com/denilson-santos/multisubs/pull/76) |
 | [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | Done | Plan 0 | [PR #77](https://github.com/denilson-santos/multisubs/pull/77) |
 | [3 — Linguistic boundaries and record-timed highlights](03-linguistic-cues-and-timing.md) | Done | Plans 1 and 2 | [PR #78](https://github.com/denilson-santos/multisubs/pull/78) |
-| [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | In progress | Plans 1, 2, and 3 | `fix/shaping-safe-subtitle-effects` |
-| [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | Planned | Plans 0–4 | Not started |
+| [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | Done | Plans 1, 2, and 3 | [PR #79](https://github.com/denilson-santos/multisubs/pull/79) |
+| [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | In review | Plans 0–4 | `test/multilingual-render-validation` |
 
 ## Delivery order and milestones
 

@@ -485,11 +485,11 @@ template paths or raw file contents.
 - Should include tests for no audio stream, corrupt media, absent FFmpeg, unsupported filters, missing alignment timestamps, nonexistent paths, output collisions, and cleanup failures.
 - Must verify both artifact modes: default cleanup and keep-transcriptions.
 
-Multilingual regressions may use temporary `xfail(strict=True,
-raises=AssertionError)` markers for plans that have not yet landed.
-Each marker must name its owning correction plan; the corresponding fix removes
-it, and the final multilingual gate permits none to remain. Unexpected errors
-must fail rather than being swallowed by an expected assertion failure.
+The completed multilingual gate permits no package-owned `xfail` marker.
+Unexpected errors must fail rather than being swallowed by an expected
+assertion failure. Required CI render evidence must fail when its provisioned
+font inventory is missing; an ordinary developer integration run may skip with
+an explanation when the external fixture is unavailable.
 Synthetic UTF-8 fixtures live under `tests/fixtures/multilingual`; local replay
 outputs and dependency evaluation environments remain temporary or ignored.
 The exact evaluation environment remains in
