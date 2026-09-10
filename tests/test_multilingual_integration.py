@@ -34,6 +34,10 @@ REQUIRE_MULTILINGUAL_FONTS = (
 )
 
 
+def _threshold(value: int) -> int:
+    return 255 if value > 32 else 0
+
+
 def _require_renderer():
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         pytest.skip("FFmpeg/ffprobe are required")
@@ -346,7 +350,7 @@ def test_controlled_fonts_render_high_risk_scripts(
     metadata = json.loads(Path(paths[0]).read_text())["metadata"]["rendering"]
     selected_font = metadata["text_measurement"]
     frame, log = _frame(Path(paths[2]), font_path.parent, timestamp=0.1)
-    bounds = frame.point(lambda value: 255 if value > 32 else 0).getbbox()
+    bounds = frame.point(_threshold).getbbox()
 
     record_property("language", language)
     record_property("font_family", selected_font["resolved_font"])
@@ -425,7 +429,7 @@ def test_historical_japanese_observation_points_render_synthetic_equivalent(
     rendered_bounds = []
     for timestamp, _ in observations:
         frame, _ = _frame(Path(paths[2]), WQY.parent, timestamp=timestamp)
-        bounds = frame.point(lambda value: 255 if value > 32 else 0).getbbox()
+        bounds = frame.point(_threshold).getbbox()
         assert bounds is not None
         assert 0 <= bounds[0] < bounds[2] <= geometry.render_width
         assert 0 <= bounds[1] < bounds[3] <= geometry.render_height
