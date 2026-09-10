@@ -33,6 +33,7 @@ from .models import (
     SubtitlePosition,
     VideoGeometry,
 )
+from .render_capabilities import assess_renderer_capability
 from .text_segmentation import simulated_effect_units
 from .wrapping import (
     build_display_fragments,
@@ -231,6 +232,25 @@ def _preview_timing_units(display_text: str) -> tuple[str, ...]:
     return units or (display_text,)
 
 
+def preview_word_effect_fallback_reason(
+    display_text: str,
+    config: SubtitleConfig,
+) -> str | None:
+    """Return the shared content-aware preview fallback reason, when any."""
+    capability = assess_renderer_capability(
+        display_text,
+        word_effects_requested=_word_effects_requested(config),
+    )
+    return capability.fallback_reason
+
+
+def _word_effects_requested(config: SubtitleConfig) -> bool:
+    return (
+        config.animation.word.text.enabled
+        or config.style.word_backdrop.kind.value != "none"
+    )
+
+
 def _is_punctuation_cluster(cluster: str) -> bool:
     return bool(cluster) and unicodedata.category(cluster[0]).startswith("P")
 
@@ -329,9 +349,8 @@ def build_preview_ass(
         "end": end,
         "text": display_text,
     }
-    if (
-        resolved_config.animation.word.text.enabled
-        or resolved_config.style.word_backdrop.kind.value != "none"
+    if _word_effects_requested(resolved_config) and not (
+        preview_word_effect_fallback_reason(display_text, resolved_config)
     ):
         preview_cue = _build_preview_word_cue(display_text)
         if preview_cue is not None:
@@ -390,9 +409,8 @@ def build_animation_preview_ass(
         "end": cue_end / 100,
         "text": display_text,
     }
-    if (
-        resolved_config.animation.word.text.enabled
-        or resolved_config.style.word_backdrop.kind.value != "none"
+    if _word_effects_requested(resolved_config) and not (
+        preview_word_effect_fallback_reason(display_text, resolved_config)
     ):
         segment["_karaoke_cue"] = karaoke_cue
     write_ass(
@@ -517,9 +535,8 @@ def build_preview_guide_events(
     preview_segment: dict[str, object] = {"text": display_text}
     if karaoke_cue is not None:
         preview_segment["_karaoke_cue"] = karaoke_cue
-    elif (
-        config.animation.word.text.enabled
-        or config.style.word_backdrop.kind.value != "none"
+    elif _word_effects_requested(config) and not (
+        preview_word_effect_fallback_reason(display_text, config)
     ):
         preview_cue = _build_preview_word_cue(display_text)
         if preview_cue is not None:

@@ -21,6 +21,7 @@ from .models import (
     SubtitleVisualLine,
     VideoGeometry,
 )
+from .render_capabilities import assess_renderer_capability
 from .text_measurement import TextMeasurer, build_text_measurer
 from .text_segmentation import grapheme_clusters as _unicode_grapheme_clusters
 
@@ -557,6 +558,12 @@ def _position_line_fragments(
     line_y: int,
     metrics: WrappingMetrics,
 ) -> tuple[CuePlacement, ...]:
+    capability = assess_renderer_capability(
+        line.text,
+        word_effects_requested=True,
+    )
+    if not capability.word_effects_supported:
+        return ()
     if anchor.value.endswith("left"):
         line_left = float(line_x)
     elif anchor.value.endswith("right"):

@@ -28,6 +28,7 @@ from multisubs.preview import (
     normalise_preview_text,
     parse_preview_duration,
     parse_preview_timestamp,
+    preview_word_effect_fallback_reason,
     resolve_preview_timestamp,
 )
 
@@ -285,6 +286,46 @@ def test_build_animation_preview_ass_uses_production_timeline_and_phases(
     assert "0:00:02.50" in content
     assert "\\k" not in content
     assert "_karaoke_preview_cue" not in content
+
+
+@pytest.mark.parametrize("animation", [False, True])
+def test_preview_suppresses_word_effects_for_shaping_sensitive_text(
+    tmp_path: Path, animation: bool
+):
+    config = validate_subtitle_config(
+        None,
+        animation_values={
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "active-word",
+        },
+    )
+    request = _request(
+        tmp_path,
+        subtitle_config=config,
+        preview_text=r"مرحبا 123 \{test\}",
+        preview_duration_ms=2_000,
+    )
+    path = tmp_path / "shaping-preview.ass"
+
+    if animation:
+        _, display_text = build_animation_preview_ass(path, request, GEOMETRY, 2.0)
+    else:
+        _, display_text = build_preview_ass(path, request, GEOMETRY, 2.0)
+
+    assert preview_word_effect_fallback_reason(display_text, config) == (
+        "unsupported-word-shaping"
+    )
+    content = path.read_text(encoding="utf-8")
+    dialogue = [
+        line
+        for line in content.splitlines()
+        if line.startswith("Dialogue:") and r"\p1" not in line
+    ]
+    assert len(dialogue) == 1
+    assert "مرحبا 123" in dialogue[0]
+    assert r"\\\{test\\\}" in dialogue[0]
+    assert r"\k" not in dialogue[0]
+    assert rgba_to_ass_color_override("#FFD54F", 1) not in dialogue[0]
 
 
 def test_preview_ass_uses_the_same_exact_font_weight_as_normal_output(

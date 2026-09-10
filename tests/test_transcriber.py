@@ -144,6 +144,7 @@ def test_japanese_display_groups_guide_cues_but_records_drive_karaoke(mode):
     ] == list(range(len(words)))
     assert prepared[0]["_word_effect"] == {
         "strategy": "alignment-records",
+        "renderer_strategy": "positioned-fragments",
         "status": "active",
         "units": "alignment-records",
         "unit_count": len(words),
@@ -155,6 +156,7 @@ def test_japanese_display_groups_guide_cues_but_records_drive_karaoke(mode):
         "cues": 1,
         "fallback_cues": 0,
         "reasons": {},
+        "renderer_strategies": {"positioned-fragments": 1},
     }
     assert transcriber._serializable_segment(prepared[0])["segmentation"] == {
         "strategy": "sudachi-b",
@@ -819,6 +821,7 @@ def test_lossy_source_mapping_suppresses_word_effects():
     assert "_karaoke_cue" not in prepared[0]
     assert prepared[0]["_word_effect"] == {
         "strategy": "static-fallback",
+        "renderer_strategy": "full-line",
         "status": "fallback",
         "units": "alignment-records",
         "unit_count": 1,

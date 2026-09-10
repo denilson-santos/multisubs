@@ -1,8 +1,8 @@
 # Build readable linguistic boundaries with record-timed highlights
 
-Status: In review
+Status: Done
 
-Delivery branch: `fix/linguistic-subtitle-cues`.
+Delivery: [PR #78](https://github.com/denilson-santos/multisubs/pull/78).
 
 Depends on: [Plan 1](01-font-coverage-and-metrics.md) and
 [Plan 2](02-text-and-alignment-mapping.md).

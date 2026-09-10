@@ -18,25 +18,27 @@ and was merged as [PR #75](https://github.com/denilson-santos/multisubs/pull/75)
 Plan 1 implemented the production font correction and was merged as
 [PR #76](https://github.com/denilson-santos/multisubs/pull/76). Plan 2 implemented
 lossless source-text and alignment mapping and was merged as
-[PR #77](https://github.com/denilson-santos/multisubs/pull/77); Plan 3 now
-implements linguistic cue/line boundaries while preserving alignment-record
-timing for word text and backdrop highlights.
+[PR #77](https://github.com/denilson-santos/multisubs/pull/77). Plan 3 implemented
+linguistic cue/line boundaries while preserving alignment-record timing for
+word text and backdrop highlights and was merged as
+[PR #78](https://github.com/denilson-santos/multisubs/pull/78). Plan 4 now makes
+effects and previews safe for shaping-sensitive and bidirectional text.
 
 ## Plans and progress
 
-Progress: 2/6 plans merged. Current plan: Plan 3, in review on
-`fix/linguistic-subtitle-cues`.
+Progress: 3/6 plans merged. Current plan: Plan 4, in review on
+`fix/shaping-safe-subtitle-effects`.
 Regression fixtures, local replay tooling, and backend evaluation are
-available. Plan 3 is active; Plans 4–5 have not started. Plan 0 records the
-selected libraries and their limits.
+available. Plan 4 is active; Plan 5 has not started. Plan 0 records the selected
+libraries and their limits.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
 | [0 — Regressions and backend decisions](00-regressions-and-decisions.md) | Done | Existing source and completed layout/font/animation foundations | [PR #75](https://github.com/denilson-santos/multisubs/pull/75) |
 | [1 — Font coverage and consistent metrics](01-font-coverage-and-metrics.md) | Done | Plan 0 | [PR #76](https://github.com/denilson-santos/multisubs/pull/76) |
 | [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | Done | Plan 0 | [PR #77](https://github.com/denilson-santos/multisubs/pull/77) |
-| [3 — Linguistic boundaries and record-timed highlights](03-linguistic-cues-and-timing.md) | In review | Plans 1 and 2 | `fix/linguistic-subtitle-cues` |
-| [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | Planned | Plans 1, 2, and 3 | Not started |
+| [3 — Linguistic boundaries and record-timed highlights](03-linguistic-cues-and-timing.md) | Done | Plans 1 and 2 | [PR #78](https://github.com/denilson-santos/multisubs/pull/78) |
+| [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | In progress | Plans 1, 2, and 3 | `fix/shaping-safe-subtitle-effects` |
 | [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | Planned | Plans 0–4 | Not started |
 
 ## Delivery order and milestones

@@ -58,6 +58,7 @@ flowchart LR
 | multisubs/transcriber.py | Loads WhisperX, transcribes audio, aligns words, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, generates deterministic simulated word timing for animated previews, and generates optional native or explicit ASS guide events. | build_preview_ass(), build_animation_preview_ass(), build_simulated_karaoke_cue(), resolve_preview_timestamp() |
 | multisubs/animation.py | Normalizes cue and aligned-word phases with configured durations inside quantized bounds and samples relative opacity, movement, and scale state without I/O. | normalize_cue_animation(), normalize_word_animation(), animation_boundaries(), word_animation_boundaries(), sample_cue_animation(), sample_word_animation() |
+| multisubs/render_capabilities.py | Classifies actual display text for bidirectional/contextual shaping and selects positioned word fragments or complete logical-line fallback without using a language allowlist. | assess_renderer_capability(), RendererCapability |
 | multisubs/ass.py | Compiles semantic appearance and cue/word animation into trusted private ASS fields and overrides around safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
 | multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream, render one preview PNG, or encode a silent frozen-background animation preview. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
 | multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
@@ -172,6 +173,14 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   If a display cue cannot be mapped to every record in order, it remains plain
   and contributes to one aggregate effect fallback warning; a visual line
   break inside a group is not itself a fallback condition.
+- Before ASS serialization, the shared renderer-capability boundary examines
+  actual display characters. Bidirectional classes, contextual-shaping script
+  ranges, and joining controls disable both word tracks because measured
+  logical-prefix placement is not a visual-run algorithm. The cue remains one
+  complete logical text event per visual line for libass shaping, while cue
+  animation and shared backdrops remain active. Production and both preview
+  modes use the same decision and report `unsupported-word-shaping` without
+  logging subtitle contents.
 
 Semantic cue rules reside in multisubs/transcriber.py, source mapping and pinned
 Unicode boundaries reside in multisubs/text_segmentation.py, and shared visual
@@ -482,6 +491,14 @@ fragments. Word starts and ends are quantized with the existing ASS rule.
 normal, and omits zero-length intervals. Word outline and measured box
 decorations follow their own mode and animation track. Plain fallback cues use
 the same style, placement, timing, and text as the ordinary path.
+The positioned-fragment path is limited to display text classified as safe by
+`render_capabilities.py`. Arabic-family, Hebrew, Indic, and other detected
+bidirectional/contextual-shaping content uses complete logical-line events;
+multisubs never reverses strings or approximates visual runs. The retained
+per-cue `word_effect` object records `renderer_strategy`, bounded
+`shaping_features`, and `unsupported-word-shaping` when requested word tracks
+are suppressed. Aggregate diagnostics count each cue once and summarize both
+fallback reasons and renderer strategies.
 When aligned-word behavior positions text fragments independently, a cue glyph
 outline is partitioned into the same fragments and reuses their exact measured
 placements. Mixing a libass-shaped whole-line outline with positioned fragment

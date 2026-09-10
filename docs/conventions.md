@@ -318,6 +318,11 @@ template paths or raw file contents.
   Text events must not duplicate the box for every visual line; generated
   drawing coordinates remain separate from escaped transcript fragments.
 - Word-timed animations must preserve exact display-fragment reconstruction and use only validated aligned timestamps; missing or lossy mappings must fall back without inventing timing tokens.
+- Renderer tests for word effects must compare complete logical-line libass
+  output against the selected effect path for bidirectional and contextual
+  shaping samples. Tests must check geometry independently of highlight color,
+  and unsupported fragment placement must assert the documented full-line
+  fallback instead of treating unverified output as supported.
 - Karaoke interval events must remain adjacent and non-overlapping. Word-local
   motion may instead render independently positioned measured fragments, but
   must keep surrounding advances stable and never layer two visible copies of

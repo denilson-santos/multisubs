@@ -709,3 +709,43 @@ def test_serialize_ass_placement_uses_private_anchor_code(anchor, alignment):
     placement = CuePlacement(anchor=anchor, position_x=10, position_y=20)
 
     assert serialize_ass_placement(placement) == (f"{{\\an{alignment}\\pos(10,20)}}")
+
+
+def test_write_ass_never_positions_bidirectional_word_fragments(tmp_path: Path):
+    path = tmp_path / "rtl.ass"
+    config = validate_subtitle_config(
+        None,
+        animation_values={
+            "cue_text_entrance": "fade",
+            "word_text_emphasis": "highlight",
+            "word_text_mode": "active-word",
+        },
+    )
+    text = "مرحبا 123 (test)"
+    cue = KaraokeCue(
+        (
+            SubtitleDisplayFragment("مرحبا", 0),
+            SubtitleDisplayFragment(" "),
+            SubtitleDisplayFragment("123", 1),
+            SubtitleDisplayFragment(" (test)", 2),
+        ),
+        (40, 30, 30),
+        ((0, 40), (40, 70), (70, 100)),
+    )
+
+    write_ass(
+        path,
+        [{"start": 0.0, "end": 1.0, "text": text, "_karaoke_cue": cue}],
+        config,
+        GEOMETRY,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:") and r"\p1" not in line
+    ]
+    assert len(dialogue) == 2
+    assert all(line.endswith(text) for line in dialogue)
+    assert any(r"\fade" in line for line in dialogue)
+    assert all(r"\k" not in line for line in dialogue)
