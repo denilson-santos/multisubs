@@ -1,4 +1,4 @@
-# Evaluation only. Production dependencies are adopted by their owning plans.
+# Exact backend-evaluation environment; production pins also live in pyproject.toml.
 fonttools==4.63.0
 uniseg==0.10.1
 SudachiPy==0.6.11

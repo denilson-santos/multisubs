@@ -122,6 +122,17 @@ def test_simulated_karaoke_cue_preserves_unicode_fragment_reconstruction(text):
     assert len(cue.active_intervals) == len(cue.durations)
 
 
+def test_simulated_cjk_effect_timing_uses_character_like_units():
+    cue = build_simulated_karaoke_cue("装置は", 0, 400)
+
+    assert len(cue.durations) == 3
+    assert [
+        fragment.word_index
+        for fragment in cue.fragments
+        if fragment.word_index is not None
+    ] == [0, 1, 2]
+
+
 def test_preview_timestamp_defaults_to_midpoint_or_zero():
     assert resolve_preview_timestamp(None, GEOMETRY) == 5.0
     unknown_duration = replace(GEOMETRY, duration_seconds=None)

@@ -13,6 +13,7 @@ from multisubs.text_measurement import (
 )
 from multisubs.text_segmentation import build_source_text_map, display_units_for_records
 from multisubs.wrapping import (
+    _find_best_layout_break,
     build_display_fragments,
     build_visual_lines,
     fit_first_text_segment,
@@ -162,6 +163,29 @@ def test_preview_first_segment_uses_available_lines_before_cutting_prefix():
     assert four_line == "one two three\nfour five six\nseven eight\nnine ten"
     assert three_line.count("\n") == 2
     assert four_line.count("\n") == 3
+
+
+def test_prefix_search_handles_nonmonotonic_shaped_measurement():
+    info = TextMeasurementInfo(
+        mode="font-metrics",
+        requested_font="Test",
+        resolved_font="Test",
+        resolved_style="Regular",
+        font_source="test",
+        shaping="raqm",
+        metric_size=20,
+    )
+    widths = {"a": 10, "a b": 100, "a b c": 20, "a b c d": 100}
+    measurer = TextMeasurer(info, lambda text: widths[text], line_height=20)
+    metrics = replace(
+        _metrics(), text_measurer=measurer, width_budget=50, line_capacity=1
+    )
+
+    words = [
+        {"word": value, "start": index * 0.1, "end": (index + 1) * 0.1}
+        for index, value in enumerate("abcd")
+    ]
+    assert _find_best_layout_break(words, metrics) == 3
 
 
 def test_timed_word_break_uses_available_visual_lines():
