@@ -33,7 +33,7 @@ def _cases(name):
                     raises=AssertionError,
                     reason=f"Multilingual Plan {case['owner']}: {case['id']}",
                 )
-                if case["owner"] is not None
+                if case["owner"] not in {None, 2}
                 else ()
             ),
         )
@@ -93,9 +93,6 @@ def test_missing_japanese_glyphs_are_not_measured_as_exact_inter():
     assert measured != missing
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="Multilingual Plan 2: untimed text loss"
-)
 def test_partially_aligned_segment_keeps_untimed_text():
     source = {
         "start": 0.0,

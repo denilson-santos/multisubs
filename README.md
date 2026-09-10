@@ -40,8 +40,9 @@ WhisperX must download model assets that are not already cached.
 - An FFmpeg build with the `subtitles` filter and libass support; animated
   previews additionally require the `libx264` H.264 encoder.
 - Enough CPU or GPU memory for the selected Whisper model.
-- The Python package installs `fontTools` for bounded Unicode cmap checks. No
-  font or dictionary is downloaded at runtime.
+- The Python package installs `fontTools` for bounded Unicode cmap checks and
+  `uniseg` 0.10.1 for pinned Unicode boundary data. No font or dictionary is
+  downloaded at runtime.
 
 CUDA with float16 is selected automatically when PyTorch reports an available
 GPU. CPU runs use int8 inference and can take substantially longer.
@@ -627,10 +628,18 @@ FFmpeg/libass. Otherwise, it uses a Unicode-aware width estimate. Wrapping takes
 font size, weight, letter spacing, line height, maximum dimensions, backdrop,
 and shadow into account.
 
-Readable punctuation and timing boundaries are preferred. Text is never
-truncated, and long indivisible tokens remain intact even when they exceed the
-estimated width. SRT and ASS receive the same intentional line breaks; JSON
-keeps both original cue text and its rendered `display_text`.
+The aligned segment's source text is authoritative for separators and adjacency;
+the alignment records provide timing and stable identity, not permission to
+insert spaces or to retokenize transformed text. Korean spaces, CJK/Latin
+adjacency, punctuation, NBSP, combining sequences, and emoji joiners are
+preserved through wrapping. Readable punctuation and timing boundaries are
+preferred. Text is never truncated, and long indivisible tokens remain intact
+even when they exceed the estimated width. SRT and ASS receive the same
+intentional line breaks; JSON keeps original cue text and aligned records beside
+the rendered `display_text`. If a source-to-alignment map is incomplete, the
+complete source cue remains at its coarse segment time, word-dependent effects
+are disabled, and JSON records a bounded fallback reason/count instead of
+inventing timestamps.
 
 ## 🌍 Supported languages
 
@@ -693,7 +702,12 @@ partial final media is not published.
 When `--keep-transcriptions` is enabled, the versioned JSON transcript includes
 source and processing metadata, original and displayed cue text, render
 geometry, resolved layout and typography, wrapping diagnostics, and the four
-independent cue/word text/backdrop animation tracks. Rendering diagnostics also record the
+independent cue/word text/backdrop animation tracks. Original WhisperX word
+records, including records without usable times, are retained as supplied. A
+lossy source-to-alignment map adds per-cue `alignment_mapping` counts/reasons
+and aggregate `metadata.rendering.text_mapping` diagnostics; internal spans,
+offset tables, font objects, paths, and generated ASS tags are not serialized.
+Rendering diagnostics also record the
 requested and resolved template names; omitted selection is recorded as
 requested `null` and resolved `default`. A custom selection additionally
 records source `custom`, schema_version `1`, and its resolved built-in base;
@@ -760,6 +774,11 @@ and system tools retain their own licenses.
 
 - One local input video is processed per invocation.
 - Translation output is fixed to English.
+- WhisperX can return incomplete alignment for punctuation, omitted words, or
+  malformed times. Those cues retain complete source text at segment timing but
+  cannot use word-dependent effects; the retained JSON reports the fallback
+  reason and count. Source distinctions already normalized or omitted by
+  WhisperX cannot be recovered from audio after alignment.
 - Aligned-word behavior is unavailable for translated transcription output;
   static PNG previews suppress all motion and show one representative state for
   each configured word track, while animated MP4 previews use simulated timing.

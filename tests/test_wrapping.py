@@ -1,3 +1,4 @@
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -10,11 +11,13 @@ from multisubs.text_measurement import (
     TextMeasurer,
     build_unicode_text_measurer,
 )
+from multisubs.text_segmentation import build_source_text_map, display_units_for_records
 from multisubs.wrapping import (
     build_display_fragments,
     build_visual_lines,
     fit_first_text_segment,
     has_multiple_visual_lines,
+    render_display_units,
     split_words_for_layout,
     transform_display_text,
     wrap_subtitle_text,
@@ -208,6 +211,60 @@ def test_visual_lines_preserve_word_fragments_and_measure_each_line():
         [0],
         [1],
     ]
+
+
+def test_mapped_display_wrapping_retains_source_separator_provenance():
+    source_map = build_source_text_map(
+        "one two ",
+        [
+            {"word": "one", "start": 0.0, "end": 0.2},
+            {"word": "two", "start": 0.2, "end": 0.4},
+        ],
+    )
+    metrics = replace(
+        _metrics(),
+        text_measurer=TextMeasurer(
+            TextMeasurementInfo(
+                mode="font-metrics",
+                requested_font="Test",
+                resolved_font="Test",
+                resolved_style="Regular",
+                font_source="test",
+                shaping="basic",
+                metric_size=20,
+            ),
+            lambda text: len(text) * 10.0,
+            line_height=20.0,
+        ),
+    )
+    units = display_units_for_records(source_map)
+
+    display, fragments, line_breaks = render_display_units(units, metrics)
+
+    assert display == "one\ntwo"
+    assert line_breaks == (" ",)
+    assert "".join(fragment.text for fragment in fragments) == display
+
+
+def test_text_only_wrapping_keeps_nonbreaking_separators():
+    metrics = replace(
+        _metrics(),
+        text_measurer=TextMeasurer(
+            TextMeasurementInfo(
+                mode="font-metrics",
+                requested_font="Test",
+                resolved_font="Test",
+                resolved_style="Regular",
+                font_source="test",
+                shaping="basic",
+                metric_size=20,
+            ),
+            lambda text: len(text) * 30.0,
+            line_height=20.0,
+        ),
+    )
+
+    assert wrap_subtitle_text("a\u00a0b", metrics=metrics) == "a\u00a0b"
 
 
 def test_multiple_visual_lines_normalizes_line_endings():

@@ -251,6 +251,84 @@ class SubtitleDisplayFragment:
 
 
 @dataclass(frozen=True)
+class SubtitleSourceSpan:
+    """One source range or one retained alignment record."""
+
+    source_segment_index: int
+    record_index: int | None
+    start: int | None
+    end: int | None
+    text: str
+    kind: str
+    start_time: float | None = None
+    end_time: float | None = None
+    matched: bool = True
+    granularity: str = "word"
+
+    @property
+    def timed(self) -> bool:
+        """Return whether this span has a validated alignment interval."""
+        return self.start_time is not None and self.end_time is not None
+
+    @property
+    def source_record_identity(self) -> tuple[int, int] | None:
+        """Return the stable original segment/record identity when available."""
+        if self.record_index is None:
+            return None
+        return (self.source_segment_index, self.record_index)
+
+    @property
+    def alignment_granularity(self) -> str:
+        """Return the semantic granularity assigned to this source span."""
+        return self.granularity
+
+
+@dataclass(frozen=True)
+class SubtitleSourceMap:
+    """Lossless source-to-alignment mapping for one original ASR segment."""
+
+    raw_text: str
+    normalized_text: str
+    spans: tuple[SubtitleSourceSpan, ...]
+    raw_to_normalized: tuple[int | None, ...]
+    normalized_to_raw: tuple[int, ...]
+    source_provided: bool
+    complete: bool
+    timing_complete: bool
+    fallback_reasons: tuple[str, ...]
+    record_count: int
+    mapped_record_indexes: tuple[int, ...]
+    timed_record_indexes: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SubtitleDisplayUnit:
+    """One transformed alignment token plus its source separator provenance."""
+
+    source_segment_index: int
+    record_index: int
+    source_start: int
+    source_end: int
+    source_prefix: str
+    source_token: str
+    source_suffix: str
+    display_prefix: str
+    display_token: str
+    display_suffix: str
+    can_break_before: bool
+
+    @property
+    def source_text(self) -> str:
+        """Return the source text represented by this display unit."""
+        return self.source_prefix + self.source_token + self.source_suffix
+
+    @property
+    def display_text(self) -> str:
+        """Return the transformed text represented by this display unit."""
+        return self.display_prefix + self.display_token + self.display_suffix
+
+
+@dataclass(frozen=True)
 class SubtitleVisualLine:
     """One measured visual line retained for explicit line-height rendering."""
 
