@@ -1,8 +1,8 @@
 # Preserve source text independently of alignment units
 
-Status: In review
+Status: Done
 
-Delivery branch: `fix/lossless-subtitle-text`.
+Delivery: [PR #77](https://github.com/denilson-santos/multisubs/pull/77), merged.
 
 Depends on: [Plan 0](00-regressions-and-decisions.md).
 

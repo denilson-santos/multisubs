@@ -28,7 +28,7 @@ Read the relevant project documentation before changing behavior:
 | multisubs/custom_templates.py | Bounded local custom-template directory loading, built-in-only inheritance, and per-request source resolution. |
 | multisubs/assets/templates/ | Deterministic index and validated sparse internal JSON definitions for built-in templates. |
 | multisubs/text_measurement.py | Custom/bundled/fontconfig resolution, Pillow/RAQM measurement, and Unicode fallback estimation. |
-| multisubs/text_segmentation.py | Pinned Unicode boundaries, bounded line-ending normalization, and lossless source-to-alignment span mapping. |
+| multisubs/text_segmentation.py | Pinned Unicode boundaries, lossless source mapping, and offline Japanese/Chinese linguistic display grouping. |
 | multisubs/utils.py | Collision-safe file and directory naming. |
 | multisubs/errors.py | User-actionable error types at module boundaries. |
 | multisubs/models.py | Typed style, layout, animation, request, and artifact contracts. |

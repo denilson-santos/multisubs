@@ -11,9 +11,10 @@ Animated preview integration additionally requires the availability check in the
 ## Objective and scope
 
 Ensure the renderer does not destroy valid text shaping by placing logical
-fragments independently from left to right. Apply the same font, grouping, and
-effect-capability decision to final subtitles, static previews, and animation
-previews. Test suspected RTL/Indic failures before labeling them confirmed.
+fragments independently from left to right. Apply the same font, boundary
+preferences, effect-unit contract, and effect-capability decision to final
+subtitles, static previews, and animation previews. Test suspected RTL/Indic
+failures before labeling them confirmed.
 
 This increment keeps FFmpeg/libass authoritative. It does not introduce a
 second video renderer, reverse Unicode strings manually, or promise arbitrary
@@ -65,17 +66,20 @@ actionable error behavior instead of emitting corrupt text.
   diagnostics before serialization. A font fallback is not a timing fallback;
   report them separately and count each affected cue only once per category.
 - [ ] Update `_preview_timing_units`, `_build_preview_word_cue`,
-  `build_simulated_karaoke_cue`, and preview text preparation to reuse source
-  groups and legal boundaries. Remove duplicate CJK/grapheme token heuristics.
+  `build_simulated_karaoke_cue`, and preview text preparation to reuse Plan 3's
+  boundary and effect-unit adapters. Linguistic groups select representative
+  fitting content; script-appropriate simulated units drive effects without
+  pretending to be real alignment records. Remove duplicate ad hoc heuristics.
 - [ ] Keep `--lang` ignored as a speech option in previews. Infer only script
   information from sample text and use a deterministic generic locale where
   ambiguous; do not add model-based detection. Production uses the resolved
   output language. Document that ambiguous Han-only preview text cannot prove
   the same language-specific grouping without that language context.
-- [ ] Preserve static preview representative states (first active group or
+- [ ] Preserve static preview representative states (first active effect unit or
   progressive half) and the animated preview's exact duration, lead/tail,
   frozen frame, no audio, 30 fps, and simulated timing label. Simulation uses
-  groups, but remains isolated from real speech timing and its fallback rules.
+  the explicit preview effect units, but remains isolated from real speech
+  timing and its fallback rules.
 - [ ] Make previews apply the same shaping fallback as production. Warn outside
   the image/video rather than adding mandatory diagnostic overlays to user
   media. Remove corresponding Plan 0 `xfail` marks.
@@ -99,7 +103,7 @@ pairwise combinations plus every confirmed regression.
 Acceptance: safe effects demonstrably preserve rendering; unsafe word effects
 use legible full-line text with exact fallback metadata. PNG, simulated MP4,
 and production agree on font and capability for identical text/context; no
-preview imports WhisperX/PyTorch. Group-based simulation conserves the existing
+preview imports WhisperX/PyTorch. Effect-unit simulation conserves the existing
 centisecond timeline and rejects impossible durations without losing text.
 
 ```sh
@@ -120,8 +124,9 @@ or shaper is missing cannot establish support for that configuration.
 ## Documentation and delivery
 
 Update README supported presentation/fallback limitations and preview timing;
-PRD FR-16/FR-17/FR-18 to distinguish group-based simulation, real aligned
-groups, and unsupported word-effect fallback; architecture renderer strategy,
+PRD FR-16/FR-17/FR-18 to distinguish simulated effect units, real alignment
+records, linguistic boundary groups, and unsupported word-effect fallback;
+architecture renderer strategy,
 bidirectional text, preview flow, and JSON; conventions for shaping-safe tests.
 When implemented, synchronize the preview dashboard with a prospective link
 to this plan without changing its merge status absent authoritative evidence.

@@ -16,23 +16,26 @@ Speech-recognition accuracy, new source languages, translation targets, and a
 subtitle editor are excluded. Plan 0 established the reproducible foundation
 and was merged as [PR #75](https://github.com/denilson-santos/multisubs/pull/75).
 Plan 1 implemented the production font correction and was merged as
-[PR #76](https://github.com/denilson-santos/multisubs/pull/76); Plan 2 now
-implements lossless source-text and alignment mapping and is ready for review.
+[PR #76](https://github.com/denilson-santos/multisubs/pull/76). Plan 2 implemented
+lossless source-text and alignment mapping and was merged as
+[PR #77](https://github.com/denilson-santos/multisubs/pull/77); Plan 3 now
+implements linguistic cue/line boundaries while preserving alignment-record
+timing for word text and backdrop highlights.
 
 ## Plans and progress
 
-Progress: 1/6 plans merged. Current plan: Plan 2, ready for review on
-`fix/lossless-subtitle-text`.
+Progress: 2/6 plans merged. Current plan: Plan 3, in review on
+`fix/linguistic-subtitle-cues`.
 Regression fixtures, local replay tooling, and backend evaluation are
-available. Plans 3–5 have not started; Plan 0 records the selected libraries
-and their limits.
+available. Plan 3 is active; Plans 4–5 have not started. Plan 0 records the
+selected libraries and their limits.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
 | [0 — Regressions and backend decisions](00-regressions-and-decisions.md) | Done | Existing source and completed layout/font/animation foundations | [PR #75](https://github.com/denilson-santos/multisubs/pull/75) |
 | [1 — Font coverage and consistent metrics](01-font-coverage-and-metrics.md) | Done | Plan 0 | [PR #76](https://github.com/denilson-santos/multisubs/pull/76) |
-| [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | In review | Plan 0 | `fix/lossless-subtitle-text` |
-| [3 — Linguistic groups and readable cue boundaries](03-linguistic-cues-and-timing.md) | Planned | Plans 1 and 2 | Not started |
+| [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | Done | Plan 0 | [PR #77](https://github.com/denilson-santos/multisubs/pull/77) |
+| [3 — Linguistic boundaries and record-timed highlights](03-linguistic-cues-and-timing.md) | In review | Plans 1 and 2 | `fix/linguistic-subtitle-cues` |
 | [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | Planned | Plans 1, 2, and 3 | Not started |
 | [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | Planned | Plans 0–4 | Not started |
 
@@ -46,7 +49,7 @@ conflicting edits in orchestration and models.
 | --- | --- | --- |
 | Reproducible diagnosis | 0 | Synthetic reproductions, executable checks, and backend decisions recorded |
 | Font defect corrected | 1 | Japanese glyphs receive matching measured/rendered spacing |
-| Text and timing corrected | 2–3 | Korean spaces survive; Japanese groups are not cut at arbitrary aligned characters |
+| Text and timing corrected | 2–3 | Korean spaces survive; Japanese groups guide cue/line cuts while highlights preserve alignment-record timing |
 | Safe presentation across scripts | 4 | Effects and previews preserve shaping or explicitly use a tested fallback |
 | Release evidence complete | 5 | Multilingual visual, artifact, and clean-install gates pass |
 
@@ -61,10 +64,12 @@ historical delivery records. This package tightens their correctness contracts;
 it does not reopen completed work or restore removed karaoke flags.
 
 Prospective changes are explicit: family resolution alone will no longer prove
-glyph coverage; alignment records will no longer define lexical words; CJK
-width will no longer imply that spaces must be removed; preview timing units
-will share production text grouping. The longest fitting prefix rule remains,
-but only among linguistically legal candidates of equal priority.
+glyph coverage; alignment records will no longer define lexical words but will
+remain the default word-effect timing units; CJK width will no longer imply
+that spaces must be removed. Linguistic grouping selects cue/line boundaries
+and representative preview content, while real or simulated effect units remain
+an explicit, separate contract. The longest fitting prefix rule remains, but
+only among linguistically legal candidates of equal priority.
 
 The [animated preview plan](../subtitle-preview/01-animation-clip.md) still has
 an older `In review` dashboard record. On 2026-09-09, an origin fetch and ancestry
@@ -105,6 +110,9 @@ remain; otherwise use `Planned` between increments and `Done` only at 6/6.
 - Source text, meaningful separators, punctuation, word metadata, logical order,
   and timestamps are conserved; only display casing and intentional wrapping
   change presentation. Derived grouping never fabricates speech timestamps.
+- A legal visual line break, including one inside a linguistic group, never
+  disables effects for otherwise complete alignment records. Static fallback
+  reports an actual invalid mapping or unsupported rendering capability.
 - Preview PNG, simulated MP4, ordinary subtitles, and animated subtitles share
   font, text, layout, and render capability decisions.
 - Current CLI flags/defaults, English-only translation, output naming,

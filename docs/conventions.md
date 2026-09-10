@@ -83,6 +83,16 @@ Update a higher-level document when a proposed change intentionally modifies the
   dictionary segmentation. Do not replace it with ad-hoc combining-mark,
   East-Asian-width, or UTF-16 indexing logic without updating the multilingual
   plan and its fixture evidence.
+- Must keep Japanese and Chinese lexical grouping behind the shared text
+  adapter with the reviewed pins SudachiPy 0.6.11,
+  SudachiDict-small 20260723, and jieba 0.42.1. Load dictionaries lazily and
+  offline, reconcile every provider boundary with complete uniseg graphemes,
+  and preserve source offsets and alignment records. jieba must use a bounded
+  invocation-local temporary cache that is removed afterwards; never use its
+  shared host cache or persist transcript text. These Apache-2.0/MIT
+  dependencies add about 164 MB installed in the evaluated Python 3.10
+  environment; version, license, wheel, hash, and platform evidence lives in
+  the multilingual backend decision plan.
 - Must normalize public font-weight names, aliases, and supported numeric input
   to one canonical OpenType rank. Face selection ranks absolute weight distance
   before italic mismatch and uses stable provider order as the final tie
@@ -248,6 +258,13 @@ template paths or raw file contents.
   effects, and expose bounded diagnostics without fabricating missing word
   timestamps. Retained JSON must keep the original JSON-safe alignment records;
   internal spans and offset tables are not public artifact data.
+- Must distinguish original alignment records, derived linguistic display
+  groups, and legal visual line breaks. Groups guide cue and preferred line
+  boundaries; they do not replace alignment records as word-effect timing
+  units. A significant pause splits a group. An oversized group may be
+  subdivided only at a legal grapheme/line opportunity backed by an exact
+  existing record boundary, and the fallback must be diagnosed rather than
+  represented as a lexical word.
 - Should make changes to language handling, VAD behavior, alignment models, or model defaults only with targeted tests and a documentation update.
 - Must keep any network-dependent model setup explicit in documentation so offline users understand why an initial run may fail.
 
@@ -470,8 +487,9 @@ it, and the final multilingual gate permits none to remain. Unexpected errors
 must fail rather than being swallowed by an expected assertion failure.
 Synthetic UTF-8 fixtures live under `tests/fixtures/multilingual`; local replay
 outputs and dependency evaluation environments remain temporary or ignored.
-The evaluation-only requirements in `scripts/multilingual-spike-requirements.txt`
-are not runtime dependencies. Install them in a separate virtual environment.
+The exact evaluation environment remains in
+`scripts/multilingual-spike-requirements.txt`; production-adopted pins also live
+in `pyproject.toml`. Run backend evaluation in a separate virtual environment.
 
 ### Recommended quality tooling
 

@@ -23,8 +23,8 @@ deeper tests by writing system and real rendered checks for high-risk groups.
 
 | Group/codes | Required cases | Evidence needed |
 | --- | --- | --- |
-| Japanese `ja` | Kana/kanji, no punctuation, closing punctuation, small kana, Latin/digits, all reported defects | Controlled font metrics, legal cue boundaries, group transitions, local central-subtitle replay |
-| Chinese `zh` | Simplified/traditional text, fullwidth punctuation, Latin/digits | Character-to-group mapping, locale/font distinction, real renders |
+| Japanese `ja` | Kana/kanji, no punctuation, closing punctuation, small kana, Latin/digits, all reported defects | Controlled font metrics, legal group-preferred cue boundaries, record-timed transitions, local central-subtitle replay |
+| Chinese `zh` | Simplified/traditional text, fullwidth punctuation, Latin/digits | Character-to-group mapping, record-timed transitions, locale/font distinction, real renders |
 | Korean `ko` | Word spaces, punctuation, Hangul/Jamo | Exact separators, graphemes, font coverage, real renders |
 | RTL `ar fa ur he` | Joining scripts where applicable, numbers, brackets, mixed Latin | Whole-line visual order, verified effects or explicit static fallback |
 | Indic `hi te ml` | Vowel marks, conjuncts, punctuation | Grapheme conservation, shaping, mark placement, verified effects/fallback |
@@ -53,7 +53,7 @@ language. Likewise, correct subtitle rendering does not prove ASR accuracy.
 - [ ] Extend `tests/test_multilingual_integration.py`, introduced by Plan 0,
   with focused tests marked `integration`, reusing current
   frame/mask helpers rather than a second production renderer. Validate glyph
-  spacing, line height, active-group color, boxes, and fallback metadata.
+  spacing, line height, active-record color, boxes, and fallback metadata.
 - [ ] Cover 9:16, 16:9, and square; retain rotation/non-square-pixel regressions.
   Use `default`, `amber-word`, `mint-progress`, and `focus-marker`, plus a cue
   motion case, custom template overrides, and native/explicit placement.
@@ -67,8 +67,9 @@ language. Likewise, correct subtitle rendering does not prove ASR accuracy.
 - [ ] Inspect only the central generated subtitle at representative frames
   across the whole clip and immediately around the historical 11.832s,
   34.288s, and 36.210s cuts. Those old times are observation points, not required
-  new cue boundaries. Confirm no overlap, content loss, or avoidable lexical
-  cuts, and inspect playback of word-group transitions.
+  new cue boundaries. Confirm no overlap, content loss, avoidable lexical cue
+  cuts, or static fallback caused by visual wrapping, and inspect playback of
+  alignment-record highlight transitions.
 - [ ] State replay limits: corrected source mapping cannot recover source text
   already removed before the retained JSON. Validate that behavior with raw
   synthetic alignment fixtures; perform a small local ASR run only if needed
@@ -137,8 +138,9 @@ Do not establish performance from transcription/model loading time.
   envelope/duration permits them; emergency cases are explicitly diagnosed.
 - Korean spaces, mixed-script adjacency, punctuation, and source timestamps
   survive all artifacts and previews under the defined normalization contract.
-- Japanese/Chinese highlight groups follow derived source intervals, with no
-  artificial duration floor, and previews clearly retain simulated timing.
+- Japanese/Chinese cue and preferred line boundaries follow linguistic groups;
+  highlights follow validated alignment records with no artificial duration
+  floor, and previews clearly identify their distinct simulated timing units.
 - Every high-risk script has a passed real render or a tested, documented
   legible fallback; missing evidence prevents claiming that capability shipped.
 - The supported-language matrix is exhaustive, ordinary Latin regressions
