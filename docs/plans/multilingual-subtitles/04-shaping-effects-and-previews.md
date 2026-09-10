@@ -1,8 +1,8 @@
 # Preserve shaping and bidirectional order in effects and previews
 
-Status: In review
+Status: Done
 
-Delivery branch: `fix/shaping-safe-subtitle-effects`.
+Delivery: [PR #79](https://github.com/denilson-santos/multisubs/pull/79).
 
 Depends on: [Plan 1](01-font-coverage-and-metrics.md),
 [Plan 2](02-text-and-alignment-mapping.md), and

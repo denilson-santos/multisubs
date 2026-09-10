@@ -1,6 +1,8 @@
 # Verify multilingual output and prepare rollout
 
-Status: Planned
+Status: In review
+
+Delivery branch: `test/multilingual-render-validation`.
 
 Depends on Plans [0](00-regressions-and-decisions.md),
 [1](01-font-coverage-and-metrics.md), [2](02-text-and-alignment-mapping.md),
@@ -39,49 +41,49 @@ language. Likewise, correct subtitle rendering does not prove ASR accuracy.
 
 ## Ordered implementation tasks
 
-- [ ] Check every confirmed failure from Plan 0 has a passing regression and
+- [x] Check every confirmed failure from Plan 0 has a passing regression and
   remove all temporary known-failure markers owned by this package. Classify
   remaining risks as verified support, tested fallback, or an explicit blocker.
-- [ ] Add a parameterized smoke fixture for every current language code and
+- [x] Add a parameterized smoke fixture for every current language code and
   assert its code set equals `SUPPORTED_LANGUAGES`, avoiding a stale test list.
   Keep representative fonts and synthetic text provenance explicit.
-- [ ] Run real font/shape tests in a controlled environment with a pinned font
+- [x] Run real font/shape tests in a controlled environment with a pinned font
   inventory. Configure the required integration job to fail on missing fixture
   fonts while ordinary developer integration runs may explain unavailable
   prerequisites. No runtime font downloads; provision test assets beforehand
   from reviewed immutable sources with licenses/hashes.
-- [ ] Extend `tests/test_multilingual_integration.py`, introduced by Plan 0,
+- [x] Extend `tests/test_multilingual_integration.py`, introduced by Plan 0,
   with focused tests marked `integration`, reusing current
   frame/mask helpers rather than a second production renderer. Validate glyph
   spacing, line height, active-record color, boxes, and fallback metadata.
-- [ ] Cover 9:16, 16:9, and square; retain rotation/non-square-pixel regressions.
+- [x] Cover 9:16, 16:9, and square; retain rotation/non-square-pixel regressions.
   Use `default`, `amber-word`, `mint-progress`, and `focus-marker`, plus a cue
   motion case, custom template overrides, and native/explicit placement.
-- [ ] Verify retained and non-retained runs, malformed/missing fonts,
+- [x] Verify retained and non-retained runs, malformed/missing fonts,
   partial alignment, missing shaper/dictionary, absent ffmpeg, renderer failure,
   filename collisions, Unicode/quoted paths, and temporary-resource cleanup.
-- [ ] Replay the original local Japanese example with its existing timestamps
+- [x] Replay the original local Japanese example with its existing timestamps
   onto the original uncaptioned input when available, or a synthetic background.
   Use unique output paths under ignored `data/` or a temporary directory. Never
   modify the original video/JSON/SRT/ASS or publish them by default.
-- [ ] Inspect only the central generated subtitle at representative frames
+- [x] Inspect only the central generated subtitle at representative frames
   across the whole clip and immediately around the historical 11.832s,
   34.288s, and 36.210s cuts. Those old times are observation points, not required
   new cue boundaries. Confirm no overlap, content loss, avoidable lexical cue
   cuts, or static fallback caused by visual wrapping, and inspect playback of
   alignment-record highlight transitions.
-- [ ] State replay limits: corrected source mapping cannot recover source text
+- [x] State replay limits: corrected source mapping cannot recover source text
   already removed before the retained JSON. Validate that behavior with raw
   synthetic alignment fixtures; perform a small local ASR run only if needed
   to check the actual WhisperX boundary. Do not attribute spelling errors to
   the font fix or promise transcription accuracy without audio review.
-- [ ] Verify actual automatic/explicit language resolution and English
+- [x] Verify actual automatic/explicit language resolution and English
   translation paths on the implementation base. Preserve the current rejection
   of translation with word animation, `turbo`, or `.en` as applicable.
-- [ ] Audit additive JSON metadata across mixed-font/group/fallback runs,
+- [x] Audit additive JSON metadata across mixed-font/group/fallback runs,
   unchanged required schema-3 fields, original word identities/times, plain SRT,
   safe ASS escaping, and no private resource paths in new fields.
-- [ ] Complete the clean-build/offline smoke and performance gates below; update
+- [x] Complete the clean-build/offline smoke and performance gates below; update
   current docs and the language matrix with exact evidence and limitations.
 
 ## Exact verification commands
@@ -147,6 +149,91 @@ Do not establish performance from transcription/model loading time.
   pass, and template/custom font/geometry/lifecycle behavior remains coherent.
 - Build, clean-install, offline, performance, privacy, and documentation gates
   pass with no generated/user media committed and no runtime network dependency.
+
+## Verification evidence (2026-09-10)
+
+The synthetic fixture contains exactly the 41 codes in
+`SUPPORTED_LANGUAGES`; each sample preserves its source text and asserts either
+positioned fragments or the documented shaping-safe full-line strategy. There
+are no executable package-owned `xfail` markers. Existing focused suites also
+cover all four named templates, custom-template overrides, native and explicit
+placement, 9:16/16:9/square canvases, rotation and non-square pixels, cue
+motion, automatic/explicit language resolution, translation restrictions,
+retention, collision/Unicode paths, absent or failing external tools, malformed
+fonts, partial alignment, dictionary cleanup, schema-3 JSON, plain SRT, and ASS
+escaping.
+
+The required-font run set `MULTISUBS_REQUIRE_MULTILINGUAL_FONTS=1` and passed
+12/12 focused renders without skips. It covered Japanese, traditional Chinese,
+Korean, Georgian, Arabic, Persian, Urdu, Hebrew, Hindi, Telugu, and Malayalam,
+plus the historical Japanese replay. The CI image installs the reviewed Ubuntu
+DejaVu, FreeFont, Noto Core, and WenQuanYi inventories; tests record the actual
+selected family and SHA-256 and fail, rather than skip, if a covering fixture is
+missing. Ordinary local integration retains an explanatory skip for an absent
+external inventory. The complete controlled integration selection passed 67
+tests with 26 WhisperX/hardware cases deselected.
+
+The retained original input cited by Plan 0 was not available on this branch.
+A synthetic 1080x1920 replacement used the original observation times and
+fresh alignment records. Automated bounds checks and manual central-subtitle
+inspection at 11.832s, 34.288s, and 36.210s found legible non-overlapping glyphs
+inside the canvas, progressive gold highlighting, zero word-effect fallbacks,
+and complete source text in JSON. The frame SHA-256 values were respectively
+`2ee35704038cc21c83cb3990f461423769a50e27b97bdbb228f8a2a7d018ce1c`,
+`97d30fe61c5f12d31e11f77a8ec383679e494a12fae72a0709b561934946f1b9`,
+and `c77917527f48c1a9bb473e289590f305b93879a74c5d6179abd91100e45c7d98`.
+These temporary frames are evidence, not repository artifacts. This replay
+cannot recover text already absent from retained JSON and does not establish
+WhisperX recognition accuracy.
+
+The clean build produced `multisubs-4.0.0-py3-none-any.whl` (6.6 MiB,
+SHA-256 `95447cfa8660ad3908d00f5c57eb8145bd57bbcda1ecd9c467c45f8804f4ce02`)
+and `multisubs-4.0.0.tar.gz` (6.7 MiB, SHA-256
+`149ac51f78c96ce058e0ff0ce188a0f8087874c93c4227c47c3da8f3198e089b`).
+Twine and the existing 82-font artifact audit passed. A prepared temporary
+wheelhouse contained Pillow 12.0.0, ffmpeg-python 0.2.0, fonttools 4.63.0,
+uniseg 0.10.1, SudachiPy 0.6.11, SudachiDict-small 20260723, jieba 0.42.1,
+and future 1.0.0. The successful offline install and smoke used:
+
+```sh
+python3 -m venv /tmp/multisubs-plan5-wheel-smoke-20260910-2
+/tmp/multisubs-plan5-wheel-smoke-20260910-2/bin/python -m pip install \
+  --no-index --find-links /tmp/multisubs-plan5-wheelhouse \
+  Pillow==12.0.0 ffmpeg-python==0.2.0 fonttools==4.63.0 uniseg==0.10.1 \
+  SudachiPy==0.6.11 SudachiDict-small==20260723 jieba==0.42.1
+/tmp/multisubs-plan5-wheel-smoke-20260910-2/bin/python -m pip install \
+  --no-index --no-deps \
+  /home/denilson/projects/multisubs/dist/multisubs-4.0.0-py3-none-any.whl
+cd /tmp
+/tmp/multisubs-plan5-wheel-smoke-20260910-2/bin/multisubs --help
+/tmp/multisubs-plan5-wheel-smoke-20260910-2/bin/multisubs \
+  -i /tmp/multisubs-plan5-input.mp4 -o /tmp/multisubs-plan5-output-2 \
+  --preview-layout --preview-text '字幕AI第1回。'
+/tmp/multisubs-plan5-wheel-smoke-20260910-2/bin/multisubs \
+  -i /tmp/multisubs-plan5-input.mp4 -o /tmp/multisubs-plan5-output-2 \
+  --preview-animation --preview-duration 1s --preview-text '字幕AI第1回。'
+```
+
+The PNG and MP4 were 2,096 and 3,801 bytes; Japanese grouping loaded offline,
+the font manifest returned 82, and no model runtime was installed or imported.
+
+The Plan 3 workload was repeated on this branch and on merge commit `77753ce`
+with the same script and host. Event/cue counts were identical at both commits;
+current times remained below the 2x investigation threshold:
+
+| Records | Envelope | Segmentation | Layout/effects | Peak Python | Cues | ASS events | Fallback cues |
+| ---: | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 250 | 220x80px | 107.3ms | 3.249s | 57.94MiB | 7 | 1472 | 0 |
+| 250 | 220x160px | 104.9ms | 2.813s | 56.15MiB | 3 | 1488 | 0 |
+| 1000 | 220x80px | 715.7ms | 14.679s | 56.86MiB | 27 | 5892 | 0 |
+| 1000 | 220x160px | 697.6ms | 10.461s | 41.15MiB | 14 | 5944 | 0 |
+
+Final local results were 655 passed/12 deselected for the focused hermetic
+selection, 1,028 passed/75 integration-deselected for the default full suite,
+and clean results from compileall, CLI help, Ruff format/lint, Pyright, and
+`git diff --check`. Python 3.10 ran locally; the shared workflow retains its
+Python 3.10 and 3.13 matrix. No dependency or native-resource change required a
+new 3.11/3.12 compatibility gate.
 
 ## Documentation, delivery, and rollback
 

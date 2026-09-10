@@ -480,6 +480,13 @@ explain a replacement. A `unicode-estimate` record is an explicit legacy path
 for runs without concrete font metrics and must not be interpreted as verified
 glyph coverage.
 
+The regression matrix contains one synthetic UTF-8 sample for every supported
+language code and controlled FFmpeg/libass renders for the higher-risk writing
+systems. This verifies source preservation, selected-face coverage, and the
+documented renderer strategy for those samples; it does not prove that one font
+covers every character in a language or that WhisperX recognized the audio
+correctly.
+
 ## ⚙️ Command reference
 
 Run `multisubs --help` for the parser's complete, authoritative help text.
