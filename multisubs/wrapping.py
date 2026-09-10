@@ -19,6 +19,7 @@ from .text_segmentation import (
 )
 from .text_segmentation import (
     line_break_boundaries,
+    linguistic_units,
 )
 from .text_segmentation import (
     normalise_display_text as _normalise_unicode_display_text,
@@ -76,6 +77,14 @@ def fit_first_text_segment(text: str, *, metrics: WrappingMetrics) -> str:
         return wrap_subtitle_text(normalised, metrics=metrics)
 
     units, compact, _ = _text_units(normalised, None)
+    linguistic = list(linguistic_units(normalised))
+    if (
+        len(linguistic) > 1
+        and "".join(linguistic) == normalised
+        and not any(character.isspace() for character in normalised)
+    ):
+        units = linguistic
+        compact = True
     if len(units) < 2:
         return wrap_subtitle_text(normalised, metrics=metrics)
 

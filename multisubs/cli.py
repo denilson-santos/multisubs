@@ -994,6 +994,7 @@ def _run_preview_request(
         build_animation_preview_ass,
         build_preview_ass,
         normalise_preview_text,
+        preview_word_effect_fallback_reason,
         resolve_preview_timestamp,
     )
     from .subtitler import (
@@ -1046,6 +1047,15 @@ def _run_preview_request(
                 resolved_config=resolved_config,
                 wrapping_metrics=wrapping_metrics,
             )
+            fallback_reason = preview_word_effect_fallback_reason(
+                display_text, resolved_config
+            )
+            if fallback_reason is not None:
+                progress(
+                    "Warning: Preview word effects were suppressed so libass can "
+                    "render the sample as complete shaping-safe logical lines "
+                    f"({fallback_reason})."
+                )
             source_text = transform_display_text(
                 normalise_preview_text(request.preview_text),
                 resolved_config.style.typography.text_case,
@@ -1075,7 +1085,7 @@ def _run_preview_request(
                 )
             )
 
-        build_preview_ass(
+        _, display_text = build_preview_ass(
             ass_path,
             request,
             geometry,
@@ -1083,6 +1093,15 @@ def _run_preview_request(
             resolved_config=resolved_config,
             wrapping_metrics=wrapping_metrics,
         )
+        fallback_reason = preview_word_effect_fallback_reason(
+            display_text, resolved_config
+        )
+        if fallback_reason is not None:
+            progress(
+                "Warning: Preview word effects were suppressed so libass can "
+                "render the sample as complete shaping-safe logical lines "
+                f"({fallback_reason})."
+            )
         return Path(
             render_subtitle_preview(
                 request.input_path,
