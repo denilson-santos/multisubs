@@ -1,6 +1,8 @@
 # Preserve source text independently of alignment units
 
-Status: Planned
+Status: In review
+
+Delivery branch: `fix/lossless-subtitle-text`.
 
 Depends on: [Plan 0](00-regressions-and-decisions.md).
 
@@ -40,47 +42,47 @@ translation restrictions, names, and lifecycle remain unchanged.
 
 ## Ordered implementation tasks
 
-- [ ] Audit `_full_text`, `build_subtitle_cues`, `_timed_words`,
+- [x] Audit `_full_text`, `build_subtitle_cues`, `_timed_words`,
   `_append_words_cue`, `layout_subtitle_cues`, and `_transform_display_words`
   in `transcriber.py`, plus `words_to_text`, `join_text_parts`,
   `normalise_display_text`, and `build_display_fragments` in `wrapping.py`.
   Identify where source separators, untimed punctuation, and ASR boundaries
   are discarded before artifacts exist.
-- [ ] Add the source-span types in `models.py` and a focused text-boundary
+- [x] Add the source-span types in `models.py` and a focused text-boundary
   adapter (proposed `multisubs/text_segmentation.py`). Keep it independent of
   WhisperX/PyTorch imports so previews remain lightweight.
-- [ ] Map aligned text to records monotonically within its original segment;
+- [x] Map aligned text to records monotonically within its original segment;
   handle repeated tokens by cursor/offset, never an unconstrained global match.
   Retain unmatched source spans and invalid/missing-time records as data.
   Do not simply filter away their textual content.
-- [ ] Preserve original segment boundaries as hints when adjoining streams;
+- [x] Preserve original segment boundaries as hints when adjoining streams;
   they are neither automatically mandatory cue breaks nor permission to insert
   spaces. Use retained text adjacency and explicit source separators first.
-- [ ] For direct Python callers with word records but no source string, keep a
+- [x] For direct Python callers with word records but no source string, keep a
   documented compatibility adapter: space-separated words by default, explicit
   Japanese/Chinese character alignment when known, and conservative script
   handling otherwise. Do not infer whitespace omission from East Asian width.
   Keep existing call signatures or add only optional keyword parameters.
-- [ ] Replace the CJK/emoji-width separator heuristic on the production path.
+- [x] Replace the CJK/emoji-width separator heuristic on the production path.
   Korean words such as `안녕하세요 세계` retain the original space; source
   `第1回`, `字幕AI`, punctuation, and emoji keep their original adjacency.
-- [ ] Make grapheme handling use the selected Unicode adapter instead of the
+- [x] Make grapheme handling use the selected Unicode adapter instead of the
   current partial combining-mark/ZWJ algorithm in multiple modules. Cover
   spacing combining marks, flags, modifiers, variation selectors, Hangul Jamo,
   and Indic conjuncts. Convert external UTF-16 offsets to Python offsets when
   applicable and test supplementary-plane characters explicitly.
-- [ ] Build display fragments from the span map before line wrapping. Every
+- [x] Build display fragments from the span map before line wrapping. Every
   fragment reconstructs the display string, with explicit generated line-break
   provenance so tests can reverse wrapping without deleting meaningful spaces.
-- [ ] On incomplete alignment mapping, keep complete source text at coarse
+- [x] On incomplete alignment mapping, keep complete source text at coarse
   segment times and suppress timing-dependent effects for that cue. Record one
   reason/count rather than assigning missing punctuation or words fabricated
   start/end values. Ensure callers can distinguish missing alignment from a
   genuine empty transcript.
-- [ ] Preserve existing chronology validation for usable timed records. Do not
+- [x] Preserve existing chronology validation for usable timed records. Do not
   shift neighboring times to conceal invalid order or overlaps; apply current
   timing eligibility/fallback rules to the derived mapping.
-- [ ] Add additive mapping/fallback diagnostics without serializing internal
+- [x] Add additive mapping/fallback diagnostics without serializing internal
   font objects, paths, or ASS tags. Remove Plan 0 text-preservation `xfail`s.
 
 ## Unit and integration verification
@@ -112,6 +114,25 @@ git diff --check
 
 Add the adapter's focused tests when introduced. Inspect Korean and mixed-script
 renders with controlled fonts, but do not claim shaping is fixed until Plan 4.
+
+## Implementation evidence
+
+The implementation is complete on `fix/lossless-subtitle-text`. It adds the
+pure `text_segmentation.py` adapter, immutable source-map/display-unit models,
+lossless mapped wrapping, coarse fallback diagnostics, and regressions for
+repeated records, Korean spacing, CJK/Latin adjacency, NBSP, case expansion,
+line-ending offsets, and extended grapheme clusters. Plan 0 text-preservation
+`xfail`s are removed; remaining multilingual `xfail`s belong to Plans 3–5.
+
+Local verification:
+
+```text
+Focused text-segmentation, transcriber, wrapping, and preview regressions pass
+ruff check passed; ruff format --check passed; pyright passed
+Full hermetic suite: 943 passed, 56 deselected, 10 expected Plan 3–5 xfailed
+FFmpeg/Karaoke integration: 39 passed, 26 deselected
+Multilingual renderer integration: 2 passed
+```
 
 ## Acceptance criteria
 

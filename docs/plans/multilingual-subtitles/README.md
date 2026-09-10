@@ -14,21 +14,24 @@ lexical grouping of aligned characters, Unicode line breaking, timed effects,
 bidirectional/shaped text, and a reproducible multilingual render matrix.
 Speech-recognition accuracy, new source languages, translation targets, and a
 subtitle editor are excluded. Plan 0 established the reproducible foundation
-and was merged as [PR #75](https://github.com/denilson-santos/multisubs/pull/75);
-Plan 1 implements the production font correction and is ready for review.
+and was merged as [PR #75](https://github.com/denilson-santos/multisubs/pull/75).
+Plan 1 implemented the production font correction and was merged as
+[PR #76](https://github.com/denilson-santos/multisubs/pull/76); Plan 2 now
+implements lossless source-text and alignment mapping and is ready for review.
 
 ## Plans and progress
 
-Progress: 1/6 plans merged. Current plan: Plan 1, implementing font coverage
-and consistent metrics on `fix/subtitle-font-coverage`. Regression fixtures,
-local replay tooling, and backend evaluation are available. Plans 2–5 have not
-started; Plan 0 records the selected libraries and their limits.
+Progress: 1/6 plans merged. Current plan: Plan 2, ready for review on
+`fix/lossless-subtitle-text`.
+Regression fixtures, local replay tooling, and backend evaluation are
+available. Plans 3–5 have not started; Plan 0 records the selected libraries
+and their limits.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
 | [0 — Regressions and backend decisions](00-regressions-and-decisions.md) | Done | Existing source and completed layout/font/animation foundations | [PR #75](https://github.com/denilson-santos/multisubs/pull/75) |
-| [1 — Font coverage and consistent metrics](01-font-coverage-and-metrics.md) | In review | Plan 0 | `fix/subtitle-font-coverage` |
-| [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | Planned | Plan 0 | Not started |
+| [1 — Font coverage and consistent metrics](01-font-coverage-and-metrics.md) | Done | Plan 0 | [PR #76](https://github.com/denilson-santos/multisubs/pull/76) |
+| [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | In review | Plan 0 | `fix/lossless-subtitle-text` |
 | [3 — Linguistic groups and readable cue boundaries](03-linguistic-cues-and-timing.md) | Planned | Plans 1 and 2 | Not started |
 | [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | Planned | Plans 1, 2, and 3 | Not started |
 | [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | Planned | Plans 0–4 | Not started |

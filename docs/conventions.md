@@ -77,6 +77,12 @@ Update a higher-level document when a proposed change intentionally modifies the
   Bound file size, collection faces, candidate count, and fontconfig runtime;
   reject malformed resources without automatic downloads. Record the effective
   family and fallback reason without local paths in JSON.
+- Must keep `uniseg` at the selected `0.10.1` compatibility line for the shared
+  Unicode boundary adapter. Its pinned Unicode 16.0.0 data supplies grapheme,
+  word, line, and sentence boundaries; it does not provide linguistic
+  dictionary segmentation. Do not replace it with ad-hoc combining-mark,
+  East-Asian-width, or UTF-16 indexing logic without updating the multilingual
+  plan and its fixture evidence.
 - Must normalize public font-weight names, aliases, and supported numeric input
   to one canonical OpenType rank. Face selection ranks absolute weight distance
   before italic mismatch and uses stable provider order as the final tie
@@ -95,6 +101,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 
 - Must keep command-line orchestration in multisubs/cli.py.
 - Must keep model loading, transcription, alignment, cue construction, and subtitle-file writing in multisubs/transcriber.py.
+- Must keep source-text mapping and Unicode boundary adaptation in
+  multisubs/text_segmentation.py. The module must remain independent of
+  WhisperX, PyTorch, Pillow, and FFmpeg so preview imports stay lightweight.
 - Must keep FFmpeg rendering concerns in multisubs/subtitler.py.
 - Must keep semantic subtitle appearance and native layout field defaults in
   multisubs/config.py.
@@ -229,6 +238,16 @@ template paths or raw file contents.
 - Must handle an alignment result without usable word timings. The fallback cue path must produce valid, chronologically ordered subtitle entries rather than crashing or inventing timestamps.
 - Should validate that segment times are finite, non-negative, and monotonic before serializing them.
 - Should preserve original WhisperX word metadata when it is useful for downstream consumers, but must not make undocumented upstream fields a stable project contract.
+- Must treat aligned segment text as authoritative source content. Map records
+  monotonically with stable segment/record identity, preserve separators and
+  unmatched ranges, and never infer a missing separator from CJK width or from
+  a transformed display token. A source boundary may guide cue construction but
+  must not insert text that was absent from the source.
+- Must distinguish text-complete from timing-complete mappings. Incomplete maps
+  retain the complete source at coarse segment times, disable word-dependent
+  effects, and expose bounded diagnostics without fabricating missing word
+  timestamps. Retained JSON must keep the original JSON-safe alignment records;
+  internal spans and offset tables are not public artifact data.
 - Should make changes to language handling, VAD behavior, alignment models, or model defaults only with targeted tests and a documentation update.
 - Must keep any network-dependent model setup explicit in documentation so offline users understand why an initial run may fail.
 
@@ -256,6 +275,10 @@ template paths or raw file contents.
 - Should test punctuation, long sentences, pauses, one-word overflow, missing word timings, and exact threshold boundaries whenever cue logic changes.
 - Should consider language-specific behavior before assuming space-delimited words, Latin punctuation, or left-to-right text. Add representative fixtures before claiming support for a new writing system or segmentation strategy.
 - Must not mutate or discard transcript content solely to satisfy visual line-length targets. Prefer a well-timed overflow or a new cue over damaging words.
+- Must build display fragments from source-map units before case conversion is
+  measured or wrapping is applied. Generated line breaks must retain the source
+  separator they replace so reverse reconstruction can distinguish a layout
+  break from deleted source whitespace.
 
 ### SRT
 
@@ -432,11 +455,16 @@ template paths or raw file contents.
 - Must use small, licensed, non-sensitive media fixtures. Do not commit production videos, voices, transcripts, or identifying metadata.
 - Should keep fixture duration short enough for CI and test only the behavior needed by the case.
 - Must store expected output text in UTF-8 and include Unicode coverage.
+- Should test the pinned Unicode adapter with combining marks, Hangul Jamo,
+  Indic conjuncts, flags, modifiers, variation selectors, ZWJ sequences,
+  supplementary-plane characters, repeated records, NBSP, and incomplete
+  alignment. Tests must assert exact source reconstruction rather than removing
+  all spaces before comparison.
 - Should include tests for no audio stream, corrupt media, absent FFmpeg, unsupported filters, missing alignment timestamps, nonexistent paths, output collisions, and cleanup failures.
 - Must verify both artifact modes: default cleanup and keep-transcriptions.
 
 Multilingual regressions may use temporary `xfail(strict=True,
-raises=AssertionError)` markers during the separate test-foundation increment.
+raises=AssertionError)` markers for plans that have not yet landed.
 Each marker must name its owning correction plan; the corresponding fix removes
 it, and the final multilingual gate permits none to remain. Unexpected errors
 must fail rather than being swallowed by an expected assertion failure.

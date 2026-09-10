@@ -1,8 +1,8 @@
 # Resolve covering fonts before measuring subtitle geometry
 
-Status: In review
+Status: Done
 
-Delivery branch: `fix/subtitle-font-coverage`.
+Delivery: [PR #76](https://github.com/denilson-santos/multisubs/pull/76), merged.
 
 Depends on: [Plan 0](00-regressions-and-decisions.md).
 
