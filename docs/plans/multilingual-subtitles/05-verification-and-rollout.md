@@ -1,8 +1,8 @@
 # Verify multilingual output and prepare rollout
 
-Status: In review
+Status: Done
 
-Delivery branch: `test/multilingual-render-validation`.
+Delivery: [PR #80](https://github.com/denilson-santos/multisubs/pull/80).
 
 Depends on Plans [0](00-regressions-and-decisions.md),
 [1](01-font-coverage-and-metrics.md), [2](02-text-and-alignment-mapping.md),

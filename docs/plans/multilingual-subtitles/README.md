@@ -1,6 +1,6 @@
 # Multilingual subtitle correctness
 
-Status: In review
+Status: Done
 
 ## Objective and scope
 
@@ -28,11 +28,9 @@ now verifies the complete multilingual matrix and rollout gates.
 
 ## Plans and progress
 
-Progress: 5/6 plans merged. Current plan: Plan 5, in review on
-`test/multilingual-render-validation`.
+Progress: 6/6 plans merged. Current plan: Complete.
 Regression fixtures, local replay tooling, and backend evaluation are
-available. Plan 5 is active. Plan 0 records the selected libraries and their
-limits.
+available. Plan 0 records the selected libraries and their limits.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
@@ -41,7 +39,7 @@ limits.
 | [2 — Lossless text and alignment mapping](02-text-and-alignment-mapping.md) | Done | Plan 0 | [PR #77](https://github.com/denilson-santos/multisubs/pull/77) |
 | [3 — Linguistic boundaries and record-timed highlights](03-linguistic-cues-and-timing.md) | Done | Plans 1 and 2 | [PR #78](https://github.com/denilson-santos/multisubs/pull/78) |
 | [4 — Shaping-safe effects and previews](04-shaping-effects-and-previews.md) | Done | Plans 1, 2, and 3 | [PR #79](https://github.com/denilson-santos/multisubs/pull/79) |
-| [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | In review | Plans 0–4 | `test/multilingual-render-validation` |
+| [5 — Multilingual verification and rollout](05-verification-and-rollout.md) | Done | Plans 0–4 | [PR #80](https://github.com/denilson-santos/multisubs/pull/80) |
 
 ## Delivery order and milestones
 
