@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import json
 import math
-import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -267,10 +265,9 @@ def transcribe_video(
     )
     try:
         model = _load_model_with_retries(
-            lambda: _load_silero_whisperx_model(
-                whisperx,
-                model_name=model_name,
-                device=device,
+            lambda: whisperx.load_model(
+                model_name,
+                device,
                 compute_type=compute_type,
                 language=lang or None,
                 task=task,
@@ -484,53 +481,6 @@ def _load_runtime_dependencies() -> tuple[Any, Any]:
     except ImportError as exc:
         raise DependencyError("WhisperX is required to transcribe video") from exc
     return torch, whisperx
-
-
-def _load_silero_whisperx_model(
-    whisperx: Any,
-    *,
-    model_name: str,
-    device: str,
-    compute_type: str,
-    language: str | None,
-    task: str,
-) -> Any:
-    """Load WhisperX's Silero pipeline without an unused Pyannote ONNX probe.
-
-    WhisperX 3.8 imports Pyannote's optional speaker-embedding module while
-    importing its ASR implementation. That module imports ONNX Runtime even
-    though this application explicitly selects the TorchScript Silero VAD.
-    On hosts without a complete DRM sysfs tree, ONNX Runtime emits a harmless
-    GPU-discovery warning during that unused import. Temporarily blocking only
-    that optional import avoids the warning without changing PyTorch/CUDA
-    selection or the Silero VAD implementation.
-    """
-    with _block_optional_onnxruntime_import():
-        return whisperx.load_model(
-            model_name,
-            device,
-            compute_type=compute_type,
-            language=language,
-            task=task,
-            vad_method="silero",
-        )
-
-
-@contextmanager
-def _block_optional_onnxruntime_import():
-    """Prevent an unused optional ONNX Runtime import during Silero setup."""
-    module_name = "onnxruntime"
-    if module_name in sys.modules:
-        yield
-        return
-
-    # An import entry set to None makes importlib raise ModuleNotFoundError,
-    # which Pyannote already handles as its optional ONNX dependency path.
-    sys.modules[module_name] = cast(Any, None)
-    try:
-        yield
-    finally:
-        sys.modules.pop(module_name, None)
 
 
 def _load_model_with_retries(

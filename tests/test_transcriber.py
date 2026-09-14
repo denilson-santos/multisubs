@@ -1,5 +1,4 @@
 import json
-import sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -885,31 +884,6 @@ def test_model_loading_does_not_retry_deterministic_failures(monkeypatch):
     assert calls == 1
 
 
-def test_silero_model_load_blocks_unused_onnxruntime_probe(monkeypatch):
-    monkeypatch.delitem(sys.modules, "onnxruntime", raising=False)
-    observed = {}
-
-    class FakeWhisper:
-        @staticmethod
-        def load_model(*args, **kwargs):
-            observed["module_entry"] = sys.modules.get("onnxruntime")
-            observed["vad_method"] = kwargs["vad_method"]
-            return "loaded-model"
-
-    result = transcriber._load_silero_whisperx_model(
-        FakeWhisper,
-        model_name="turbo",
-        device="cuda",
-        compute_type="float16",
-        language="pt",
-        task="transcribe",
-    )
-
-    assert result == "loaded-model"
-    assert observed == {"module_entry": None, "vad_method": "silero"}
-    assert "onnxruntime" not in sys.modules
-
-
 def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monkeypatch):
     input_path = tmp_path / "input.mp4"
     input_path.write_bytes(b"not real media")
@@ -940,7 +914,8 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             if load_calls["count"] == 1:
                 raise ConnectionError("remote end closed connection")
             assert kwargs["task"] == "transcribe"
-            assert kwargs["vad_method"] == "silero"
+            assert "vad_method" not in kwargs
+            assert "vad_options" not in kwargs
             return FakeModel()
 
         @staticmethod
