@@ -406,6 +406,45 @@ def _resolve_face(
     language: str | None,
     sample_text: str | None,
 ) -> _ResolvedFace | None:
+    face = _resolve_preferred_face(
+        image_font,
+        features,
+        appearance,
+        font_size,
+        bundled_fonts_dir=bundled_fonts_dir,
+        sample_text=sample_text,
+    )
+    if face is not None:
+        return face
+    if sample_text is None:
+        return None
+
+    fallback = _resolve_covering_fallback_face(
+        image_font,
+        features,
+        appearance,
+        font_size,
+        language=language,
+        sample_text=sample_text,
+    )
+    if fallback is not None:
+        return fallback
+    raise ValidationError(
+        f"Font '{appearance.font}' does not cover the displayed subtitle text; "
+        "choose --font or --fonts-dir with a covering local face."
+    )
+
+
+def _resolve_preferred_face(
+    image_font: Any,
+    features: Any,
+    appearance: SubtitleTypography,
+    font_size: int,
+    *,
+    bundled_fonts_dir: Path | None,
+    sample_text: str | None,
+) -> _ResolvedFace | None:
+    """Resolve the requested family in custom, bundled, then system order."""
     if appearance.fonts_dir is not None:
         face = _resolve_face_from_directory(
             image_font,
@@ -419,9 +458,10 @@ def _resolve_face(
             sample_text=None,
             family_required=True,
         )
-        if face is not None:
-            if sample_text is None or _face_covers_text(face, sample_text):
-                return _mark_coverage(face, sample_text)
+        if face is not None and (
+            sample_text is None or _face_covers_text(face, sample_text)
+        ):
+            return _mark_coverage(face, sample_text)
     bundled_directory = bundled_fonts_dir or bundled_filesystem_directory(
         appearance.font
     )
@@ -438,9 +478,10 @@ def _resolve_face(
             sample_text=None,
             family_required=True,
         )
-        if face is not None:
-            if sample_text is None or _face_covers_text(face, sample_text):
-                return _mark_coverage(face, sample_text)
+        if face is not None and (
+            sample_text is None or _face_covers_text(face, sample_text)
+        ):
+            return _mark_coverage(face, sample_text)
     face = _resolve_face_from_fontconfig(
         image_font,
         features,
@@ -453,9 +494,19 @@ def _resolve_face(
         sample_text is None or _face_covers_text(face, sample_text)
     ):
         return _mark_coverage(face, sample_text)
-    if sample_text is None:
-        return face
+    return None
 
+
+def _resolve_covering_fallback_face(
+    image_font: Any,
+    features: Any,
+    appearance: SubtitleTypography,
+    font_size: int,
+    *,
+    language: str | None,
+    sample_text: str,
+) -> _ResolvedFace | None:
+    """Find a covering custom face before trying bounded fontconfig candidates."""
     if appearance.fonts_dir is not None:
         fallback = _resolve_face_from_directory(
             image_font,
@@ -474,7 +525,7 @@ def _resolve_face(
                 fallback, "requested face lacks glyph coverage"
             )
 
-    fallback = _resolve_covering_face_from_fontconfig(
+    return _resolve_covering_face_from_fontconfig(
         image_font,
         features,
         font_size,
@@ -482,12 +533,6 @@ def _resolve_face(
         italic=appearance.italic,
         language=language,
         sample_text=sample_text,
-    )
-    if fallback is not None:
-        return fallback
-    raise ValidationError(
-        f"Font '{appearance.font}' does not cover the displayed subtitle text; "
-        "choose --font or --fonts-dir with a covering local face."
     )
 
 

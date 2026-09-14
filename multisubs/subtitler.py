@@ -499,15 +499,18 @@ def render_subtitle_animation_preview(
                     capture_stdout=True,
                     capture_stderr=True,
                 )
-            except ffmpeg.Error as exc:
-                raise RenderingError(
-                    f"FFmpeg could not decode a frame at {timestamp:.3f}s from "
-                    f"'{source_path}': {_short_output(_error_output(exc))}"
-                ) from exc
-            except OSError as exc:
-                raise RenderingError(
-                    f"FFmpeg could not capture a preview frame from '{source_path}': "
-                    f"{exc}"
+            except (ffmpeg.Error, OSError) as exc:
+                raise _animation_preview_stage_error(
+                    exc,
+                    ffmpeg_error_type=ffmpeg.Error,
+                    ffmpeg_error_prefix=(
+                        f"FFmpeg could not decode a frame at {timestamp:.3f}s from "
+                        f"'{source_path}': "
+                    ),
+                    os_error_prefix=(
+                        "FFmpeg could not capture a preview frame from "
+                        f"'{source_path}': "
+                    ),
                 ) from exc
             if not frame_path.exists() or frame_path.stat().st_size == 0:
                 raise RenderingError(
@@ -534,15 +537,18 @@ def render_subtitle_animation_preview(
                     capture_stdout=True,
                     capture_stderr=True,
                 )
-            except ffmpeg.Error as exc:
-                raise RenderingError(
-                    f"FFmpeg could not render animated subtitle preview "
-                    f"'{final_path}': {_short_output(_error_output(exc))}"
-                ) from exc
-            except OSError as exc:
-                raise RenderingError(
-                    f"FFmpeg could not encode animated subtitle preview for "
-                    f"'{source_path}': {exc}"
+            except (ffmpeg.Error, OSError) as exc:
+                raise _animation_preview_stage_error(
+                    exc,
+                    ffmpeg_error_type=ffmpeg.Error,
+                    ffmpeg_error_prefix=(
+                        "FFmpeg could not render animated subtitle preview "
+                        f"'{final_path}': "
+                    ),
+                    os_error_prefix=(
+                        "FFmpeg could not encode animated subtitle preview for "
+                        f"'{source_path}': "
+                    ),
                 ) from exc
             if not temporary_path.exists() or temporary_path.stat().st_size == 0:
                 raise RenderingError(
@@ -791,6 +797,20 @@ def _error_output(error: Any) -> str:
     if isinstance(stderr, str):
         return stderr
     return str(error)
+
+
+def _animation_preview_stage_error(
+    error: Exception,
+    *,
+    ffmpeg_error_type: type[Exception],
+    ffmpeg_error_prefix: str,
+    os_error_prefix: str,
+) -> RenderingError:
+    if isinstance(error, ffmpeg_error_type):
+        return RenderingError(
+            f"{ffmpeg_error_prefix}{_short_output(_error_output(error))}"
+        )
+    return RenderingError(f"{os_error_prefix}{error}")
 
 
 def _short_output(output: str, limit: int = 1_000) -> str:

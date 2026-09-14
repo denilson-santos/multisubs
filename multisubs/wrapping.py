@@ -821,6 +821,72 @@ def _partition_text_unit_ranges(
             preferred_breaks=preferred_breaks,
         )
 
+    return _exhaustive_partition_text_unit_ranges(
+        unit_count=unit_count,
+        maximum_lines=maximum_lines,
+        allowed=allowed,
+        line=line,
+        metrics=metrics,
+        units=units,
+        source_words=source_words,
+        preferred_breaks=preferred_breaks,
+    )
+
+
+def _exhaustive_partition_text_unit_ranges(
+    *,
+    unit_count: int,
+    maximum_lines: int,
+    allowed: set[int],
+    line: Callable[[int, int], tuple[str, float]],
+    metrics: WrappingMetrics,
+    units: Sequence[Any],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+) -> tuple[list[tuple[int, int]], bool]:
+    partitions = _cached_partition_endings(
+        unit_count=unit_count,
+        allowed=allowed,
+        line=line,
+        metrics=metrics,
+    )
+
+    for line_count_value in range(2, maximum_lines + 1):
+        candidates = partitions(0, line_count_value, False)
+        if candidates:
+            return _best_partition_ranges(
+                candidates,
+                line=line,
+                unit_count=unit_count,
+                width_budget=metrics.width_budget,
+                units=units,
+                source_words=source_words,
+                preferred_breaks=preferred_breaks,
+                fits=True,
+            )
+
+    candidates = partitions(0, maximum_lines, True)
+    if not candidates:
+        return [], False
+    return _best_partition_ranges(
+        candidates,
+        line=line,
+        unit_count=unit_count,
+        width_budget=metrics.width_budget,
+        units=units,
+        source_words=source_words,
+        preferred_breaks=preferred_breaks,
+        fits=False,
+    )
+
+
+def _cached_partition_endings(
+    *,
+    unit_count: int,
+    allowed: set[int],
+    line: Callable[[int, int], tuple[str, float]],
+    metrics: WrappingMetrics,
+) -> Callable[[int, int, bool], tuple[tuple[int, ...], ...]]:
     @cache
     def partitions(
         start: int,
@@ -853,39 +919,33 @@ def _partition_text_unit_ranges(
                 results.append((end, *tail))
         return tuple(results)
 
-    for line_count_value in range(2, maximum_lines + 1):
-        candidates = partitions(0, line_count_value, False)
-        if candidates:
-            best = min(
-                candidates,
-                key=lambda endings: _partition_score(
-                    endings,
-                    line,
-                    unit_count,
-                    metrics.width_budget,
-                    units,
-                    source_words,
-                    preferred_breaks,
-                ),
-            )
-            return _ranges_from_endings(best), True
+    return partitions
 
-    candidates = partitions(0, maximum_lines, True)
-    if not candidates:
-        return [], False
+
+def _best_partition_ranges(
+    candidates: Sequence[tuple[int, ...]],
+    *,
+    line: Callable[[int, int], tuple[str, float]],
+    unit_count: int,
+    width_budget: int,
+    units: Sequence[Any],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+    fits: bool,
+) -> tuple[list[tuple[int, int]], bool]:
     best = min(
         candidates,
         key=lambda endings: _partition_score(
             endings,
             line,
             unit_count,
-            metrics.width_budget,
+            width_budget,
             units,
             source_words,
             preferred_breaks,
         ),
     )
-    return _ranges_from_endings(best), False
+    return _ranges_from_endings(best), fits
 
 
 def _bounded_partition_text_unit_ranges(
@@ -900,92 +960,167 @@ def _bounded_partition_text_unit_ranges(
     preferred_breaks: Collection[int],
 ) -> tuple[list[tuple[int, int]], bool]:
     """Find a readable large partition with bounded line-fill work."""
-
-    def priority(end: int) -> int:
-        return _display_boundary_priority(units, source_words, end)
-
-    def choose_break(
-        start: int,
-        lines_left: int,
-        allow_overflow: bool,
-    ) -> int | None:
-        final_start = unit_count - lines_left + 1
-        possible = [
-            end
-            for end in range(start + 1, final_start + 1)
-            if end < unit_count and end in allowed
-        ]
-        if not possible:
-            return None
-        target = start + (unit_count - start) / lines_left
-        if len(possible) > _MAX_BOUNDED_BREAK_CANDIDATES:
-            nearby = sorted(possible, key=lambda end: (abs(end - target), -end))
-            preferred = sorted(
-                (end for end in possible if end in preferred_breaks),
-                key=lambda end: (abs(end - target), -end),
-            )
-            semantic = sorted(
-                possible,
-                key=lambda end: (-priority(end), abs(end - target), -end),
-            )
-            selected = {
-                *nearby[:_MAX_BOUNDED_BREAK_CANDIDATES],
-                *preferred[:8],
-                *semantic[:8],
-                *possible[:2],
-                *possible[-2:],
-            }
-            possible = sorted(selected)
-        if not allow_overflow:
-            fitting = [
-                end
-                for end in possible
-                if _line_fits(
-                    line(start, end)[1],
-                    unit_count=end - start,
-                    budget=metrics.width_budget,
-                )
-            ]
-            if not fitting:
-                return None
-            possible = fitting
-        return max(
-            possible,
-            key=lambda end: (
-                int(end in preferred_breaks),
-                priority(end),
-                -abs(end - target),
-                end,
-            ),
-        )
-
-    def build_ranges(
-        line_count: int, allow_overflow: bool
-    ) -> list[tuple[int, int]] | None:
-        ranges: list[tuple[int, int]] = []
-        start = 0
-        for lines_left in range(line_count, 1, -1):
-            end = choose_break(start, lines_left, allow_overflow)
-            if end is None:
-                return None
-            ranges.append((start, end))
-            start = end
-        if allow_overflow or _line_fits(
-            line(start, unit_count)[1],
-            unit_count=unit_count - start,
-            budget=metrics.width_budget,
-        ):
-            ranges.append((start, unit_count))
-            return ranges
-        return None
-
     for line_count in range(2, maximum_lines + 1):
-        ranges = build_ranges(line_count, False)
+        ranges = _build_bounded_partition_ranges(
+            line_count=line_count,
+            allow_overflow=False,
+            unit_count=unit_count,
+            allowed=allowed,
+            line=line,
+            metrics=metrics,
+            units=units,
+            source_words=source_words,
+            preferred_breaks=preferred_breaks,
+        )
         if ranges is not None:
             return ranges, True
 
-    ranges = build_ranges(maximum_lines, True)
+    ranges = _build_bounded_partition_ranges(
+        line_count=maximum_lines,
+        allow_overflow=True,
+        unit_count=unit_count,
+        allowed=allowed,
+        line=line,
+        metrics=metrics,
+        units=units,
+        source_words=source_words,
+        preferred_breaks=preferred_breaks,
+    )
     return (ranges or [], False)
+
+
+def _build_bounded_partition_ranges(
+    *,
+    line_count: int,
+    allow_overflow: bool,
+    unit_count: int,
+    allowed: set[int],
+    line: Callable[[int, int], tuple[str, float]],
+    metrics: WrappingMetrics,
+    units: Sequence[Any],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+) -> list[tuple[int, int]] | None:
+    ranges: list[tuple[int, int]] = []
+    start = 0
+    for lines_left in range(line_count, 1, -1):
+        end = _choose_bounded_partition_break(
+            start=start,
+            lines_left=lines_left,
+            allow_overflow=allow_overflow,
+            unit_count=unit_count,
+            allowed=allowed,
+            line=line,
+            metrics=metrics,
+            units=units,
+            source_words=source_words,
+            preferred_breaks=preferred_breaks,
+        )
+        if end is None:
+            return None
+        ranges.append((start, end))
+        start = end
+
+    if allow_overflow or _line_fits(
+        line(start, unit_count)[1],
+        unit_count=unit_count - start,
+        budget=metrics.width_budget,
+    ):
+        ranges.append((start, unit_count))
+        return ranges
+    return None
+
+
+def _choose_bounded_partition_break(
+    *,
+    start: int,
+    lines_left: int,
+    allow_overflow: bool,
+    unit_count: int,
+    allowed: set[int],
+    line: Callable[[int, int], tuple[str, float]],
+    metrics: WrappingMetrics,
+    units: Sequence[Any],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+) -> int | None:
+    final_start = unit_count - lines_left + 1
+    possible = [
+        end
+        for end in range(start + 1, final_start + 1)
+        if end < unit_count and end in allowed
+    ]
+    if not possible:
+        return None
+
+    target = start + (unit_count - start) / lines_left
+    possible = _bounded_break_candidates(
+        possible,
+        target=target,
+        units=units,
+        source_words=source_words,
+        preferred_breaks=preferred_breaks,
+    )
+    if not allow_overflow:
+        possible = [
+            end
+            for end in possible
+            if _line_fits(
+                line(start, end)[1],
+                unit_count=end - start,
+                budget=metrics.width_budget,
+            )
+        ]
+        if not possible:
+            return None
+
+    return max(
+        possible,
+        key=lambda end: (
+            int(end in preferred_breaks),
+            _display_boundary_priority(units, source_words, end),
+            -abs(end - target),
+            end,
+        ),
+    )
+
+
+def _bounded_break_candidates(
+    possible: list[int],
+    *,
+    target: float,
+    units: Sequence[Any],
+    source_words: Sequence[Mapping[str, Any]] | None,
+    preferred_breaks: Collection[int],
+) -> list[int]:
+    if len(possible) <= _MAX_BOUNDED_BREAK_CANDIDATES:
+        return possible
+
+    nearby = sorted(possible, key=lambda end: _nearest_partition_break_key(end, target))
+    preferred = sorted(
+        (end for end in possible if end in preferred_breaks),
+        key=lambda end: _nearest_partition_break_key(end, target),
+    )
+    semantic = sorted(
+        possible,
+        key=lambda end: (
+            -_display_boundary_priority(units, source_words, end),
+            *_nearest_partition_break_key(end, target),
+        ),
+    )
+    selected = {
+        *nearby[:_MAX_BOUNDED_BREAK_CANDIDATES],
+        *preferred[:8],
+        *semantic[:8],
+        *possible[:2],
+        *possible[-2:],
+    }
+    return sorted(selected)
+
+
+def _nearest_partition_break_key(end: int, target: float) -> tuple[float, int]:
+    # A later boundary wins exact midpoint ties, matching half-up rounding.
+    return abs(end - target), -end
 
 
 def _line_fits(width: float, *, unit_count: int, budget: int) -> bool:

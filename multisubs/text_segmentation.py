@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import redirect_stderr
+from dataclasses import dataclass
 from importlib.metadata import version
 from numbers import Real
 from tempfile import TemporaryDirectory
@@ -462,6 +463,241 @@ def _boundary_class(text: str) -> str:
     return "lexical"
 
 
+@dataclass(frozen=True)
+class _AlignmentRecordDetails:
+    token: str
+    match_start: int
+    start_time: float | None
+    end_time: float | None
+    timed: bool
+
+
+@dataclass(frozen=True)
+class _MappedSourceRecords:
+    spans: tuple[SubtitleSourceSpan, ...]
+    mapped_record_indexes: tuple[int, ...]
+    timed_record_indexes: tuple[int, ...]
+    meaningful_record_count: int
+    fallback_reasons: tuple[str, ...]
+
+
+def _select_source_text(
+    source_text: object,
+    fallback_text: str | None,
+) -> tuple[bool, str]:
+    # An explicitly empty transcript remains authoritative unless a fallback
+    # was supplied by a caller that has no source string.
+    if isinstance(source_text, str) and not (
+        source_text == "" and isinstance(fallback_text, str)
+    ):
+        return True, source_text
+    return False, fallback_text if isinstance(fallback_text, str) else ""
+
+
+def _alignment_record_details(
+    raw_record: object,
+    source_text: str,
+    cursor: int,
+) -> _AlignmentRecordDetails | None:
+    if not isinstance(raw_record, Mapping):
+        return None
+
+    raw_word = raw_record.get("word")
+    token = raw_word.strip(" \t\r\n\v\f") if isinstance(raw_word, str) else ""
+    token, _, _ = normalize_line_endings(token)
+    match_start = source_text.find(token, cursor) if token else -1
+    start_time = _finite_time(raw_record.get("start"))
+    end_time = _finite_time(raw_record.get("end"))
+    timed = start_time is not None and end_time is not None and end_time >= start_time
+    return _AlignmentRecordDetails(
+        token,
+        match_start,
+        start_time,
+        end_time,
+        timed,
+    )
+
+
+def _record_timing_diagnostics(
+    record: _AlignmentRecordDetails,
+    previous_start: float | None,
+) -> tuple[float | None, tuple[str, ...]]:
+    if not record.timed:
+        return previous_start, ("missing-or-invalid-alignment-time",)
+
+    assert record.start_time is not None
+    if previous_start is not None and record.start_time < previous_start:
+        return record.start_time, ("non-chronological-alignment",)
+    return record.start_time, ()
+
+
+def _unmatched_alignment_span(
+    record_index: int,
+    source_segment_index: int,
+    text: str,
+    record: _AlignmentRecordDetails | None = None,
+) -> SubtitleSourceSpan:
+    timed = record is not None and record.timed
+    return SubtitleSourceSpan(
+        source_segment_index,
+        record_index,
+        None,
+        None,
+        text,
+        "unmatched-record",
+        record.start_time if timed and record is not None else None,
+        record.end_time if timed and record is not None else None,
+        matched=False,
+        granularity="alignment-record",
+    )
+
+
+def _source_spans_for_record(
+    record: _AlignmentRecordDetails,
+    record_index: int,
+    normalized_text: str,
+    cursor: int,
+    source_segment_index: int,
+) -> tuple[tuple[SubtitleSourceSpan, ...], int, bool]:
+    if not record.token or record.match_start < 0:
+        return (
+            (
+                _unmatched_alignment_span(
+                    record_index,
+                    source_segment_index,
+                    record.token,
+                    record,
+                ),
+            ),
+            cursor,
+            False,
+        )
+
+    spans: list[SubtitleSourceSpan] = []
+    if record.match_start > cursor:
+        spans.append(
+            _gap_span(
+                normalized_text[cursor : record.match_start],
+                cursor,
+                record.match_start,
+                source_segment_index,
+            )
+        )
+
+    match_end = record.match_start + len(record.token)
+    spans.append(
+        SubtitleSourceSpan(
+            source_segment_index,
+            record_index,
+            record.match_start,
+            match_end,
+            normalized_text[record.match_start : match_end],
+            "alignment",
+            record.start_time if record.timed else None,
+            record.end_time if record.timed else None,
+        )
+    )
+    return tuple(spans), match_end, True
+
+
+def _map_alignment_records(
+    normalized_text: str,
+    records: Sequence[object],
+    source_segment_index: int,
+) -> _MappedSourceRecords:
+    spans: list[SubtitleSourceSpan] = []
+    mapped_record_indexes: list[int] = []
+    timed_record_indexes: list[int] = []
+    fallback_reasons: list[str] = []
+    meaningful_record_count = 0
+    cursor = 0
+    previous_start: float | None = None
+
+    for record_index, raw_record in enumerate(records):
+        record = _alignment_record_details(raw_record, normalized_text, cursor)
+        if record is None:
+            spans.append(
+                _unmatched_alignment_span(record_index, source_segment_index, "")
+            )
+            fallback_reasons.append("unmatched-alignment-record")
+            continue
+
+        if record.token:
+            meaningful_record_count += 1
+        previous_start, time_reasons = _record_timing_diagnostics(
+            record, previous_start
+        )
+        fallback_reasons.extend(time_reasons)
+
+        record_spans, cursor, matched = _source_spans_for_record(
+            record,
+            record_index,
+            normalized_text,
+            cursor,
+            source_segment_index,
+        )
+        spans.extend(record_spans)
+        if not matched:
+            fallback_reasons.append("unmatched-alignment-record")
+            continue
+
+        mapped_record_indexes.append(record_index)
+        if record.timed:
+            timed_record_indexes.append(record_index)
+
+    if cursor < len(normalized_text):
+        spans.append(
+            _gap_span(
+                normalized_text[cursor:],
+                cursor,
+                len(normalized_text),
+                source_segment_index,
+            )
+        )
+
+    return _MappedSourceRecords(
+        spans=tuple(spans),
+        mapped_record_indexes=tuple(mapped_record_indexes),
+        timed_record_indexes=tuple(timed_record_indexes),
+        meaningful_record_count=meaningful_record_count,
+        fallback_reasons=tuple(fallback_reasons),
+    )
+
+
+def _source_map_status(
+    mapping: _MappedSourceRecords,
+) -> tuple[bool, bool, tuple[str, ...]]:
+    reasons = list(mapping.fallback_reasons)
+    if mapping.meaningful_record_count == 0:
+        reasons.append("missing-alignment")
+    if len(mapping.mapped_record_indexes) != mapping.meaningful_record_count:
+        reasons.append("unmatched-alignment-record")
+    if any(span.kind == "unmatched-source" for span in mapping.spans):
+        reasons.append("unmatched-source-text")
+
+    unique_reasons = tuple(dict.fromkeys(reasons))
+    complete = not unique_reasons or set(unique_reasons) <= {
+        "missing-or-invalid-alignment-time",
+        "non-chronological-alignment",
+    }
+    # Invalid timing does not erase source text, but it makes word effects
+    # unsafe. Every other unmatched text or record keeps the map incomplete.
+    complete = complete and not any(
+        span.kind in {"unmatched-source", "unmatched-record"} and bool(span.text)
+        for span in mapping.spans
+    )
+    timing_complete = (
+        complete
+        and bool(mapping.mapped_record_indexes)
+        and len(mapping.timed_record_indexes) == len(mapping.mapped_record_indexes)
+        and "non-chronological-alignment" not in unique_reasons
+    )
+    if not timing_complete and complete and mapping.mapped_record_indexes:
+        if "incomplete-alignment-timing" not in unique_reasons:
+            unique_reasons = (*unique_reasons, "incomplete-alignment-timing")
+    return complete, timing_complete, unique_reasons
+
+
 def build_source_text_map(
     source_text: object,
     records: Sequence[object],
@@ -476,168 +712,30 @@ def build_source_text_map(
     unmatched source range and every unusable record remains represented in the
     returned map so callers can choose a coarse, untimed fallback.
     """
-    # An empty segment text accompanied by an explicit fallback is the
-    # compatibility form used by direct callers with records but no source
-    # string. Keep an explicitly empty transcript authoritative when no
-    # fallback was requested so callers can distinguish it from missing text.
-    if isinstance(source_text, str) and not (
-        source_text == "" and isinstance(fallback_text, str)
-    ):
-        source_provided = True
-        raw_text = source_text
-    else:
-        source_provided = False
-        raw_text = fallback_text if isinstance(fallback_text, str) else ""
+    source_provided, raw_text = _select_source_text(source_text, fallback_text)
     normalized_text, raw_to_normalized, normalized_to_raw = normalize_line_endings(
         raw_text
     )
-
-    spans: list[SubtitleSourceSpan] = []
-    mapped_record_indexes: list[int] = []
-    timed_record_indexes: list[int] = []
-    meaningful_record_indexes: list[int] = []
-    reasons: list[str] = []
-    cursor = 0
-    previous_start: float | None = None
-
-    for record_index, raw_record in enumerate(records):
-        if not isinstance(raw_record, Mapping):
-            spans.append(
-                SubtitleSourceSpan(
-                    source_segment_index,
-                    record_index,
-                    None,
-                    None,
-                    "",
-                    "unmatched-record",
-                    matched=False,
-                    granularity="alignment-record",
-                )
-            )
-            reasons.append("unmatched-alignment-record")
-            continue
-
-        raw_word = raw_record.get("word")
-        token = raw_word.strip(" \t\r\n\v\f") if isinstance(raw_word, str) else ""
-        token, _, _ = normalize_line_endings(token)
-        if token:
-            meaningful_record_indexes.append(record_index)
-        match_start = normalized_text.find(token, cursor) if token else -1
-        start_time = _finite_time(raw_record.get("start"))
-        end_time = _finite_time(raw_record.get("end"))
-        timed = (
-            start_time is not None and end_time is not None and end_time >= start_time
-        )
-        if not timed:
-            reasons.append("missing-or-invalid-alignment-time")
-        elif previous_start is not None:
-            assert start_time is not None
-            if start_time < previous_start:
-                reasons.append("non-chronological-alignment")
-        if timed:
-            assert start_time is not None
-            previous_start = start_time
-
-        if not token or match_start < 0:
-            spans.append(
-                SubtitleSourceSpan(
-                    source_segment_index,
-                    record_index,
-                    None,
-                    None,
-                    token,
-                    "unmatched-record",
-                    start_time if timed else None,
-                    end_time if timed else None,
-                    matched=False,
-                    granularity="alignment-record",
-                )
-            )
-            reasons.append("unmatched-alignment-record")
-            continue
-
-        if match_start > cursor:
-            spans.append(
-                _gap_span(
-                    normalized_text[cursor:match_start],
-                    cursor,
-                    match_start,
-                    source_segment_index,
-                )
-            )
-        match_end = match_start + len(token)
-        matched_text = normalized_text[match_start:match_end]
-        spans.append(
-            SubtitleSourceSpan(
-                source_segment_index,
-                record_index,
-                match_start,
-                match_end,
-                matched_text,
-                "alignment",
-                start_time if timed else None,
-                end_time if timed else None,
-            )
-        )
-        mapped_record_indexes.append(record_index)
-        if timed:
-            timed_record_indexes.append(record_index)
-        cursor = match_end
-
-    if cursor < len(normalized_text):
-        spans.append(
-            _gap_span(
-                normalized_text[cursor:],
-                cursor,
-                len(normalized_text),
-                source_segment_index,
-            )
-        )
-
-    if not meaningful_record_indexes:
-        reasons.append("missing-alignment")
-    if len(mapped_record_indexes) != len(meaningful_record_indexes):
-        reasons.append("unmatched-alignment-record")
-    if any(span.kind == "unmatched-source" for span in spans):
-        reasons.append("unmatched-source-text")
-
-    unique_reasons = tuple(dict.fromkeys(reasons))
-    complete = not unique_reasons or set(unique_reasons) <= {
-        "missing-or-invalid-alignment-time",
-        "non-chronological-alignment",
-    }
-    # A source map is text-complete only when every meaningful source character
-    # belongs to a matched record or an intentional separator. Invalid timing
-    # does not erase the text, but it does make timing-dependent effects unsafe.
-    complete = complete and not any(
-        span.kind in {"unmatched-source", "unmatched-record"} and bool(span.text)
-        for span in spans
+    mapping = _map_alignment_records(
+        normalized_text,
+        records,
+        source_segment_index,
     )
-    timing_complete = (
-        complete
-        and bool(mapped_record_indexes)
-        and len(timed_record_indexes) == len(mapped_record_indexes)
-        and "non-chronological-alignment" not in unique_reasons
-    )
-    if not timing_complete and complete and mapped_record_indexes:
-        # Keep the reason additive and stable even when the invalid-time reason
-        # was already collected for several records.
-        if "incomplete-alignment-timing" not in unique_reasons:
-            unique_reasons = (*unique_reasons, "incomplete-alignment-timing")
+    complete, timing_complete, fallback_reasons = _source_map_status(mapping)
 
     return SubtitleSourceMap(
         raw_text=raw_text,
         normalized_text=normalized_text,
-        spans=tuple(spans),
+        spans=mapping.spans,
         raw_to_normalized=raw_to_normalized,
         normalized_to_raw=normalized_to_raw,
         source_provided=source_provided,
         complete=complete,
         timing_complete=timing_complete,
-        fallback_reasons=unique_reasons,
+        fallback_reasons=fallback_reasons,
         record_count=len(records),
-        mapped_record_indexes=tuple(mapped_record_indexes),
-        timed_record_indexes=tuple(timed_record_indexes),
+        mapped_record_indexes=mapping.mapped_record_indexes,
+        timed_record_indexes=mapping.timed_record_indexes,
     )
 
 
