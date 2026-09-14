@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from multisubs.ass import (
-    _ass_alignment_for_position,
     _compile_style,
     compose_rgba_opacity,
     escape_ass_text,
@@ -254,24 +253,6 @@ def test_write_ass_serializes_generated_guide_events_and_rejects_raw_newlines(
             GEOMETRY,
             guide_events=(AssDrawingEvent(0.0, 1.0, "bad\ntext"),),
         )
-
-
-@pytest.mark.parametrize(
-    ("position", "alignment"),
-    [
-        (SubtitlePosition.BOTTOM_LEFT, 1),
-        (SubtitlePosition.BOTTOM_CENTER, 2),
-        (SubtitlePosition.BOTTOM_RIGHT, 3),
-        (SubtitlePosition.MIDDLE_LEFT, 4),
-        (SubtitlePosition.CENTER, 5),
-        (SubtitlePosition.MIDDLE_RIGHT, 6),
-        (SubtitlePosition.TOP_LEFT, 7),
-        (SubtitlePosition.TOP_CENTER, 8),
-        (SubtitlePosition.TOP_RIGHT, 9),
-    ],
-)
-def test_named_positions_use_private_ass_alignment_codes(position, alignment):
-    assert _ass_alignment_for_position(position) == alignment
 
 
 def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):

@@ -29,6 +29,7 @@ from .config import (
 from .config import SUPPORTED_LANGUAGES, validate_subtitle_config
 from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
 from .layout import (
+    NativeLayoutRegion,
     WrappingMetrics,
     resolve_cue_placement,
     resolve_native_layout_region,
@@ -36,6 +37,7 @@ from .layout import (
     resolve_wrapping_metrics,
 )
 from .models import (
+    CuePlacement,
     KaraokeCue,
     RelativeLength,
     SubtitleAnimationPhase,
@@ -1025,6 +1027,16 @@ def _require_span_time(value: float | None) -> float:
     return value
 
 
+@dataclass(frozen=True)
+class _PreparedCueSource:
+    source_text: object
+    words: list[dict[str, Any]]
+    source_map: SubtitleSourceMap
+    record_indexes: tuple[int, ...]
+    words_by_record: dict[int, dict[str, Any]]
+    display_groups: tuple[SubtitleDisplayGroup, ...]
+
+
 def layout_subtitle_cues(
     segments: Sequence[Mapping[str, Any]],
     resolved_config: SubtitleConfig,
@@ -1036,166 +1048,228 @@ def layout_subtitle_cues(
     verify_font_coverage: bool = False,
 ) -> tuple[list[dict[str, Any]], WrappingMetrics]:
     """Create display cues from semantic cues using resolved layout metrics."""
-    if wrapping_metrics is not None and text_measurer is not None:
-        raise ValidationError(
-            "wrapping metrics and text measurer cannot be supplied together"
-        )
-    metrics = wrapping_metrics or resolve_wrapping_metrics(
+    metrics = _resolve_display_cue_metrics(
+        segments,
         resolved_config,
         geometry,
         language=language,
         text_measurer=text_measurer,
-        sample_text=(
-            [
-                _transform_display_text(
-                    str(segment.get("semantic_text", segment.get("text", ""))),
-                    resolved_config.style.typography.text_case,
-                )
-                for segment in segments
-            ]
-            if verify_font_coverage
-            else None
-        ),
+        wrapping_metrics=wrapping_metrics,
         verify_font_coverage=verify_font_coverage,
     )
     text_case = resolved_config.style.typography.text_case
     display_cues: list[dict[str, Any]] = []
     for segment_index, segment in enumerate(segments):
-        source_text = segment.get("text")
-        if not isinstance(source_text, str):
-            source_text = segment.get("semantic_text")
-        raw_words = segment.get("words", [])
-        words = (
-            [dict(word) for word in raw_words if isinstance(word, Mapping)]
-            if isinstance(raw_words, Sequence)
-            and not isinstance(raw_words, (str, bytes))
-            else []
-        )
-        existing_map = segment.get("_source_map")
-        source_map = (
-            existing_map
-            if isinstance(existing_map, SubtitleSourceMap)
-            else build_source_text_map(
-                source_text,
-                words,
-                fallback_text=_words_to_text(words)
-                if not isinstance(source_text, str) or (not source_text and words)
-                else None,
-                source_segment_index=segment_index,
-            )
-        )
-        existing_indexes = segment.get("_source_record_indexes")
-        record_indexes = (
-            tuple(index for index in existing_indexes if isinstance(index, int))
-            if isinstance(existing_indexes, Sequence)
-            and not isinstance(existing_indexes, (str, bytes))
-            else source_map.mapped_record_indexes
-        )
-        words_by_record = {
-            record_index: word
-            for record_index, word in zip(record_indexes, words, strict=False)
-        }
-        raw_display_groups = segment.get("_display_groups")
-        display_groups = (
-            tuple(
-                group
-                for group in raw_display_groups
-                if isinstance(group, SubtitleDisplayGroup)
-            )
-            if isinstance(raw_display_groups, Sequence)
-            and not isinstance(raw_display_groups, (str, bytes))
-            else ()
-        )
-        if source_map.timing_complete and words and record_indexes:
-            units = display_units_for_records(
-                source_map,
-                record_indexes,
-                transform=lambda value: _transform_display_text(value, text_case),
-            )
-            if len(units) == len(record_indexes) and all(
-                index in words_by_record for index in record_indexes
-            ):
-                groups = _wrapping_split_display_units_for_layout(
-                    units,
-                    metrics,
-                    boundary_words=[words_by_record[index] for index in record_indexes],
-                    display_groups=display_groups,
-                )
-                for group in groups:
-                    group_indexes = tuple(unit.record_index for unit in group)
-                    source_group = source_text_for_records(
-                        source_map,
-                        group_indexes,
-                    )
-                    cue_display_groups = _display_groups_for_records(
-                        display_groups,
-                        group_indexes,
-                        source_map,
-                        words_by_record,
-                    )
-                    # Linguistic groups choose preferred cue/line boundaries,
-                    # but every original alignment record remains an effect
-                    # unit. A group can occupy multiple visual lines; mapping
-                    # its records to one group index would then repeat an
-                    # effect index and trigger static fallback in ASS.
-                    record_to_effect_unit = {
-                        record_index: offset
-                        for offset, record_index in enumerate(group_indexes)
-                    }
-                    display_text, fragments, line_breaks = (
-                        _wrapping_render_display_units(
-                            group,
-                            metrics,
-                            word_indexes=record_to_effect_unit,
-                            display_groups=cue_display_groups,
-                        )
-                    )
-                    group_words = [words_by_record[index] for index in group_indexes]
-                    _append_display_cue(
-                        display_cues,
-                        source_group,
-                        display_text,
-                        _word_start(group_words[0]),
-                        _word_end(group_words[-1]),
-                        group_words,
-                        [],
-                        metrics,
-                        display_fragments=fragments,
-                        generated_line_breaks=line_breaks,
-                        source_map=source_map,
-                        source_record_indexes=group_indexes,
-                        display_groups=cue_display_groups,
-                    )
-                continue
-
-        semantic_text = source_map.normalized_text
-        if not semantic_text and isinstance(source_text, str):
-            semantic_text = source_text
-        if not semantic_text:
+        prepared = _prepare_cue_source(segment, segment_index)
+        if _append_timed_display_cues(display_cues, prepared, metrics, text_case):
             continue
-        try:
-            start = float(segment["start"])
-            end = float(segment["end"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise TranscriptionError("Subtitle cue has invalid timestamps") from exc
-        _append_display_cue(
+        _append_coarse_display_cue(
             display_cues,
-            semantic_text,
-            _transform_display_text(_normalise_display_text(semantic_text), text_case),
-            start,
-            end,
-            words,
-            [],
+            segment,
+            prepared,
             metrics,
-            mapping_reason=";".join(source_map.fallback_reasons) or None,
-            source_map=source_map,
-            source_record_indexes=record_indexes,
-            display_groups=display_groups,
+            text_case,
         )
 
     for index, cue in enumerate(display_cues):
         cue["id"] = index
     return display_cues, metrics
+
+
+def _resolve_display_cue_metrics(
+    segments: Sequence[Mapping[str, Any]],
+    resolved_config: SubtitleConfig,
+    geometry: VideoGeometry,
+    *,
+    language: str | None,
+    text_measurer: TextMeasurer | None,
+    wrapping_metrics: WrappingMetrics | None,
+    verify_font_coverage: bool,
+) -> WrappingMetrics:
+    if wrapping_metrics is not None and text_measurer is not None:
+        raise ValidationError(
+            "wrapping metrics and text measurer cannot be supplied together"
+        )
+    if wrapping_metrics is not None:
+        return wrapping_metrics
+    sample_text = (
+        [
+            _transform_display_text(
+                str(segment.get("semantic_text", segment.get("text", ""))),
+                resolved_config.style.typography.text_case,
+            )
+            for segment in segments
+        ]
+        if verify_font_coverage
+        else None
+    )
+    return resolve_wrapping_metrics(
+        resolved_config,
+        geometry,
+        language=language,
+        text_measurer=text_measurer,
+        sample_text=sample_text,
+        verify_font_coverage=verify_font_coverage,
+    )
+
+
+def _prepare_cue_source(
+    segment: Mapping[str, Any], segment_index: int
+) -> _PreparedCueSource:
+    source_text = segment.get("text")
+    if not isinstance(source_text, str):
+        source_text = segment.get("semantic_text")
+    raw_words = segment.get("words", [])
+    words = (
+        [dict(word) for word in raw_words if isinstance(word, Mapping)]
+        if isinstance(raw_words, Sequence) and not isinstance(raw_words, (str, bytes))
+        else []
+    )
+    existing_map = segment.get("_source_map")
+    source_map = (
+        existing_map
+        if isinstance(existing_map, SubtitleSourceMap)
+        else build_source_text_map(
+            source_text,
+            words,
+            fallback_text=_words_to_text(words)
+            if not isinstance(source_text, str) or (not source_text and words)
+            else None,
+            source_segment_index=segment_index,
+        )
+    )
+    existing_indexes = segment.get("_source_record_indexes")
+    record_indexes = (
+        tuple(index for index in existing_indexes if isinstance(index, int))
+        if isinstance(existing_indexes, Sequence)
+        and not isinstance(existing_indexes, (str, bytes))
+        else source_map.mapped_record_indexes
+    )
+    words_by_record = {
+        record_index: word
+        for record_index, word in zip(record_indexes, words, strict=False)
+    }
+    raw_display_groups = segment.get("_display_groups")
+    display_groups = (
+        tuple(
+            group
+            for group in raw_display_groups
+            if isinstance(group, SubtitleDisplayGroup)
+        )
+        if isinstance(raw_display_groups, Sequence)
+        and not isinstance(raw_display_groups, (str, bytes))
+        else ()
+    )
+    return _PreparedCueSource(
+        source_text=source_text,
+        words=words,
+        source_map=source_map,
+        record_indexes=record_indexes,
+        words_by_record=words_by_record,
+        display_groups=display_groups,
+    )
+
+
+def _append_timed_display_cues(
+    cues: list[dict[str, Any]],
+    prepared: _PreparedCueSource,
+    metrics: WrappingMetrics,
+    text_case: TextCase,
+) -> bool:
+    if not prepared.source_map.timing_complete or not prepared.words:
+        return False
+    if not prepared.record_indexes:
+        return False
+    units = display_units_for_records(
+        prepared.source_map,
+        prepared.record_indexes,
+        transform=lambda value: _transform_display_text(value, text_case),
+    )
+    if len(units) != len(prepared.record_indexes) or not all(
+        index in prepared.words_by_record for index in prepared.record_indexes
+    ):
+        return False
+
+    groups = _wrapping_split_display_units_for_layout(
+        units,
+        metrics,
+        boundary_words=[
+            prepared.words_by_record[index] for index in prepared.record_indexes
+        ],
+        display_groups=prepared.display_groups,
+    )
+    for group in groups:
+        group_indexes = tuple(unit.record_index for unit in group)
+        source_group = source_text_for_records(prepared.source_map, group_indexes)
+        cue_display_groups = _display_groups_for_records(
+            prepared.display_groups,
+            group_indexes,
+            prepared.source_map,
+            prepared.words_by_record,
+        )
+        # Linguistic groups choose preferred cue/line boundaries, but every
+        # original alignment record remains an effect unit. A group can occupy
+        # multiple visual lines; mapping its records to one group index would
+        # repeat an effect index and trigger static fallback in ASS.
+        record_to_effect_unit = {
+            record_index: offset for offset, record_index in enumerate(group_indexes)
+        }
+        display_text, fragments, line_breaks = _wrapping_render_display_units(
+            group,
+            metrics,
+            word_indexes=record_to_effect_unit,
+            display_groups=cue_display_groups,
+        )
+        group_words = [prepared.words_by_record[index] for index in group_indexes]
+        _append_display_cue(
+            cues,
+            source_group,
+            display_text,
+            _word_start(group_words[0]),
+            _word_end(group_words[-1]),
+            group_words,
+            [],
+            metrics,
+            display_fragments=fragments,
+            generated_line_breaks=line_breaks,
+            source_map=prepared.source_map,
+            source_record_indexes=group_indexes,
+            display_groups=cue_display_groups,
+        )
+    return True
+
+
+def _append_coarse_display_cue(
+    cues: list[dict[str, Any]],
+    segment: Mapping[str, Any],
+    prepared: _PreparedCueSource,
+    metrics: WrappingMetrics,
+    text_case: TextCase,
+) -> None:
+    semantic_text = prepared.source_map.normalized_text
+    if not semantic_text and isinstance(prepared.source_text, str):
+        semantic_text = prepared.source_text
+    if not semantic_text:
+        return
+    try:
+        start = float(segment["start"])
+        end = float(segment["end"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TranscriptionError("Subtitle cue has invalid timestamps") from exc
+    _append_display_cue(
+        cues,
+        semantic_text,
+        _transform_display_text(_normalise_display_text(semantic_text), text_case),
+        start,
+        end,
+        prepared.words,
+        [],
+        metrics,
+        mapping_reason=";".join(prepared.source_map.fallback_reasons) or None,
+        source_map=prepared.source_map,
+        source_record_indexes=prepared.record_indexes,
+        display_groups=prepared.display_groups,
+    )
 
 
 def _append_display_cue(
@@ -1517,7 +1591,6 @@ def _write_json(
     template_source: str = "builtin",
     template_base: str | None = None,
 ) -> None:
-    requested_layout = subtitle_config.layout
     resolved_layout = resolved_subtitle_config.layout
     placement = resolve_cue_placement(resolved_subtitle_config, geometry)
     wrapping_metrics = wrapping_metrics or resolve_wrapping_metrics(
@@ -1526,9 +1599,6 @@ def _write_json(
     explicit = resolved_layout.placement_mode is SubtitlePlacementMode.EXPLICIT
     native_region = (
         None if explicit else resolve_native_layout_region(geometry, resolved_layout)
-    )
-    base_palette, effective_palette = resolve_subtitle_palettes(
-        resolved_subtitle_config
     )
     json_data = {
         "schema_version": 3,
@@ -1551,166 +1621,24 @@ def _write_json(
                 "sample_aspect_ratio": _format_fraction(geometry.sample_aspect_ratio),
                 "display_aspect_ratio": _format_fraction(geometry.display_aspect_ratio),
                 "container_duration": geometry.duration_seconds,
-                "template": {
-                    "requested": template_requested,
-                    "resolved": template_resolved,
-                },
-                "placement_mode": resolved_layout.placement_mode.value,
-                "requested_position": (
-                    None if explicit else requested_layout.position.value
+                "template": _serialize_template_metadata(
+                    template_requested,
+                    template_resolved,
+                    template_source,
+                    template_base,
                 ),
-                "resolved_position": (
-                    None if explicit else resolved_layout.position.value
-                ),
-                "render_strategy": _line_height_render_strategy(
+                **_serialize_layout_metadata(
+                    subtitle_config,
                     resolved_subtitle_config,
                     segments,
+                    wrapping_metrics,
+                    explicit=explicit,
                 ),
-                "margins": {
-                    "applied": not explicit,
-                    "left": resolved_layout.margin_left,
-                    "right": resolved_layout.margin_right,
-                    "top": resolved_layout.margin_top,
-                    "bottom": resolved_layout.margin_bottom,
-                },
-                "requested": {
-                    "backdrop_type": subtitle_config.style.backdrop.kind.value,
-                    "word_backdrop_type": (
-                        subtitle_config.style.word_backdrop.kind.value
-                    ),
-                    "font_size": _format_requested_length(
-                        subtitle_config.style.typography.font_size
-                    ),
-                    "letter_spacing": _format_requested_length(
-                        subtitle_config.style.typography.letter_spacing
-                    ),
-                    "line_height": _format_requested_length(
-                        subtitle_config.style.typography.line_height_requested
-                        if subtitle_config.style.typography.line_height_requested
-                        is not None
-                        else subtitle_config.style.typography.line_height
-                    ),
-                    "backdrop_size": _format_requested_length(
-                        subtitle_config.style.backdrop.size
-                    ),
-                    "word_backdrop_size": _format_requested_length(
-                        subtitle_config.style.word_backdrop.size
-                    ),
-                    "shadow_size": _format_requested_length(
-                        subtitle_config.style.shadow.size
-                    ),
-                    "margins": {
-                        "left": _format_requested_length(requested_layout.margin_left),
-                        "right": _format_requested_length(
-                            requested_layout.margin_right
-                        ),
-                        "top": _format_requested_length(requested_layout.margin_top),
-                        "bottom": _format_requested_length(
-                            requested_layout.margin_bottom
-                        ),
-                    },
-                    "max_width": _format_requested_length(requested_layout.max_width),
-                    "max_height": _format_requested_length(requested_layout.max_height),
-                },
-                "resolved": {
-                    "backdrop_type": (
-                        resolved_subtitle_config.style.backdrop.kind.value
-                    ),
-                    "word_backdrop_type": (
-                        resolved_subtitle_config.style.word_backdrop.kind.value
-                    ),
-                    "font_size": resolved_subtitle_config.style.typography.font_size,
-                    "letter_spacing": (
-                        resolved_subtitle_config.style.typography.letter_spacing
-                    ),
-                    "line_height": (
-                        resolved_subtitle_config.style.typography.line_height
-                    ),
-                    "backdrop_size": resolved_subtitle_config.style.backdrop.size,
-                    "word_backdrop_size": (
-                        resolved_subtitle_config.style.word_backdrop.size
-                    ),
-                    "shadow_size": resolved_subtitle_config.style.shadow.size,
-                    "margins": {
-                        "left": resolved_layout.margin_left,
-                        "right": resolved_layout.margin_right,
-                        "top": resolved_layout.margin_top,
-                        "bottom": resolved_layout.margin_bottom,
-                    },
-                    "max_width": resolved_layout.max_width,
-                    "max_height": resolved_layout.max_height,
-                    "line_capacity": wrapping_metrics.line_capacity,
-                },
-                "wrapping": {
-                    "available_width": wrapping_metrics.available_width,
-                    "available_height": wrapping_metrics.available_height,
-                    "max_width": wrapping_metrics.max_width,
-                    "max_height": wrapping_metrics.max_height,
-                    "width_budget": wrapping_metrics.width_budget,
-                    "line_height": wrapping_metrics.line_height,
-                    "natural_line_height": wrapping_metrics.natural_line_height,
-                    "resolved_line_height": wrapping_metrics.resolved_line_height,
-                    "ascent": wrapping_metrics.text_measurer.ascent,
-                    "descent": wrapping_metrics.text_measurer.descent,
-                    "vertical_decoration": wrapping_metrics.vertical_decoration,
-                    "line_capacity": wrapping_metrics.line_capacity,
-                    "font_size": wrapping_metrics.font_size,
-                    "letter_spacing": wrapping_metrics.letter_spacing,
-                    "backdrop_size": wrapping_metrics.backdrop_size,
-                    "shadow_size": wrapping_metrics.shadow_size,
-                },
-                "percentage_bases": {
-                    "font_size": "render-height",
-                    "letter_spacing": "resolved-font-size",
-                    "line_height": "natural-line-height",
-                    "max_width": (
-                        "render-width"
-                        if explicit
-                        else "native-width-after-horizontal-margins"
-                    ),
-                    "max_height": (
-                        "render-height"
-                        if explicit
-                        or resolved_layout.position.value
-                        in {"middle-left", "center", "middle-right"}
-                        else "native-height-after-active-margin"
-                    ),
-                    "position_x": "render-width" if explicit else None,
-                    "position_y": "render-height" if explicit else None,
-                },
-                "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
-                "text_case": {
-                    "requested": subtitle_config.style.typography.text_case.value,
-                    "resolved": (
-                        resolved_subtitle_config.style.typography.text_case.value
-                    ),
-                },
-                "opacity": {
-                    "requested": subtitle_config.style.opacity.original,
-                    "percentage": _decimal_json_number(
-                        resolved_subtitle_config.style.opacity.percentage
-                    ),
-                    "normalized": _decimal_json_number(
-                        resolved_subtitle_config.style.opacity.normalized
-                    ),
-                    "base_colors": {
-                        "text": base_palette.text_color,
-                        "backdrop": base_palette.backdrop_color,
-                        "word_backdrop": base_palette.word_backdrop_color,
-                        "shadow": base_palette.backdrop_color,
-                        "word_highlight": base_palette.highlight_color,
-                    },
-                    "effective_colors": {
-                        "text": effective_palette.text_color,
-                        "backdrop": effective_palette.backdrop_color,
-                        "word_backdrop": effective_palette.word_backdrop_color,
-                        "shadow": effective_palette.backdrop_color,
-                        "word_highlight": effective_palette.highlight_color,
-                    },
-                },
-                "animation": _serialize_animation_metadata(
+                **_serialize_appearance_metadata(
+                    subtitle_config,
                     resolved_subtitle_config,
                     segments,
+                    wrapping_metrics,
                     karaoke_fallback_cues=karaoke_fallback_cues,
                 ),
             },
@@ -1721,44 +1649,15 @@ def _write_json(
         },
     }
     rendering = json_data["metadata"]["rendering"]
-    mapping_metadata = _serialize_alignment_mapping_metadata(segments)
-    if mapping_metadata is not None:
-        rendering["text_mapping"] = mapping_metadata
-    effect_metadata = _serialize_word_effect_metadata(segments)
-    if effect_metadata is not None:
-        rendering["word_effects"] = effect_metadata
-    if template_source != "builtin":
-        rendering["template"].update(
-            {
-                "source": template_source,
-                "schema_version": 1,
-                "base": template_base,
-            }
+    rendering.update(
+        _serialize_rendering_diagnostics(
+            segments,
+            config=subtitle_config,
+            explicit=explicit,
+            placement=placement,
+            native_region=native_region,
         )
-    if native_region is not None:
-        rendering["native_region"] = {
-            "left": native_region.left,
-            "top": native_region.top,
-            "right": native_region.right,
-            "bottom": native_region.bottom,
-            "width": native_region.width,
-            "height": native_region.height,
-        }
-    if explicit and placement is not None:
-        rendering["requested_coordinates"] = {
-            "x": _format_requested_length(requested_layout.position_x),
-            "y": _format_requested_length(requested_layout.position_y),
-            "anchor": requested_layout.anchor.value
-            if requested_layout.anchor is not None
-            else None,
-            "coordinate_space": "playres",
-        }
-        rendering["resolved_coordinates"] = {
-            "x": placement.position_x,
-            "y": placement.position_y,
-            "anchor": placement.anchor.value,
-            "coordinate_space": "playres",
-        }
+    )
     try:
         content = json.dumps(json_data, ensure_ascii=False, indent=2, allow_nan=False)
     except (TypeError, ValueError) as exc:
@@ -1766,6 +1665,221 @@ def _write_json(
             f"Could not serialize JSON transcript '{path}': {exc}"
         ) from exc
     atomic_write_text(path, f"{content}\n")
+
+
+def _serialize_template_metadata(
+    requested: str | None,
+    resolved: str,
+    source: str,
+    base: str | None,
+) -> dict[str, object]:
+    metadata: dict[str, object] = {
+        "requested": requested,
+        "resolved": resolved,
+    }
+    if source != "builtin":
+        metadata.update(
+            {
+                "source": source,
+                "schema_version": 1,
+                "base": base,
+            }
+        )
+    return metadata
+
+
+def _serialize_layout_metadata(
+    config: SubtitleConfig,
+    resolved_config: SubtitleConfig,
+    segments: Sequence[Mapping[str, Any]],
+    wrapping_metrics: WrappingMetrics,
+    *,
+    explicit: bool,
+) -> dict[str, object]:
+    requested_layout = config.layout
+    resolved_layout = resolved_config.layout
+    return {
+        "placement_mode": resolved_layout.placement_mode.value,
+        "requested_position": None if explicit else requested_layout.position.value,
+        "resolved_position": None if explicit else resolved_layout.position.value,
+        "render_strategy": _line_height_render_strategy(resolved_config, segments),
+        "margins": {
+            "applied": not explicit,
+            "left": resolved_layout.margin_left,
+            "right": resolved_layout.margin_right,
+            "top": resolved_layout.margin_top,
+            "bottom": resolved_layout.margin_bottom,
+        },
+        "requested": {
+            "backdrop_type": config.style.backdrop.kind.value,
+            "word_backdrop_type": config.style.word_backdrop.kind.value,
+            "font_size": _format_requested_length(config.style.typography.font_size),
+            "letter_spacing": _format_requested_length(
+                config.style.typography.letter_spacing
+            ),
+            "line_height": _format_requested_length(
+                config.style.typography.line_height_requested
+                if config.style.typography.line_height_requested is not None
+                else config.style.typography.line_height
+            ),
+            "backdrop_size": _format_requested_length(config.style.backdrop.size),
+            "word_backdrop_size": _format_requested_length(
+                config.style.word_backdrop.size
+            ),
+            "shadow_size": _format_requested_length(config.style.shadow.size),
+            "margins": {
+                "left": _format_requested_length(requested_layout.margin_left),
+                "right": _format_requested_length(requested_layout.margin_right),
+                "top": _format_requested_length(requested_layout.margin_top),
+                "bottom": _format_requested_length(requested_layout.margin_bottom),
+            },
+            "max_width": _format_requested_length(requested_layout.max_width),
+            "max_height": _format_requested_length(requested_layout.max_height),
+        },
+        "resolved": {
+            "backdrop_type": resolved_config.style.backdrop.kind.value,
+            "word_backdrop_type": resolved_config.style.word_backdrop.kind.value,
+            "font_size": resolved_config.style.typography.font_size,
+            "letter_spacing": resolved_config.style.typography.letter_spacing,
+            "line_height": resolved_config.style.typography.line_height,
+            "backdrop_size": resolved_config.style.backdrop.size,
+            "word_backdrop_size": resolved_config.style.word_backdrop.size,
+            "shadow_size": resolved_config.style.shadow.size,
+            "margins": {
+                "left": resolved_layout.margin_left,
+                "right": resolved_layout.margin_right,
+                "top": resolved_layout.margin_top,
+                "bottom": resolved_layout.margin_bottom,
+            },
+            "max_width": resolved_layout.max_width,
+            "max_height": resolved_layout.max_height,
+            "line_capacity": wrapping_metrics.line_capacity,
+        },
+        "wrapping": {
+            "available_width": wrapping_metrics.available_width,
+            "available_height": wrapping_metrics.available_height,
+            "max_width": wrapping_metrics.max_width,
+            "max_height": wrapping_metrics.max_height,
+            "width_budget": wrapping_metrics.width_budget,
+            "line_height": wrapping_metrics.line_height,
+            "natural_line_height": wrapping_metrics.natural_line_height,
+            "resolved_line_height": wrapping_metrics.resolved_line_height,
+            "ascent": wrapping_metrics.text_measurer.ascent,
+            "descent": wrapping_metrics.text_measurer.descent,
+            "vertical_decoration": wrapping_metrics.vertical_decoration,
+            "line_capacity": wrapping_metrics.line_capacity,
+            "font_size": wrapping_metrics.font_size,
+            "letter_spacing": wrapping_metrics.letter_spacing,
+            "backdrop_size": wrapping_metrics.backdrop_size,
+            "shadow_size": wrapping_metrics.shadow_size,
+        },
+        "percentage_bases": {
+            "font_size": "render-height",
+            "letter_spacing": "resolved-font-size",
+            "line_height": "natural-line-height",
+            "max_width": (
+                "render-width" if explicit else "native-width-after-horizontal-margins"
+            ),
+            "max_height": (
+                "render-height"
+                if explicit
+                or resolved_layout.position.value
+                in {"middle-left", "center", "middle-right"}
+                else "native-height-after-active-margin"
+            ),
+            "position_x": "render-width" if explicit else None,
+            "position_y": "render-height" if explicit else None,
+        },
+    }
+
+
+def _serialize_appearance_metadata(
+    config: SubtitleConfig,
+    resolved_config: SubtitleConfig,
+    segments: Sequence[Mapping[str, Any]],
+    wrapping_metrics: WrappingMetrics,
+    *,
+    karaoke_fallback_cues: int,
+) -> dict[str, object]:
+    base_palette, effective_palette = resolve_subtitle_palettes(resolved_config)
+    return {
+        "text_measurement": wrapping_metrics.text_measurer.info.as_json(),
+        "text_case": {
+            "requested": config.style.typography.text_case.value,
+            "resolved": resolved_config.style.typography.text_case.value,
+        },
+        "opacity": {
+            "requested": config.style.opacity.original,
+            "percentage": _decimal_json_number(
+                resolved_config.style.opacity.percentage
+            ),
+            "normalized": _decimal_json_number(
+                resolved_config.style.opacity.normalized
+            ),
+            "base_colors": {
+                "text": base_palette.text_color,
+                "backdrop": base_palette.backdrop_color,
+                "word_backdrop": base_palette.word_backdrop_color,
+                "shadow": base_palette.backdrop_color,
+                "word_highlight": base_palette.highlight_color,
+            },
+            "effective_colors": {
+                "text": effective_palette.text_color,
+                "backdrop": effective_palette.backdrop_color,
+                "word_backdrop": effective_palette.word_backdrop_color,
+                "shadow": effective_palette.backdrop_color,
+                "word_highlight": effective_palette.highlight_color,
+            },
+        },
+        "animation": _serialize_animation_metadata(
+            resolved_config,
+            segments,
+            karaoke_fallback_cues=karaoke_fallback_cues,
+        ),
+    }
+
+
+def _serialize_rendering_diagnostics(
+    segments: Sequence[Mapping[str, Any]],
+    *,
+    config: SubtitleConfig,
+    explicit: bool,
+    placement: CuePlacement | None,
+    native_region: NativeLayoutRegion | None,
+) -> dict[str, object]:
+    metadata: dict[str, object] = {}
+    mapping_metadata = _serialize_alignment_mapping_metadata(segments)
+    if mapping_metadata is not None:
+        metadata["text_mapping"] = mapping_metadata
+    effect_metadata = _serialize_word_effect_metadata(segments)
+    if effect_metadata is not None:
+        metadata["word_effects"] = effect_metadata
+    if native_region is not None:
+        metadata["native_region"] = {
+            "left": native_region.left,
+            "top": native_region.top,
+            "right": native_region.right,
+            "bottom": native_region.bottom,
+            "width": native_region.width,
+            "height": native_region.height,
+        }
+    requested_layout = config.layout
+    if explicit and placement is not None:
+        metadata["requested_coordinates"] = {
+            "x": _format_requested_length(requested_layout.position_x),
+            "y": _format_requested_length(requested_layout.position_y),
+            "anchor": requested_layout.anchor.value
+            if requested_layout.anchor is not None
+            else None,
+            "coordinate_space": "playres",
+        }
+        metadata["resolved_coordinates"] = {
+            "x": placement.position_x,
+            "y": placement.position_y,
+            "anchor": placement.anchor.value,
+            "coordinate_space": "playres",
+        }
+    return metadata
 
 
 def _serialize_animation_metadata(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from numbers import Real
 from pathlib import Path
@@ -338,6 +338,28 @@ _WORD_EXIT_ANIMATION_DURATIONS_MS = MappingProxyType(
 )
 
 
+@dataclass(frozen=True)
+class _AnimationTrackSpec:
+    default: SubtitleElementAnimation
+    entrance_choices: tuple[str, ...]
+    emphasis_choices: tuple[str, ...]
+    exit_choices: tuple[str, ...]
+    entrance_durations: Mapping[CueAnimationType, int]
+    emphasis_durations: Mapping[CueAnimationType, int]
+    exit_durations: Mapping[CueAnimationType, int]
+
+
+@dataclass(frozen=True)
+class _ResolvedLayoutOptions:
+    """Parsed layout inputs shared by semantic configuration construction."""
+
+    lengths: dict[str, RelativeLength]
+    line_height: float | int | RelativeLength | str
+    position: SubtitlePosition
+    anchor: SubtitlePosition | None
+    has_custom_coordinates: bool
+
+
 def parse_relative_length(raw_value: str) -> RelativeLength:
     """Parse one finite, unit-bearing percentage or pixel length."""
     if not isinstance(raw_value, str):
@@ -493,46 +515,17 @@ def validate_subtitle_config(
     resolved_position = parse_position(position) if position is not None else None
     resolved_anchor = parse_position(anchor) if anchor is not None else None
     if isinstance(value, SubtitleConfig):
-        if (
-            defaults is not None
-            or appearance_values
-            or relative_values
-            or animation_values
-            or position_x is not None
-            or position_y is not None
-        ):
-            raise ValidationError(
-                "values cannot override an existing subtitle configuration"
-            )
-        if resolved_position is not None and resolved_position != value.layout.position:
-            raise ValidationError(
-                "position cannot override the position already stored in the "
-                "subtitle configuration"
-            )
-        if resolved_anchor is not None and resolved_anchor != value.layout.anchor:
-            raise ValidationError(
-                "anchor cannot override the anchor already stored in the subtitle "
-                "configuration"
-            )
-        _validate_typed_subtitle_config(value)
-        if value.animation.word.uses_timed_highlight:
-            highlight_color = _validate_color(
-                value.style.typography.highlight_color
-                or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
-                "animation-word-text-highlight-color",
-            )
-            if highlight_color != value.style.typography.highlight_color:
-                return replace(
-                    value,
-                    style=replace(
-                        value.style,
-                        typography=replace(
-                            value.style.typography,
-                            highlight_color=highlight_color,
-                        ),
-                    ),
-                )
-        return value
+        return _validate_existing_subtitle_config(
+            value,
+            defaults=defaults,
+            appearance_values=appearance_values,
+            relative_values=relative_values,
+            animation_values=animation_values,
+            position_x=position_x,
+            position_y=position_y,
+            position=resolved_position,
+            anchor=resolved_anchor,
+        )
     if value is not None:
         raise ValidationError(
             "raw ASS style mappings are no longer supported; use SubtitleConfig"
@@ -544,11 +537,6 @@ def validate_subtitle_config(
 
     default_style = defaults.style if defaults is not None else None
     default_typography = default_style.typography if default_style is not None else None
-    default_backdrop = default_style.backdrop if default_style is not None else None
-    default_word_backdrop = (
-        default_style.word_backdrop if default_style is not None else None
-    )
-    default_shadow = default_style.shadow if default_style is not None else None
     default_layout = defaults.layout if defaults is not None else None
     default_cue_animation = (
         defaults.animation.cue if defaults is not None else SubtitleCueAnimation()
@@ -582,31 +570,9 @@ def validate_subtitle_config(
     if "font_weight" in appearance_overrides and "bold" in appearance_overrides:
         raise ValidationError("font-weight cannot be combined with --bold or --no-bold")
 
-    if "font_weight" in appearance_overrides:
-        font_weight, font_weight_input, font_weight_input_form = (
-            _parse_font_weight_request(appearance_overrides["font_weight"])
-        )
-    elif "bold" in appearance_overrides:
-        bold = _validate_boolean(appearance_overrides["bold"], "bold")
-        font_weight = FontWeight.BOLD if bold else FontWeight.REGULAR
-        font_weight_input = font_weight.canonical_name
-        font_weight_input_form = FontWeightInputForm.BOLD_SHORTHAND
-    else:
-        font_weight = (
-            default_typography.font_weight
-            if default_typography is not None
-            else DEFAULT_FONT_WEIGHT
-        )
-        font_weight_input = (
-            default_typography.font_weight_input
-            if default_typography is not None
-            else DEFAULT_FONT_WEIGHT.canonical_name
-        )
-        font_weight_input_form = (
-            default_typography.font_weight_input_form
-            if default_typography is not None
-            else FontWeightInputForm.DEFAULT
-        )
+    font_weight, font_weight_input, font_weight_input_form = _resolve_font_weight(
+        appearance_overrides, default_typography
+    )
 
     opacity = _validate_opacity(
         appearance_overrides.get(
@@ -615,374 +581,508 @@ def validate_subtitle_config(
         )
     )
 
-    track_specs = {
-        "cue_text": (
-            default_cue_animation.text,
-            CUE_ENTRANCE_ANIMATION_CHOICES,
-            CUE_EMPHASIS_ANIMATION_CHOICES,
-            CUE_EXIT_ANIMATION_CHOICES,
-            _ENTRANCE_ANIMATION_DURATIONS_MS,
-            _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
-            _EXIT_ANIMATION_DURATIONS_MS,
-        ),
-        "cue_backdrop": (
-            default_cue_animation.backdrop,
-            CUE_ENTRANCE_ANIMATION_CHOICES,
-            CUE_EMPHASIS_ANIMATION_CHOICES,
-            CUE_EXIT_ANIMATION_CHOICES,
-            _ENTRANCE_ANIMATION_DURATIONS_MS,
-            _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
-            _EXIT_ANIMATION_DURATIONS_MS,
-        ),
-        "word_text": (
-            default_word_animation.text,
-            WORD_ENTRANCE_ANIMATION_CHOICES,
-            WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
-            WORD_EXIT_ANIMATION_CHOICES,
-            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
-            _WORD_TEXT_EMPHASIS_ANIMATION_DURATIONS_MS,
-            _WORD_EXIT_ANIMATION_DURATIONS_MS,
-        ),
-        "word_backdrop": (
-            default_word_animation.backdrop,
-            WORD_ENTRANCE_ANIMATION_CHOICES,
-            WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
-            WORD_EXIT_ANIMATION_CHOICES,
-            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
-            _WORD_BACKDROP_EMPHASIS_ANIMATION_DURATIONS_MS,
-            _WORD_EXIT_ANIMATION_DURATIONS_MS,
-        ),
-    }
-    known_animation_fields = {
-        "word_text_mode",
-        "word_backdrop_mode",
-        "word_text_highlight_color",
-    }
-    for prefix in track_specs:
-        for phase_name in ("entrance", "emphasis", "exit"):
-            known_animation_fields.add(f"{prefix}_{phase_name}")
-            known_animation_fields.add(f"{prefix}_{phase_name}_duration")
-    unknown_animation_fields = set(animation_overrides).difference(
-        known_animation_fields
-    )
-    if unknown_animation_fields:
-        names = ", ".join(sorted(unknown_animation_fields))
-        raise ValidationError(f"Unknown animation value(s): {names}")
-    resolved_tracks = {
-        prefix: _resolve_animation_track(
-            prefix,
-            default_track,
-            animation_overrides,
-            entrance_choices=entrance_choices,
-            emphasis_choices=emphasis_choices,
-            exit_choices=exit_choices,
-            entrance_durations=entrance_durations,
-            emphasis_durations=emphasis_durations,
-            exit_durations=exit_durations,
-        )
-        for prefix, (
-            default_track,
-            entrance_choices,
-            emphasis_choices,
-            exit_choices,
-            entrance_durations,
-            emphasis_durations,
-            exit_durations,
-        ) in track_specs.items()
-    }
-    word_text_mode = _validate_word_animation_mode(
-        animation_overrides.get("word_text_mode", default_word_animation.text.mode)
-    )
-    word_backdrop_mode = _validate_word_animation_mode(
-        animation_overrides.get(
-            "word_backdrop_mode", default_word_animation.backdrop.mode
-        )
-    )
-    explicit_highlight_color = animation_overrides.get("word_text_highlight_color")
-    word_text_highlighted = (
-        resolved_tracks["word_text"].emphasis.type is CueAnimationType.HIGHLIGHT
-    )
-    if not word_text_highlighted and explicit_highlight_color is not None:
-        raise ValidationError(
-            "animation-word-text-highlight-color requires "
-            "--animation-word-text-emphasis highlight"
-        )
-    raw_highlight_color = (
-        explicit_highlight_color
-        if explicit_highlight_color is not None
-        else (
-            default_typography.highlight_color
-            if default_typography is not None
-            else None
-        )
-        or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR
-    )
-    highlight_color = (
-        _validate_color(
-            raw_highlight_color,
-            "animation-word-text-highlight-color",
-        )
-        if word_text_highlighted
-        else None
+    animation, highlight_color = _resolve_animation_config(
+        default_cue_animation,
+        default_word_animation,
+        animation_overrides,
+        default_typography,
     )
 
-    parsed_relative_values = _validate_relative_values(relative_values)
-    for field, raw_value in (
-        ("position_x", position_x),
-        ("position_y", position_y),
-    ):
+    layout_options = _resolve_layout_options(
+        relative_values,
+        position_x=position_x,
+        position_y=position_y,
+        position=resolved_position,
+        anchor=resolved_anchor,
+        default_typography=default_typography,
+        default_layout=default_layout,
+    )
+    style = _build_subtitle_style(
+        appearance_overrides,
+        default_style,
+        layout_options.lengths,
+        font_weight=font_weight,
+        font_weight_input=font_weight_input,
+        font_weight_input_form=font_weight_input_form,
+        line_height=layout_options.line_height,
+        highlight_color=highlight_color,
+        opacity=opacity,
+    )
+    config = SubtitleConfig(
+        style=style,
+        layout=_build_subtitle_layout(default_layout, layout_options),
+        animation=animation,
+    )
+    _validate_typed_subtitle_config(config)
+    return config
+
+
+def _resolve_layout_options(
+    values: Mapping[str, RelativeLength | str] | None,
+    *,
+    position_x: RelativeLength | str | None,
+    position_y: RelativeLength | str | None,
+    position: SubtitlePosition | None,
+    anchor: SubtitlePosition | None,
+    default_typography: SubtitleTypography | None,
+    default_layout: SubtitleLayout | None,
+) -> _ResolvedLayoutOptions:
+    """Parse relative layout overrides and validate placement combinations."""
+    parsed_values = _validate_relative_values(values)
+    for field, raw_value in (("position_x", position_x), ("position_y", position_y)):
         if raw_value is None:
             continue
-        if field in parsed_relative_values:
+        if field in parsed_values:
             raise ValidationError(
                 f"{field.replace('_', '-')} was provided more than once"
             )
         if isinstance(raw_value, str):
             raw_value = parse_relative_length(raw_value)
         _validate_relative_length(raw_value, field)
-        parsed_relative_values[field] = raw_value
+        parsed_values[field] = raw_value
 
-    parsed_length_values: dict[str, RelativeLength] = {
-        key: value
-        for key, value in parsed_relative_values.items()
-        if isinstance(value, RelativeLength)
-    }
-    parsed_line_height = parsed_relative_values.get(
-        "line_height",
-        default_typography.line_height
-        if default_typography is not None
-        else DEFAULT_LINE_HEIGHT,
-    )
-
-    has_position_x = "position_x" in parsed_relative_values
-    has_position_y = "position_y" in parsed_relative_values
+    has_position_x = "position_x" in parsed_values
+    has_position_y = "position_y" in parsed_values
     has_custom_coordinates = has_position_x or has_position_y
     if has_position_x != has_position_y:
         raise ValidationError("position-x and position-y must be supplied together")
-    if has_custom_coordinates and resolved_position is not None:
+    if has_custom_coordinates and position is not None:
         raise ValidationError(
             "position cannot be combined with custom position-x and position-y"
         )
-    if resolved_anchor is not None and not has_custom_coordinates:
+    if anchor is not None and not has_custom_coordinates:
         raise ValidationError("anchor requires both position-x and position-y")
-    if has_custom_coordinates and resolved_anchor is None:
+    if has_custom_coordinates and anchor is None:
         raise ValidationError("custom coordinates require an explicit anchor")
-    if has_custom_coordinates and "max_width" not in parsed_relative_values:
+    if has_custom_coordinates and "max_width" not in parsed_values:
         raise ValidationError("custom coordinates require an explicit max-width")
-    if has_custom_coordinates and "max_height" not in parsed_relative_values:
+    if has_custom_coordinates and "max_height" not in parsed_values:
         raise ValidationError("custom coordinates require an explicit max-height")
+
+    resolved_position = position or (
+        default_layout.position if default_layout is not None else DEFAULT_POSITION
+    )
     _validate_layout_option_effects(
-        parsed_relative_values,
-        position=(
-            resolved_position
-            or (
-                default_layout.position
-                if default_layout is not None
-                else DEFAULT_POSITION
-            )
-        ),
+        parsed_values,
+        position=resolved_position,
         has_custom_coordinates=has_custom_coordinates,
     )
-    config = SubtitleConfig(
-        style=SubtitleStyle(
-            typography=SubtitleTypography(
-                font=_validate_font(
-                    appearance_overrides.get(
-                        "font",
-                        default_typography.font
-                        if default_typography is not None
-                        else DEFAULT_FONT,
-                    )
+    return _ResolvedLayoutOptions(
+        lengths={
+            key: value
+            for key, value in parsed_values.items()
+            if isinstance(value, RelativeLength)
+        },
+        line_height=parsed_values.get(
+            "line_height",
+            default_typography.line_height
+            if default_typography is not None
+            else DEFAULT_LINE_HEIGHT,
+        ),
+        position=resolved_position,
+        anchor=anchor,
+        has_custom_coordinates=has_custom_coordinates,
+    )
+
+
+def _build_subtitle_style(
+    appearance: Mapping[str, object],
+    defaults: SubtitleStyle | None,
+    lengths: Mapping[str, RelativeLength],
+    *,
+    font_weight: FontWeight,
+    font_weight_input: str,
+    font_weight_input_form: FontWeightInputForm,
+    line_height: float | int | RelativeLength | str,
+    highlight_color: str | None,
+    opacity: SubtitleOpacity,
+) -> SubtitleStyle:
+    """Build and validate semantic appearance fields from explicit inputs."""
+    typography_default = defaults.typography if defaults is not None else None
+    backdrop_default = defaults.backdrop if defaults is not None else None
+    word_backdrop_default = defaults.word_backdrop if defaults is not None else None
+    shadow_default = defaults.shadow if defaults is not None else None
+    return SubtitleStyle(
+        typography=SubtitleTypography(
+            font=_validate_font(
+                appearance.get(
+                    "font",
+                    typography_default.font
+                    if typography_default is not None
+                    else DEFAULT_FONT,
+                )
+            ),
+            font_size=lengths.get(
+                "font_size",
+                typography_default.font_size
+                if typography_default is not None
+                else parse_relative_length(DEFAULT_FONT_SIZE),
+            ),
+            letter_spacing=lengths.get(
+                "letter_spacing",
+                typography_default.letter_spacing
+                if typography_default is not None
+                else parse_relative_length(DEFAULT_LETTER_SPACING),
+            ),
+            color=_validate_color(
+                appearance.get(
+                    "text_color",
+                    typography_default.color
+                    if typography_default is not None
+                    else DEFAULT_TEXT_COLOR,
                 ),
-                font_size=parsed_length_values.get(
-                    "font_size",
-                    default_typography.font_size
-                    if default_typography is not None
-                    else parse_relative_length(DEFAULT_FONT_SIZE),
-                ),
-                letter_spacing=parsed_length_values.get(
-                    "letter_spacing",
-                    default_typography.letter_spacing
-                    if default_typography is not None
-                    else parse_relative_length(DEFAULT_LETTER_SPACING),
-                ),
-                color=_validate_color(
-                    appearance_overrides.get(
-                        "text_color",
-                        default_typography.color
-                        if default_typography is not None
-                        else DEFAULT_TEXT_COLOR,
-                    ),
-                    "text-color",
-                ),
-                font_weight=font_weight,
-                italic=_validate_boolean(
-                    appearance_overrides.get(
-                        "italic",
-                        default_typography.italic
-                        if default_typography is not None
-                        else DEFAULT_ITALIC,
-                    ),
+                "text-color",
+            ),
+            font_weight=font_weight,
+            italic=_validate_boolean(
+                appearance.get(
                     "italic",
+                    typography_default.italic
+                    if typography_default is not None
+                    else DEFAULT_ITALIC,
                 ),
-                fonts_dir=_coerce_fonts_dir(
-                    appearance_overrides.get(
-                        "fonts_dir",
-                        default_typography.fonts_dir
-                        if default_typography is not None
-                        else None,
-                    )
-                ),
-                font_weight_input=font_weight_input,
-                font_weight_input_form=font_weight_input_form,
-                line_height=parsed_line_height,
-                text_case=parse_text_case(
-                    appearance_overrides.get(
-                        "text_case",
-                        default_typography.text_case
-                        if default_typography is not None
-                        else DEFAULT_TEXT_CASE,
-                    )
-                ),
-                highlight_color=highlight_color,
+                "italic",
             ),
-            backdrop=SubtitleBackdropStyle(
-                kind=_validate_backdrop(
-                    appearance_overrides.get(
-                        "backdrop",
-                        default_backdrop.kind
-                        if default_backdrop is not None
-                        else DEFAULT_BACKDROP,
-                    )
-                ),
-                color=_validate_color(
-                    appearance_overrides.get(
-                        "backdrop_color",
-                        default_backdrop.color
-                        if default_backdrop is not None
-                        else DEFAULT_BACKDROP_COLOR,
-                    ),
-                    "backdrop-color",
-                ),
-                size=parsed_length_values.get(
-                    "outline_weight",
-                    default_backdrop.size
-                    if default_backdrop is not None
-                    else parse_relative_length(DEFAULT_BACKDROP_SIZE),
-                ),
-            ),
-            word_backdrop=SubtitleWordBackdropStyle(
-                kind=_validate_backdrop(
-                    appearance_overrides.get(
-                        "word_backdrop",
-                        default_word_backdrop.kind
-                        if default_word_backdrop is not None
-                        else DEFAULT_WORD_BACKDROP,
-                    )
-                ),
-                color=_validate_color(
-                    appearance_overrides.get(
-                        "word_backdrop_color",
-                        default_word_backdrop.color
-                        if default_word_backdrop is not None
-                        else DEFAULT_WORD_BACKDROP_COLOR,
-                    ),
-                    "word-backdrop-color",
-                ),
-                size=parsed_length_values.get(
-                    "word_backdrop_size",
-                    default_word_backdrop.size
-                    if default_word_backdrop is not None
-                    else parse_relative_length(DEFAULT_WORD_BACKDROP_SIZE),
-                ),
-            ),
-            shadow=SubtitleShadow(
-                size=parsed_length_values.get(
-                    "shadow_weight",
-                    default_shadow.size
-                    if default_shadow is not None
-                    else parse_relative_length(DEFAULT_SHADOW_SIZE),
+            fonts_dir=_coerce_fonts_dir(
+                appearance.get(
+                    "fonts_dir",
+                    typography_default.fonts_dir
+                    if typography_default is not None
+                    else None,
                 )
             ),
-            opacity=opacity,
-        ),
-        layout=SubtitleLayout(
-            position=(
-                resolved_position
-                or (
-                    default_layout.position
-                    if default_layout is not None
-                    else DEFAULT_POSITION
+            font_weight_input=font_weight_input,
+            font_weight_input_form=font_weight_input_form,
+            line_height=line_height,
+            text_case=parse_text_case(
+                appearance.get(
+                    "text_case",
+                    typography_default.text_case
+                    if typography_default is not None
+                    else DEFAULT_TEXT_CASE,
                 )
             ),
-            margin_left=parsed_length_values.get(
-                "margin_left",
-                default_layout.margin_left
-                if default_layout is not None
-                else parse_relative_length(DEFAULT_MARGIN_LEFT),
+            highlight_color=highlight_color,
+        ),
+        backdrop=SubtitleBackdropStyle(
+            kind=_validate_backdrop(
+                appearance.get(
+                    "backdrop",
+                    backdrop_default.kind
+                    if backdrop_default is not None
+                    else DEFAULT_BACKDROP,
+                )
             ),
-            margin_right=parsed_length_values.get(
-                "margin_right",
-                default_layout.margin_right
-                if default_layout is not None
-                else parse_relative_length(DEFAULT_MARGIN_RIGHT),
+            color=_validate_color(
+                appearance.get(
+                    "backdrop_color",
+                    backdrop_default.color
+                    if backdrop_default is not None
+                    else DEFAULT_BACKDROP_COLOR,
+                ),
+                "backdrop-color",
             ),
-            margin_top=parsed_length_values.get(
-                "margin_top",
-                default_layout.margin_top
-                if default_layout is not None
-                else parse_relative_length(DEFAULT_MARGIN_TOP),
-            ),
-            margin_bottom=parsed_length_values.get(
-                "margin_bottom",
-                default_layout.margin_bottom
-                if default_layout is not None
-                else parse_relative_length(DEFAULT_MARGIN_BOTTOM),
-            ),
-            placement_mode=(
-                SubtitlePlacementMode.EXPLICIT
-                if has_custom_coordinates
-                else SubtitlePlacementMode.NATIVE_STYLE
-            ),
-            position_x=parsed_length_values.get("position_x"),
-            position_y=parsed_length_values.get("position_y"),
-            anchor=resolved_anchor if has_custom_coordinates else None,
-            max_width=parsed_length_values.get(
-                "max_width",
-                default_layout.max_width
-                if default_layout is not None
-                else parse_relative_length(DEFAULT_MAX_WIDTH),
-            ),
-            max_height=parsed_length_values.get(
-                "max_height",
-                default_layout.max_height
-                if default_layout is not None
-                else parse_relative_length(DEFAULT_MAX_HEIGHT),
+            size=lengths.get(
+                "outline_weight",
+                backdrop_default.size
+                if backdrop_default is not None
+                else parse_relative_length(DEFAULT_BACKDROP_SIZE),
             ),
         ),
-        animation=SubtitleAnimation(
+        word_backdrop=SubtitleWordBackdropStyle(
+            kind=_validate_backdrop(
+                appearance.get(
+                    "word_backdrop",
+                    word_backdrop_default.kind
+                    if word_backdrop_default is not None
+                    else DEFAULT_WORD_BACKDROP,
+                )
+            ),
+            color=_validate_color(
+                appearance.get(
+                    "word_backdrop_color",
+                    word_backdrop_default.color
+                    if word_backdrop_default is not None
+                    else DEFAULT_WORD_BACKDROP_COLOR,
+                ),
+                "word-backdrop-color",
+            ),
+            size=lengths.get(
+                "word_backdrop_size",
+                word_backdrop_default.size
+                if word_backdrop_default is not None
+                else parse_relative_length(DEFAULT_WORD_BACKDROP_SIZE),
+            ),
+        ),
+        shadow=SubtitleShadow(
+            size=lengths.get(
+                "shadow_weight",
+                shadow_default.size
+                if shadow_default is not None
+                else parse_relative_length(DEFAULT_SHADOW_SIZE),
+            )
+        ),
+        opacity=opacity,
+    )
+
+
+def _build_subtitle_layout(
+    defaults: SubtitleLayout | None,
+    options: _ResolvedLayoutOptions,
+) -> SubtitleLayout:
+    """Build the complete semantic layout from one validated option set."""
+    lengths = options.lengths
+    return SubtitleLayout(
+        position=options.position,
+        margin_left=lengths.get(
+            "margin_left",
+            defaults.margin_left
+            if defaults is not None
+            else parse_relative_length(DEFAULT_MARGIN_LEFT),
+        ),
+        margin_right=lengths.get(
+            "margin_right",
+            defaults.margin_right
+            if defaults is not None
+            else parse_relative_length(DEFAULT_MARGIN_RIGHT),
+        ),
+        margin_top=lengths.get(
+            "margin_top",
+            defaults.margin_top
+            if defaults is not None
+            else parse_relative_length(DEFAULT_MARGIN_TOP),
+        ),
+        margin_bottom=lengths.get(
+            "margin_bottom",
+            defaults.margin_bottom
+            if defaults is not None
+            else parse_relative_length(DEFAULT_MARGIN_BOTTOM),
+        ),
+        placement_mode=(
+            SubtitlePlacementMode.EXPLICIT
+            if options.has_custom_coordinates
+            else SubtitlePlacementMode.NATIVE_STYLE
+        ),
+        position_x=lengths.get("position_x"),
+        position_y=lengths.get("position_y"),
+        anchor=options.anchor if options.has_custom_coordinates else None,
+        max_width=lengths.get(
+            "max_width",
+            defaults.max_width
+            if defaults is not None
+            else parse_relative_length(DEFAULT_MAX_WIDTH),
+        ),
+        max_height=lengths.get(
+            "max_height",
+            defaults.max_height
+            if defaults is not None
+            else parse_relative_length(DEFAULT_MAX_HEIGHT),
+        ),
+    )
+
+
+def _resolve_font_weight(
+    appearance: Mapping[str, object],
+    default: SubtitleTypography | None,
+) -> tuple[FontWeight, str, FontWeightInputForm]:
+    """Resolve a canonical weight and its public-input diagnostics."""
+    if "font_weight" in appearance:
+        return _parse_font_weight_request(appearance["font_weight"])
+    if "bold" in appearance:
+        bold = _validate_boolean(appearance["bold"], "bold")
+        weight = FontWeight.BOLD if bold else FontWeight.REGULAR
+        return weight, weight.canonical_name, FontWeightInputForm.BOLD_SHORTHAND
+    if default is not None:
+        return (
+            default.font_weight,
+            default.font_weight_input,
+            default.font_weight_input_form,
+        )
+    return (
+        DEFAULT_FONT_WEIGHT,
+        DEFAULT_FONT_WEIGHT.canonical_name,
+        FontWeightInputForm.DEFAULT,
+    )
+
+
+def _resolve_animation_config(
+    default_cue: SubtitleCueAnimation,
+    default_word: SubtitleWordAnimation,
+    overrides: Mapping[str, object],
+    default_typography: SubtitleTypography | None,
+) -> tuple[SubtitleAnimation, str | None]:
+    """Resolve four independent animation tracks and their highlight color."""
+    track_specs = _animation_track_specs(default_cue, default_word)
+    known_fields = {"word_text_mode", "word_backdrop_mode", "word_text_highlight_color"}
+    for prefix in track_specs:
+        for phase in ("entrance", "emphasis", "exit"):
+            known_fields.update((f"{prefix}_{phase}", f"{prefix}_{phase}_duration"))
+    unknown_fields = set(overrides).difference(known_fields)
+    if unknown_fields:
+        names = ", ".join(sorted(unknown_fields))
+        raise ValidationError(f"Unknown animation value(s): {names}")
+
+    tracks = {
+        prefix: _resolve_animation_track(
+            prefix,
+            spec.default,
+            overrides,
+            entrance_choices=spec.entrance_choices,
+            emphasis_choices=spec.emphasis_choices,
+            exit_choices=spec.exit_choices,
+            entrance_durations=spec.entrance_durations,
+            emphasis_durations=spec.emphasis_durations,
+            exit_durations=spec.exit_durations,
+        )
+        for prefix, spec in track_specs.items()
+    }
+    word_text_mode = _validate_word_animation_mode(
+        overrides.get("word_text_mode", default_word.text.mode)
+    )
+    word_backdrop_mode = _validate_word_animation_mode(
+        overrides.get("word_backdrop_mode", default_word.backdrop.mode)
+    )
+    explicit_highlight_color = overrides.get("word_text_highlight_color")
+    word_text_highlighted = (
+        tracks["word_text"].emphasis.type is CueAnimationType.HIGHLIGHT
+    )
+    if not word_text_highlighted and explicit_highlight_color is not None:
+        raise ValidationError(
+            "animation-word-text-highlight-color requires "
+            "--animation-word-text-emphasis highlight"
+        )
+    default_highlight_color = (
+        default_typography.highlight_color if default_typography is not None else None
+    )
+    raw_highlight_color = (
+        explicit_highlight_color
+        if explicit_highlight_color is not None
+        else default_highlight_color or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR
+    )
+    highlight_color = (
+        _validate_color(raw_highlight_color, "animation-word-text-highlight-color")
+        if word_text_highlighted
+        else None
+    )
+    return (
+        SubtitleAnimation(
             cue=SubtitleCueAnimation(
-                text=resolved_tracks["cue_text"],
-                backdrop=resolved_tracks["cue_backdrop"],
+                text=tracks["cue_text"],
+                backdrop=tracks["cue_backdrop"],
             ),
             word=SubtitleWordAnimation(
                 text=SubtitleWordElementAnimation(
-                    entrance=resolved_tracks["word_text"].entrance,
-                    emphasis=resolved_tracks["word_text"].emphasis,
-                    exit=resolved_tracks["word_text"].exit,
+                    entrance=tracks["word_text"].entrance,
+                    emphasis=tracks["word_text"].emphasis,
+                    exit=tracks["word_text"].exit,
                     mode=word_text_mode,
                 ),
                 backdrop=SubtitleWordElementAnimation(
-                    entrance=resolved_tracks["word_backdrop"].entrance,
-                    emphasis=resolved_tracks["word_backdrop"].emphasis,
-                    exit=resolved_tracks["word_backdrop"].exit,
+                    entrance=tracks["word_backdrop"].entrance,
+                    emphasis=tracks["word_backdrop"].emphasis,
+                    exit=tracks["word_backdrop"].exit,
                     mode=word_backdrop_mode,
                 ),
             ),
         ),
+        highlight_color,
     )
-    _validate_typed_subtitle_config(config)
-    return config
+
+
+def _animation_track_specs(
+    default_cue: SubtitleCueAnimation,
+    default_word: SubtitleWordAnimation,
+) -> dict[str, _AnimationTrackSpec]:
+    """Describe valid phase choices and default durations for each track."""
+    cue_spec = (
+        CUE_ENTRANCE_ANIMATION_CHOICES,
+        CUE_EMPHASIS_ANIMATION_CHOICES,
+        CUE_EXIT_ANIMATION_CHOICES,
+        _ENTRANCE_ANIMATION_DURATIONS_MS,
+        _CUE_EMPHASIS_ANIMATION_DURATIONS_MS,
+        _EXIT_ANIMATION_DURATIONS_MS,
+    )
+    word_entrance = WORD_ENTRANCE_ANIMATION_CHOICES
+    word_exit = WORD_EXIT_ANIMATION_CHOICES
+    return {
+        "cue_text": _AnimationTrackSpec(default_cue.text, *cue_spec),
+        "cue_backdrop": _AnimationTrackSpec(default_cue.backdrop, *cue_spec),
+        "word_text": _AnimationTrackSpec(
+            default_word.text,
+            word_entrance,
+            WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
+            word_exit,
+            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
+            _WORD_TEXT_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _WORD_EXIT_ANIMATION_DURATIONS_MS,
+        ),
+        "word_backdrop": _AnimationTrackSpec(
+            default_word.backdrop,
+            word_entrance,
+            WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
+            word_exit,
+            _WORD_ENTRANCE_ANIMATION_DURATIONS_MS,
+            _WORD_BACKDROP_EMPHASIS_ANIMATION_DURATIONS_MS,
+            _WORD_EXIT_ANIMATION_DURATIONS_MS,
+        ),
+    }
+
+
+def _validate_existing_subtitle_config(
+    value: SubtitleConfig,
+    *,
+    defaults: SubtitleConfig | None,
+    appearance_values: Mapping[str, object] | None,
+    relative_values: Mapping[str, RelativeLength | str] | None,
+    animation_values: Mapping[str, object] | None,
+    position_x: RelativeLength | str | None,
+    position_y: RelativeLength | str | None,
+    position: SubtitlePosition | None,
+    anchor: SubtitlePosition | None,
+) -> SubtitleConfig:
+    """Revalidate typed configs and reject attempts to layer extra overrides."""
+    if (
+        defaults is not None
+        or appearance_values
+        or relative_values
+        or animation_values
+        or position_x is not None
+        or position_y is not None
+    ):
+        raise ValidationError(
+            "values cannot override an existing subtitle configuration"
+        )
+    if position is not None and position != value.layout.position:
+        raise ValidationError(
+            "position cannot override the position already stored in the "
+            "subtitle configuration"
+        )
+    if anchor is not None and anchor != value.layout.anchor:
+        raise ValidationError(
+            "anchor cannot override the anchor already stored in the subtitle "
+            "configuration"
+        )
+
+    _validate_typed_subtitle_config(value)
+    if not value.animation.word.uses_timed_highlight:
+        return value
+    highlight_color = _validate_color(
+        value.style.typography.highlight_color
+        or DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
+        "animation-word-text-highlight-color",
+    )
+    if highlight_color == value.style.typography.highlight_color:
+        return value
+    return replace(
+        value,
+        style=replace(
+            value.style,
+            typography=replace(
+                value.style.typography,
+                highlight_color=highlight_color,
+            ),
+        ),
+    )
 
 
 def parse_position(value: SubtitlePosition | str) -> SubtitlePosition:
@@ -1117,35 +1217,46 @@ def _validate_relative_length(value: object, field: str) -> None:
 
 
 def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
-    if not isinstance(config.layout.position, SubtitlePosition):
+    _validate_typed_layout(config.layout)
+    _validate_typed_style(config.style, config.animation)
+    _validate_typed_dimensions(config)
+
+
+def _validate_typed_layout(layout: SubtitleLayout) -> None:
+    """Validate the mode, anchor, and coordinate relationships."""
+    if not isinstance(layout.position, SubtitlePosition):
         raise ValidationError("layout position must use a supported position value")
-    if not isinstance(config.layout.placement_mode, SubtitlePlacementMode):
+    if not isinstance(layout.placement_mode, SubtitlePlacementMode):
         raise ValidationError("layout placement mode must be native-style or explicit")
-    if config.layout.anchor is not None and not isinstance(
-        config.layout.anchor, SubtitlePosition
-    ):
+    if layout.anchor is not None and not isinstance(layout.anchor, SubtitlePosition):
         raise ValidationError("layout anchor must use a supported position value")
-    has_position_x = config.layout.position_x is not None
-    has_position_y = config.layout.position_y is not None
+    has_position_x = layout.position_x is not None
+    has_position_y = layout.position_y is not None
     if has_position_x != has_position_y:
         raise ValidationError("position-x and position-y must be supplied together")
-    if config.layout.anchor is not None and not has_position_x:
+    if layout.anchor is not None and not has_position_x:
         raise ValidationError("anchor requires both position-x and position-y")
-    if has_position_x and config.layout.anchor is None:
+    if has_position_x and layout.anchor is None:
         raise ValidationError("custom coordinates require an anchor")
-    is_explicit = config.layout.placement_mode is SubtitlePlacementMode.EXPLICIT
+    is_explicit = layout.placement_mode is SubtitlePlacementMode.EXPLICIT
     if is_explicit != has_position_x:
         raise ValidationError(
             "explicit placement requires position-x, position-y, and anchor"
         )
-    if is_explicit and config.layout.max_width is None:
+    if is_explicit and layout.max_width is None:
         raise ValidationError("explicit placement requires max-width")
-    if is_explicit and config.layout.max_height is None:
+    if is_explicit and layout.max_height is None:
         raise ValidationError("explicit placement requires max-height")
-    typography = config.style.typography
-    backdrop = config.style.backdrop
-    word_backdrop = config.style.word_backdrop
-    shadow = config.style.shadow
+
+
+def _validate_typed_style(
+    style: SubtitleStyle,
+    animation: SubtitleAnimation,
+) -> None:
+    """Validate appearance primitives and their semantic animation links."""
+    typography = style.typography
+    backdrop = style.backdrop
+    word_backdrop = style.word_backdrop
     _validate_font(typography.font)
     _validate_color(typography.color, "text-color")
     if not isinstance(typography.font_weight, FontWeight):
@@ -1188,7 +1299,7 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         )
     _validate_backdrop(word_backdrop.kind)
     _validate_color(word_backdrop.color, "word-backdrop-color")
-    _validate_opacity(config.style.opacity)
+    _validate_opacity(style.opacity)
     if not isinstance(typography.text_case, TextCase):
         raise ValidationError("text-case must use the typed TextCase contract")
     _coerce_fonts_dir(typography.fonts_dir)
@@ -1197,12 +1308,20 @@ def _validate_typed_subtitle_config(config: SubtitleConfig) -> None:
         _validate_line_height_value(
             typography.line_height_requested, "line-height-requested"
         )
-    _validate_animation(config.animation, typography)
+    _validate_animation(animation, typography)
+
+
+def _validate_typed_dimensions(config: SubtitleConfig) -> None:
+    """Validate integer and relative-unit values across style and layout."""
+    typography = config.style.typography
+    backdrop = config.style.backdrop
+    shadow = config.style.shadow
+    word_backdrop = config.style.word_backdrop
     relative_fields = {
         "font_size": typography.font_size,
         "letter_spacing": typography.letter_spacing,
         "outline_weight": backdrop.size,
-        "word_backdrop_size": config.style.word_backdrop.size,
+        "word_backdrop_size": word_backdrop.size,
         "shadow_weight": shadow.size,
         "margin_left": config.layout.margin_left,
         "margin_right": config.layout.margin_right,

@@ -54,6 +54,28 @@ def _word(text: str, start: float, end: float, **extra):
     return {"word": text, "start": start, "end": end, **extra}
 
 
+def test_supplied_wrapping_metrics_skip_coverage_sample_build(monkeypatch):
+    config = resolve_subtitle_config(validate_subtitle_config(None), GEOMETRY)
+    metrics = resolve_wrapping_metrics(config, GEOMETRY)
+
+    def unexpected_transform(*_args):
+        pytest.fail("existing metrics do not need a coverage sample")
+
+    monkeypatch.setattr(transcriber, "_transform_display_text", unexpected_transform)
+
+    resolved = transcriber._resolve_display_cue_metrics(
+        [{"text": "unused sample"}],
+        config,
+        GEOMETRY,
+        language="pt",
+        text_measurer=None,
+        wrapping_metrics=metrics,
+        verify_font_coverage=True,
+    )
+
+    assert resolved is metrics
+
+
 def test_build_subtitle_segments_prefers_sentence_and_pause_boundaries():
     segments = transcriber._build_subtitle_segments(
         [

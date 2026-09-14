@@ -386,28 +386,32 @@ class PositionedVisualLine:
     fragment_placements: tuple[CuePlacement, ...]
 
 
-def position_visual_lines(
-    visual_lines: Sequence[SubtitleVisualLine],
+def _resolve_visual_anchor(
     config: SubtitleConfig,
     geometry: VideoGeometry,
-    metrics: WrappingMetrics,
     placement: CuePlacement | None,
-    *,
-    allow_single_line_overflow: bool = False,
-) -> tuple[PositionedVisualLine, ...]:
-    """Resolve stable visual-line and measured fragment anchors."""
-    layout = config.layout
+) -> tuple[SubtitlePosition, int, int]:
     if placement is not None:
-        anchor = placement.anchor
-        anchor_x, anchor_y = placement.position_x, placement.position_y
-    else:
-        region = resolve_native_layout_region(geometry, layout)
-        anchor = layout.position
-        anchor_x, anchor_y = resolve_native_anchor_point(anchor, region)
+        return placement.anchor, placement.position_x, placement.position_y
 
-    content_width = max((line.width for line in visual_lines), default=0.0)
+    region = resolve_native_layout_region(geometry, config.layout)
+    anchor = config.layout.position
+    anchor_x, anchor_y = resolve_native_anchor_point(anchor, region)
+    return anchor, anchor_x, anchor_y
+
+
+def _measure_visual_envelope(
+    visual_lines: Sequence[SubtitleVisualLine],
+    metrics: WrappingMetrics,
+    *,
+    anchor: SubtitlePosition,
+    anchor_x: int,
+    anchor_y: int,
+    allow_single_line_overflow: bool,
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
     padding = metrics.backdrop_size
     shadow = metrics.shadow_size
+    content_width = max((line.width for line in visual_lines), default=0.0)
     backdrop_width = _round_playres(content_width + 2 * padding)
     backdrop_height = _round_playres(
         metrics.natural_line_height
@@ -416,6 +420,7 @@ def position_visual_lines(
     )
     block_width = backdrop_width + shadow
     block_height = backdrop_height + shadow
+
     overflowing_lines = [
         line
         for line in visual_lines
@@ -435,6 +440,7 @@ def position_visual_lines(
         raise ValidationError(
             "Measured subtitle lines exceed the configured max-height envelope"
         )
+
     bounds = _anchor_bounds(anchor_x, anchor_y, block_width, block_height, anchor)
     backdrop_bounds = (
         bounds[0],
@@ -442,7 +448,19 @@ def position_visual_lines(
         bounds[2] - shadow,
         bounds[3] - shadow,
     )
-    block_placement = CuePlacement(anchor, anchor_x, anchor_y)
+    return bounds, backdrop_bounds
+
+
+def _visual_line_positioning(
+    config: SubtitleConfig,
+    visual_lines: Sequence[SubtitleVisualLine],
+    metrics: WrappingMetrics,
+    *,
+    anchor: SubtitlePosition,
+    anchor_x: int,
+    backdrop_bounds: tuple[int, int, int, int],
+) -> tuple[SubtitlePosition, int, int, bool, float]:
+    padding = metrics.backdrop_size
     centers_box_content = (
         config.style.backdrop.kind is SubtitleBackdrop.BOX
         or config.style.word_backdrop.kind is SubtitleBackdrop.BOX
@@ -456,6 +474,7 @@ def position_visual_lines(
         line_anchor = _middle_row_anchor(anchor)
     else:
         line_anchor = anchor
+
     content_left = backdrop_bounds[0] + padding
     content_right = backdrop_bounds[2] - padding
     content_top = backdrop_bounds[1] + padding
@@ -466,7 +485,8 @@ def position_visual_lines(
     elif anchor.value.endswith("right"):
         line_x = content_right
     else:
-        line_x = anchor_x - _round_playres(shadow / 2)
+        line_x = anchor_x - _round_playres(metrics.shadow_size / 2)
+
     vertical_center_offset = (
         metrics.text_measurer.vertical_center_offset(
             " ".join(line.text for line in visual_lines)
@@ -474,31 +494,90 @@ def position_visual_lines(
         if centers_box_content
         else 0.0
     )
+    return (
+        line_anchor,
+        line_x,
+        content_top,
+        centers_box_content,
+        vertical_center_offset,
+    )
+
+
+def _visual_line_y(
+    line: SubtitleVisualLine,
+    metrics: WrappingMetrics,
+    *,
+    anchor: SubtitlePosition,
+    content_top: int,
+    centers_box_content: bool,
+    vertical_center_offset: float,
+) -> int:
+    if centers_box_content:
+        return _round_playres(
+            content_top
+            + line.index * metrics.resolved_line_height
+            + metrics.natural_line_height / 2
+            + vertical_center_offset
+        )
+    if anchor.value.startswith("top-"):
+        return _round_playres(content_top + line.index * metrics.resolved_line_height)
+    if anchor.value.startswith("bottom-"):
+        return _round_playres(
+            content_top
+            + line.index * metrics.resolved_line_height
+            + metrics.natural_line_height
+        )
+    return _round_playres(
+        content_top
+        + line.index * metrics.resolved_line_height
+        + metrics.natural_line_height / 2
+    )
+
+
+def position_visual_lines(
+    visual_lines: Sequence[SubtitleVisualLine],
+    config: SubtitleConfig,
+    geometry: VideoGeometry,
+    metrics: WrappingMetrics,
+    placement: CuePlacement | None,
+    *,
+    allow_single_line_overflow: bool = False,
+) -> tuple[PositionedVisualLine, ...]:
+    """Resolve stable visual-line and measured fragment anchors."""
+    anchor, anchor_x, anchor_y = _resolve_visual_anchor(config, geometry, placement)
+    bounds, backdrop_bounds = _measure_visual_envelope(
+        visual_lines,
+        metrics,
+        anchor=anchor,
+        anchor_x=anchor_x,
+        anchor_y=anchor_y,
+        allow_single_line_overflow=allow_single_line_overflow,
+    )
+    block_placement = CuePlacement(anchor, anchor_x, anchor_y)
+    (
+        line_anchor,
+        line_x,
+        content_top,
+        centers_box_content,
+        vertical_center_offset,
+    ) = _visual_line_positioning(
+        config,
+        visual_lines,
+        metrics,
+        anchor=anchor,
+        anchor_x=anchor_x,
+        backdrop_bounds=backdrop_bounds,
+    )
     result: list[PositionedVisualLine] = []
     for line in visual_lines:
-        if centers_box_content:
-            line_y = _round_playres(
-                content_top
-                + line.index * metrics.resolved_line_height
-                + metrics.natural_line_height / 2
-                + vertical_center_offset
-            )
-        elif anchor.value.startswith("top-"):
-            line_y = _round_playres(
-                content_top + line.index * metrics.resolved_line_height
-            )
-        elif anchor.value.startswith("bottom-"):
-            line_y = _round_playres(
-                content_top
-                + line.index * metrics.resolved_line_height
-                + metrics.natural_line_height
-            )
-        else:
-            line_y = _round_playres(
-                content_top
-                + line.index * metrics.resolved_line_height
-                + metrics.natural_line_height / 2
-            )
+        line_y = _visual_line_y(
+            line,
+            metrics,
+            anchor=anchor,
+            content_top=content_top,
+            centers_box_content=centers_box_content,
+            vertical_center_offset=vertical_center_offset,
+        )
         fragment_placements = _position_line_fragments(
             line,
             anchor=line_anchor,

@@ -14,6 +14,7 @@ from multisubs.text_measurement import (
 from multisubs.text_segmentation import build_source_text_map, display_units_for_records
 from multisubs.wrapping import (
     _find_best_layout_break,
+    _partition_text_unit_ranges,
     build_display_fragments,
     build_visual_lines,
     fit_first_text_segment,
@@ -186,6 +187,37 @@ def test_prefix_search_handles_nonmonotonic_shaped_measurement():
         for index, value in enumerate("abcd")
     ]
     assert _find_best_layout_break(words, metrics) == 3
+
+
+def test_bounded_partition_uses_half_up_legal_break_at_midpoint():
+    metrics = replace(
+        _box_metrics(max_height="190px"),
+        line_capacity=2,
+        width_budget=410,
+    )
+    units = ["x"] * 41
+
+    ranges, fits = _partition_text_unit_ranges(
+        units,
+        lambda parts: " ".join(parts),
+        metrics,
+        source_words=None,
+    )
+
+    assert fits is True
+    assert ranges == [(0, 21), (21, 41)]
+
+    legal_breaks = set(range(1, len(units))) - {21}
+    restricted_ranges, restricted_fits = _partition_text_unit_ranges(
+        units,
+        lambda parts: " ".join(parts),
+        metrics,
+        source_words=None,
+        allowed_breaks=legal_breaks,
+    )
+
+    assert restricted_fits is True
+    assert restricted_ranges == [(0, 20), (20, 41)]
 
 
 def test_timed_word_break_uses_available_visual_lines():

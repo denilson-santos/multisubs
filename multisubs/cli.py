@@ -9,6 +9,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 from . import __version__
 from .config import (
@@ -59,7 +60,7 @@ from .config import (
     parse_text_case,
     validate_subtitle_config,
 )
-from .custom_templates import resolve_subtitle_template
+from .custom_templates import ResolvedSubtitleTemplate, resolve_subtitle_template
 from .errors import ArtifactError, MultisubsError, TemplateError, ValidationError
 from .layout import (
     resolve_cue_placement,
@@ -109,6 +110,18 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Supported language codes: " + ", ".join(SUPPORTED_LANGUAGES),
         allow_abbrev=False,
     )
+    _add_processing_arguments(parser)
+    _add_template_arguments(parser)
+    _add_preview_arguments(parser)
+    _add_appearance_arguments(parser)
+    _add_animation_arguments(parser)
+    _add_relative_layout_arguments(parser)
+    _add_coordinate_arguments(parser)
+    return parser
+
+
+def _add_processing_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add input, speech-processing, and artifact-lifecycle options."""
     parser.add_argument(
         "-v",
         "--version",
@@ -163,6 +176,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Retain JSON, SRT, and ASS files in a subtitles directory.",
     )
+
+
+def _add_template_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add built-in and custom subtitle-template options."""
     parser.add_argument(
         "--template",
         default=None,
@@ -184,6 +201,10 @@ def build_parser() -> argparse.ArgumentParser:
             "template name is resolved from this directory before built-ins."
         ),
     )
+
+
+def _add_preview_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add transcription-free preview options."""
     preview_group = parser.add_argument_group(
         "Subtitle preview",
         "Render a transcription-free static frame or animated clip.",
@@ -230,6 +251,10 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_PREVIEW_DURATION_MS / 1000:g}s)."
         ),
     )
+
+
+def _add_appearance_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add position and semantic subtitle-appearance options."""
     parser.add_argument(
         "--position",
         choices=POSITION_CHOICES,
@@ -347,6 +372,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing additional fonts for FFmpeg/libass.",
     )
 
+
+def _add_animation_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add cue- and word-relative animation options."""
+
     animation_group = parser.add_argument_group(
         "Subtitle animations",
         "Semantic cue and aligned-word animations.",
@@ -429,6 +458,10 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default when enabled: {DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR})."
         ),
     )
+
+
+def _add_relative_layout_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add relative style and layout dimensions."""
 
     relative_group = parser.add_argument_group(
         "Relative layout units",
@@ -514,6 +547,10 @@ def build_parser() -> argparse.ArgumentParser:
             help=help_text,
         )
 
+
+def _add_coordinate_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add explicit PlayRes coordinate options."""
+
     coordinate_group = parser.add_argument_group(
         "Custom subtitle coordinates",
         "Attach an explicit anchor to global PlayRes X/Y coordinates. Explicit "
@@ -539,8 +576,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Required subtitle-box anchor for custom coordinates.",
     )
-
-    return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -618,6 +653,43 @@ def _build_request(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> RunRequest | PreviewRequest:
     preview_mode_requested = args.preview_layout or args.preview_animation
+    _validate_preview_options(args, parser, preview_mode_requested)
+    selection, subtitle_config = _resolve_request_config(args, parser)
+
+    language = args.lang
+    if not preview_mode_requested:
+        language = _validate_normal_request(args, subtitle_config, parser)
+
+    input_path, output_dir = _resolve_request_paths(args, parser)
+    if preview_mode_requested:
+        return _build_preview_request(
+            args,
+            input_path,
+            output_dir,
+            subtitle_config,
+            selection,
+        )
+    return RunRequest(
+        input_path=input_path,
+        output_dir=output_dir,
+        language=language,
+        task=args.task,
+        model_name=args.model,
+        subtitle_config=subtitle_config,
+        keep_transcriptions=args.keep_transcriptions,
+        subtitle_template_requested=args.template,
+        subtitle_template_resolved=selection.template.name,
+        subtitle_template_source=selection.source,
+        subtitle_template_base=selection.base,
+    )
+
+
+def _validate_preview_options(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    preview_mode_requested: bool,
+) -> None:
+    """Reject preview-only options and artifact conflicts before file access."""
     preview_options_used = (
         args.preview_at is not None
         or args.preview_text is not None
@@ -636,9 +708,15 @@ def _build_request(
             "--keep-transcriptions cannot be used with --preview-layout or "
             "--preview-animation"
         )
-    appearance_values = {
-        key: value
-        for key, value in {
+
+
+def _resolve_request_config(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> tuple[ResolvedSubtitleTemplate, SubtitleConfig]:
+    """Resolve template and explicit overrides into one typed configuration."""
+    appearance_values = _defined_values(
+        {
             "font": args.font,
             "text_color": args.text_color,
             "font_weight": args.font_weight,
@@ -651,52 +729,35 @@ def _build_request(
             "opacity": args.opacity,
             "text_case": args.text_case,
             "fonts_dir": args.fonts_dir,
-        }.items()
-        if value is not None
-    }
-    animation_values = {}
-    for scope in ("cue", "word"):
-        for element in ("text", "backdrop"):
-            for phase in ("entrance", "emphasis", "exit"):
-                key = f"{scope}_{element}_{phase}"
-                animation_values[key] = getattr(args, f"animation_{key}")
-                animation_values[f"{key}_duration"] = getattr(
-                    args, f"animation_{key}_duration"
-                )
-    animation_values.update(
-        word_text_mode=args.animation_word_text_mode,
-        word_backdrop_mode=args.animation_word_backdrop_mode,
-        word_text_highlight_color=args.animation_word_text_highlight_color,
+        }
     )
-    animation_values = {
-        key: value for key, value in animation_values.items() if value is not None
-    }
-    relative_values = {
-        key: value
-        for key, value in {
-            "font_size": args.font_size,
-            "letter_spacing": args.letter_spacing,
-            "line_height": args.line_height,
-            "outline_weight": args.backdrop_size,
-            "word_backdrop_size": args.word_backdrop_size,
-            "shadow_weight": args.shadow_size,
-            "margin_left": args.margin_left,
-            "margin_right": args.margin_right,
-            "margin_top": args.margin_top,
-            "margin_bottom": args.margin_bottom,
-            "max_width": args.max_width,
-            "max_height": args.max_height,
-            "position_x": args.position_x,
-            "position_y": args.position_y,
-        }.items()
-        if value is not None
-    }
+    animation_values = _animation_values(args)
+    relative_values = cast(
+        dict[str, RelativeLength | str],
+        _defined_values(
+            {
+                "font_size": args.font_size,
+                "letter_spacing": args.letter_spacing,
+                "line_height": args.line_height,
+                "outline_weight": args.backdrop_size,
+                "word_backdrop_size": args.word_backdrop_size,
+                "shadow_weight": args.shadow_size,
+                "margin_left": args.margin_left,
+                "margin_right": args.margin_right,
+                "margin_top": args.margin_top,
+                "margin_bottom": args.margin_bottom,
+                "max_width": args.max_width,
+                "max_height": args.max_height,
+                "position_x": args.position_x,
+                "position_y": args.position_y,
+            }
+        ),
+    )
     try:
         selection = resolve_subtitle_template(args.template, args.template_dir)
-        template = selection.template
         subtitle_config = validate_subtitle_config(
             None,
-            defaults=template.config,
+            defaults=selection.template.config,
             appearance_values=appearance_values,
             animation_values=animation_values,
             position=args.position,
@@ -705,22 +766,57 @@ def _build_request(
         )
     except (TemplateError, ValidationError) as exc:
         parser.error(str(exc))
+    return selection, subtitle_config
 
-    if not preview_mode_requested:
-        _validate_animation_request(
-            subtitle_config,
-            task=args.task,
-            parser=parser,
+
+def _defined_values(values: dict[str, object | None]) -> dict[str, object]:
+    """Drop omitted CLI values while retaining explicit false and zero values."""
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def _animation_values(args: argparse.Namespace) -> dict[str, object]:
+    values: dict[str, object | None] = {}
+    for scope in ("cue", "word"):
+        for element in ("text", "backdrop"):
+            for phase in ("entrance", "emphasis", "exit"):
+                key = f"{scope}_{element}_{phase}"
+                values[key] = getattr(args, f"animation_{key}")
+                values[f"{key}_duration"] = getattr(args, f"animation_{key}_duration")
+    values.update(
+        word_text_mode=args.animation_word_text_mode,
+        word_backdrop_mode=args.animation_word_backdrop_mode,
+        word_text_highlight_color=args.animation_word_text_highlight_color,
+    )
+    return _defined_values(values)
+
+
+def _validate_normal_request(
+    args: argparse.Namespace,
+    subtitle_config: SubtitleConfig,
+    parser: argparse.ArgumentParser,
+) -> str | None:
+    """Validate speech-only combinations and resolve English-only language."""
+    _validate_animation_request(
+        subtitle_config,
+        task=args.task,
+        parser=parser,
+    )
+    _validate_translation_request(args.task, args.model, parser)
+    if not args.model.endswith(".en"):
+        return args.lang
+    if args.lang not in (None, "en"):
+        parser.error(
+            f'Model "{args.model}" is English-only; use --lang en or '
+            "choose a multilingual model for another source language."
         )
-        _validate_translation_request(args.task, args.model, parser)
-        if args.model.endswith(".en"):
-            if args.lang not in (None, "en"):
-                parser.error(
-                    f'Model "{args.model}" is English-only; use --lang en or '
-                    "choose a multilingual model for another source language."
-                )
-            args.lang = "en"
+    return "en"
 
+
+def _resolve_request_paths(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> tuple[Path, Path]:
+    """Resolve and validate user paths without creating output directories."""
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
     if not input_path.exists() or not input_path.is_file():
         parser.error(f"Video file not found at '{args.input_path}'")
@@ -730,43 +826,38 @@ def _build_request(
         parser.error(
             f"Output path '{args.output_dir}' is a file; provide a directory instead"
         )
+    return input_path, output_dir
 
-    if preview_mode_requested:
-        return PreviewRequest(
-            input_path=input_path,
-            output_dir=output_dir,
-            subtitle_config=subtitle_config,
-            preview_at=args.preview_at,
-            preview_text=(
-                DEFAULT_PREVIEW_TEXT if args.preview_text is None else args.preview_text
-            ),
-            guides=args.preview_guides,
-            subtitle_template_requested=args.template,
-            subtitle_template_resolved=template.name,
-            subtitle_template_source=selection.source,
-            subtitle_template_base=selection.base,
-            preview_mode=(
-                PreviewMode.ANIMATION if args.preview_animation else PreviewMode.LAYOUT
-            ),
-            preview_duration_ms=(
-                DEFAULT_PREVIEW_DURATION_MS
-                if args.preview_duration is None
-                else args.preview_duration
-            ),
-        )
 
-    return RunRequest(
+def _build_preview_request(
+    args: argparse.Namespace,
+    input_path: Path,
+    output_dir: Path,
+    subtitle_config: SubtitleConfig,
+    selection: ResolvedSubtitleTemplate,
+) -> PreviewRequest:
+    """Build a transcription-free request from validated CLI values."""
+    return PreviewRequest(
         input_path=input_path,
         output_dir=output_dir,
-        language=args.lang,
-        task=args.task,
-        model_name=args.model,
         subtitle_config=subtitle_config,
-        keep_transcriptions=args.keep_transcriptions,
+        preview_at=args.preview_at,
+        preview_text=(
+            DEFAULT_PREVIEW_TEXT if args.preview_text is None else args.preview_text
+        ),
+        guides=args.preview_guides,
         subtitle_template_requested=args.template,
-        subtitle_template_resolved=template.name,
+        subtitle_template_resolved=selection.template.name,
         subtitle_template_source=selection.source,
         subtitle_template_base=selection.base,
+        preview_mode=(
+            PreviewMode.ANIMATION if args.preview_animation else PreviewMode.LAYOUT
+        ),
+        preview_duration_ms=(
+            DEFAULT_PREVIEW_DURATION_MS
+            if args.preview_duration is None
+            else args.preview_duration
+        ),
     )
 
 
