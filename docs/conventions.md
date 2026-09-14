@@ -2,9 +2,7 @@
 
 ## Scope and status
 
-This document defines engineering conventions for multisubs: a Python 3.10–3.13 command-line application built with setuptools, PyTorch, WhisperX, ffmpeg-python, FFmpeg, and JSON/SRT/ASS subtitle outputs.
-
-It applies to production code, tests, packaging, documentation, automation, and releases. Follow it for all new or materially modified code. Existing code does not need a broad rewrite solely for conformance; improve it when the change is local, low risk, and verified.
+This document defines engineering conventions for multisubs, a Python 3.10–3.13 CLI. It applies to code, tests, packaging, documentation, automation, and releases. Follow it for new or materially changed work; do not rewrite existing code solely for conformance when the improvement is broad or risky.
 
 The terms below communicate the strength of a convention:
 
@@ -12,9 +10,8 @@ The terms below communicate the strength of a convention:
 - **Should**: the default choice; deviate only with a documented reason.
 - **May**: an optional practice that is useful in the stated circumstances.
 
-The repository's `dev` extra configures the recommended local quality tools.
-GitHub Actions applies the same checks and promotes immutable distribution
-artifacts through the environments documented in [delivery.md](delivery.md).
+The `dev` extra configures local quality tools. CI and artifact promotion follow
+the [delivery workflow](delivery.md).
 
 ## Convention hierarchy
 
@@ -109,16 +106,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 
 ## Project structure and module boundaries
 
-- Must keep command-line orchestration in multisubs/cli.py.
-- Must keep model loading, transcription, alignment, cue construction, and subtitle-file writing in multisubs/transcriber.py.
-- Must keep source-text mapping and Unicode boundary adaptation in
-  multisubs/text_segmentation.py. The module must remain independent of
-  WhisperX, PyTorch, Pillow, and FFmpeg so preview imports stay lightweight.
-- Must keep FFmpeg rendering concerns in multisubs/subtitler.py.
-- Must keep semantic subtitle appearance and native layout field defaults in
-  multisubs/config.py.
-- Must keep generic collision-safe path helpers in multisubs/utils.py.
-- Should add a focused module when a responsibility no longer fits these boundaries instead of growing cli.py into a second pipeline implementation.
+- Follow the [architecture component map](architecture.md#components) for
+  module ownership and interfaces. Add a focused module when a responsibility
+  no longer fits instead of growing `cli.py` into a second pipeline.
 - Must avoid circular imports and import-time model loading, filesystem writes, network access, or FFmpeg execution.
 - Should make a new public API explicit through multisubs/__init__.py only when it is intentionally supported. Leave implementation helpers module-private with a leading underscore.
 - Should return a named dataclass or typed mapping from a new public function that has several related outputs. Preserve an existing tuple-returning API unless a migration plan and compatibility decision are documented.
@@ -160,22 +150,10 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must delete temporary artifacts only after the step that consumes them succeeds, and must not delete artifacts outside the current invocation's output scope.
 - Should preserve the original exception context when a filesystem operation fails and tell the user which path and operation failed.
 - Must write JSON, SRT, and ASS text as UTF-8.
-- Must load packaged declarative resources through `importlib.resources`,
-  validate their version, recognized sparse key set, types, names, and inventory
-  before use, and fail with a project-specific diagnostic rather than silently
-  ignoring fields or falling back to another resource. Sparse authored values
-  may inherit centralized semantic defaults, but the validated runtime object
-  must remain complete and immutable. Keep a compatibility reader for any
-  previously shipped complete resource schema when a catalog migration changes
-  the internal representation.
-
-For user-provided subtitle templates, keep the public schema version separate
-from the packaged catalog schema. Read one bounded flat directory per request,
-validate every immediate JSON file before selection, reject duplicate or
-unknown fields and non-finite values, and resolve inheritance only through
-known built-in names. Never execute, fetch, install, or persist custom JSON;
-retained metadata may record source and base names but must not include local
-template paths or raw file contents.
+- Load packaged declarative resources through `importlib.resources` and
+  validate them before use. Treat custom templates as bounded, untrusted data:
+  never execute, fetch, install, or persist them, and do not serialize local
+  paths or raw contents. See [architecture template contracts](architecture.md#internal-template-resources).
 
 ## Command-line interface conventions
 
@@ -186,40 +164,21 @@ template paths or raw file contents.
 - Must use kebab-case long flags and a concise, non-conflicting short flag only when it materially improves common usage.
 - Must keep argument help text accurate, include units and defaults where useful, and avoid jargon that users cannot act on.
 - Should use argparse validation for invalid choices and missing required values. Perform validation that depends on the filesystem or a combination of options before model loading.
-- Must reject unsupported translation/model combinations before expensive work starts. Translation target and model restrictions are product requirements, not merely UI hints.
+- Must reject unsupported translation/model combinations before expensive
+  work starts; see [translation requirements](prd.md#functional-requirements).
 - Should offer a dry-run or validation-only mode before adding an operation with expensive processing or destructive potential.
 
 ### Dimension and unit options
 
-- Must require an explicit `%` or `px` suffix for public layout lengths; bare
-  numbers are ambiguous and must be rejected.
-- Must parse bounded decimal input before model loading, reject signs and
-  exponent notation, and preserve the original requested string for metadata.
-- Must resolve percentages only after normalized video geometry is available,
-  using the field's documented axis or reference value.
-- Must resolve percentage font size against autorotated render height; explicit
-  pixel font sizes remain absolute PlayRes values.
-- Must resolve margins against the render axes first. In native ASS placement,
-  resolve percentage maximum width against the width after left/right margins
-  and maximum height against the alignment-specific available height. In
-  explicit placement, reject explicitly supplied margins, resolve X/Y and both
-  maximum dimensions against the full PlayRes axes, and compile retained native
-  margin defaults to zero.
-- Must reject explicitly supplied inactive vertical margins before probing:
-  top positions use only the top margin, bottom positions use only the bottom
-  margin, and middle positions use neither.
-- Must treat explicit pixel coordinates as absolute PlayRes coordinates and
-  reject any complete anchored maximum-width/maximum-height envelope that leaves
-  the canvas. Do not silently clamp, move, or shrink an invalid placement.
-- Must use one deterministic rounding policy for every relative length and
-  perform combined mode-specific validation after all fields are resolved.
-- Must keep unresolved unit values out of ASS serialization; the ASS writer
-  receives a geometry-resolved typed configuration.
-- Must define native layout defaults centrally as immutable scalar values in
-  `config.py`, apply explicit fields independently, and keep geometry-dependent
-  resolution in `layout.py`. Explicit coordinate mode must validate that its
-  anchor and maximum dimensions were user-supplied before native defaults are
-  filled.
+- Public layout inputs must be explicit, bounded, and validated before model
+  loading. Resolve geometry-dependent values only after probing, in the typed
+  layout boundary; never pass unresolved units to ASS serialization.
+- Relative-unit bases, rounding, native/explicit placement, margin validation,
+  and envelope rules are defined in the
+  [architecture layout and ASS contract](architecture.md#srt-and-ass)
+  and [product requirements](prd.md#functional-requirements). Keep this file
+  focused on validation timing and ownership rather than duplicating those
+  values.
 
 ### Exit status, output, and diagnostics
 
@@ -234,7 +193,8 @@ template paths or raw file contents.
 
 ### Hardware and model lifecycle
 
-- Must select a supported compute configuration explicitly. The current behavior is CUDA with float16 when available and CPU with int8 otherwise; document any change to that policy in [architecture.md](architecture.md#execution-flow).
+- Keep compute-device, precision, and model-loading behavior aligned with the
+  [architecture execution flow](architecture.md#execution-flow).
 - Should provide a deliberate device override before adding more hardware modes, so users can choose CPU or a specific accelerator deterministically.
 - Must not silently fall back from a user-requested model, language, task, or precision to a different semantic behavior. A safe fallback must be visible in logs and documentation.
 - Should load models once per invocation and pass the loaded instance through the pipeline. Do not reload a model for each small pipeline step.
@@ -244,29 +204,14 @@ template paths or raw file contents.
 
 ### Transcription and alignment
 
-- Must distinguish transcription from translation. Translation output is English, and the CLI must reject models that do not support it.
-- Must handle an alignment result without usable word timings. The fallback cue path must produce valid, chronologically ordered subtitle entries rather than crashing or inventing timestamps.
-- Should validate that segment times are finite, non-negative, and monotonic before serializing them.
-- Should preserve original WhisperX word metadata when it is useful for downstream consumers, but must not make undocumented upstream fields a stable project contract.
-- Must treat aligned segment text as authoritative source content. Map records
-  monotonically with stable segment/record identity, preserve separators and
-  unmatched ranges, and never infer a missing separator from CJK width or from
-  a transformed display token. A source boundary may guide cue construction but
-  must not insert text that was absent from the source.
-- Must distinguish text-complete from timing-complete mappings. Incomplete maps
-  retain the complete source at coarse segment times, disable word-dependent
-  effects, and expose bounded diagnostics without fabricating missing word
-  timestamps. Retained JSON must keep the original JSON-safe alignment records;
-  internal spans and offset tables are not public artifact data.
-- Must distinguish original alignment records, derived linguistic display
-  groups, and legal visual line breaks. Groups guide cue and preferred line
-  boundaries; they do not replace alignment records as word-effect timing
-  units. A significant pause splits a group. An oversized group may be
-  subdivided only at a legal grapheme/line opportunity backed by an exact
-  existing record boundary, and the fallback must be diagnosed rather than
-  represented as a lexical word.
-- Should make changes to language handling, VAD behavior, alignment models, or model defaults only with targeted tests and a documentation update.
-- Must keep any network-dependent model setup explicit in documentation so offline users understand why an initial run may fail.
+- Keep language, task, translation, and model behavior aligned with the
+  [product requirements](prd.md#functional-requirements); reject unsupported
+  combinations before expensive work and never silently change semantics.
+- Treat WhisperX results as external input: validate used fields and timestamps
+  and do not turn undocumented upstream metadata into a stable contract.
+- Change language handling, VAD, alignment models, or model defaults only with
+  targeted tests and a documentation update. Describe network-dependent setup
+  so offline users know why an initial run may fail.
 
 ### Performance and memory
 
@@ -279,175 +224,54 @@ template paths or raw file contents.
 
 ### Cue construction
 
-- Must preserve the product's readability policy: semantic boundaries such as sentence endings and meaningful pauses take priority over arbitrary hard splits. See [architecture.md](architecture.md#subtitle-cue-construction).
-- Must derive visual wrapping from maximum width, maximum height, measured font
-  line height, decorative bounds, and Unicode display-width estimates rather
-  than a fixed character or line count. The estimator is approximate; libass
-  remains authoritative for final font shaping and indivisible tokens may
-  overflow.
-- Must keep partition search bounded by both derived line capacity and available
-  text units so unusually large height values cannot create unbounded work.
-- Must keep cue timestamps in chronological order, with end at or after start; a rendered cue should normally have a strictly positive duration.
-- Should keep thresholds, such as maximum duration and line length, centralized as named constants or documented configuration rather than scattering literal values.
-- Should test punctuation, long sentences, pauses, one-word overflow, missing word timings, and exact threshold boundaries whenever cue logic changes.
-- Should consider language-specific behavior before assuming space-delimited words, Latin punctuation, or left-to-right text. Add representative fixtures before claiming support for a new writing system or segmentation strategy.
-- Must not mutate or discard transcript content solely to satisfy visual line-length targets. Prefer a well-timed overflow or a new cue over damaging words.
-- Must build display fragments from source-map units before case conversion is
-  measured or wrapping is applied. Generated line breaks must retain the source
-  separator they replace so reverse reconstruction can distinguish a layout
-  break from deleted source whitespace.
+- Cue boundaries, source mapping, Unicode grouping, wrapping, timing, and
+  fallback behavior are specified in [architecture](architecture.md#subtitle-cue-construction)
+  and [PRD FR-7/FR-17](prd.md#functional-requirements). Preserve source text and
+  validated timestamps; never invent content or word timing to satisfy layout.
+- Keep layout work bounded and thresholds centralized. Add language-specific
+  fixtures before claiming new segmentation support; see the testing strategy
+  below.
 
-### SRT
+### SRT, ASS, and JSON
 
-- Must use UTF-8 and standard HH:MM:SS,mmm timestamps.
-- Must number cues sequentially from one in output order.
-- Should round timestamps consistently and test rollover at milliseconds, minutes, and hours.
-- Must escape or normalize embedded line endings so the generated file remains structurally valid.
+- Use [SRT and ASS](architecture.md#srt-and-ass),
+  [JSON](architecture.md#json), and [output layouts](architecture.md#output-layouts)
+  as the authoritative artifact contracts. Preserve JSON compatibility within
+  a release line unless an explicit versioned migration is approved.
+- SRT cue indices must be sequential and timestamps must use
+  HH:MM:SS,mmm. Normalize embedded line endings and test rounding at
+  millisecond, minute, and hour boundaries.
+- Treat transcript fragments as untrusted text. Keep semantic style, layout,
+  and animation values typed; escape display text separately from generated
+  ASS overrides. Update the architecture contract and tests when changing this
+  boundary.
+- Serialize JSON-compatible finite values only. Treat source paths and
+  transcripts as sensitive; do not publish generated JSON by default.
 
-### ASS
+### Typography and renderer
 
-- Must keep the ASS header, style field order, event field order, and dialogue line-break syntax compatible with the ASS format.
-- Must ensure every transcription-derived value is safe in an ASS dialogue field. Escape or neutralize ASS override syntax and format-control characters according to the ASS specification, then test literal braces, backslashes, commas, newlines, and Unicode text.
-- Must convert a visual line break to ASS \N in dialogue text rather than emitting a physical newline in the event.
-- Must keep generated ASS overrides (placement, colors, and aligned-word timing) on a trusted compiler path separate from independently escaped transcript fragments. Never parse or re-escape a completed generated override string as ordinary user text.
-- When a box, multi-line layout, or explicit line height expands an ordinary
-  cue into positioned visual-line events, each event must use the same cue
-  timing and stable anchor while `backdrop=box` is one lower-layer vector
-  drawing for the complete measured block. Karaoke
-  may instead use adjacent cue-relative intervals at validated word boundaries.
-  Text events must not duplicate the box for every visual line; generated
-  drawing coordinates remain separate from escaped transcript fragments.
-- Word-timed animations must preserve exact display-fragment reconstruction and use only validated aligned timestamps; missing or lossy mappings must fall back without inventing timing tokens.
-- Renderer tests for word effects must compare complete logical-line libass
-  output against the selected effect path for bidirectional and contextual
-  shaping samples. Tests must check geometry independently of highlight color,
-  and unsupported fragment placement must assert the documented full-line
-  fallback instead of treating unverified output as supported.
-- Karaoke interval events must remain adjacent and non-overlapping. Word-local
-  motion may instead render independently positioned measured fragments, but
-  must keep surrounding advances stable and never layer two visible copies of
-  the same glyph at one timestamp.
-- Must pass subtitle style, layout, and animation through typed configuration
-  objects. Typography, backdrop, shadow, opacity, and all cue/word phases have
-  one semantic runtime path. Public inputs use semantic names
-  and conventional color notation; ASS field ordering, fixed internal
-  defaults, color conversion, and numeric codes belong only in the ASS
-  serializer.
-- Must calculate cue and word entrance, emphasis, and exit state from the
-  quantized logical cue or aligned-word interval rather than from derived
-  events. Entrance and exit take priority and shrink proportionally when they
-  do not fit; emphasis uses the remaining interval. Use deterministic integer
-  rounding and never extend, shift, overlap, or rewrite source timestamps.
-- Must keep animation expansion bounded by the number of word intervals,
-  visual lines, and a constant number of cue/word phase boundaries. Frame-by-frame
-  Dialogue generation is not allowed.
-- Must compile cue-global and word-local movement, scale, and opacity through
-  trusted generated tags around independently escaped transcript fragments.
-  Every generated event may contain at most one `\\pos` or `\\move`; all visual
-  lines and vector backdrops sample the same cue-global state, while a word
-  fragment and its measured word-decoration event also receive its word-local state.
-  Cue backdrops use layer 0, timed word boxes layer 1, and text layer 2 whenever
-  those elements coexist.
-- Animated subtitle previews must remain a transcription-free demonstration:
-  capture one uncaptioned frame, freeze it before applying the production ASS
-  compiler, and label simulated word timing in progress or guide output. The
-  simulation must be deterministic in ASS centiseconds, preserve typed display
-  fragments and Unicode grapheme identity, conserve the cue interval, and never
-  be reused as invented timing for normal transcription or translation.
-- When word text uses measured fragment placement, a glyph-shaped cue outline
-  must use those same fragments and placements. Do not combine a whole-line
-  libass-shaped outline with independently positioned word text. A cue outline
-  must sample the same cue-text and word-text motion as its glyph fragment;
-  preview and final rendering must retain the same event topology at the stable
-  state.
-- Must preserve ordinary static ASS event structure when all twelve resolved
-  phases are `none`, no timed word decoration is active, and the cue does not
-  use a box backdrop. Every nonempty box cue intentionally uses the measured
-  vector structure, including one-line cues. A PNG preview
-  suppresses all motion at the stable final state while retaining the documented
-  representative state for each word track.
-- Must compose global opacity in conventional alpha space (`00` transparent,
-  `FF` opaque) exactly once, using Decimal half-up rounding for
-  `base_alpha * percentage / 100`, before ASS alpha inversion. Preview,
-  ordinary text, timed highlight overrides, cue/word backdrops, shadow, and
-  generated vector boxes must consume the same effective palette.
-- Must keep the ASS style Bold field neutral and compile canonical font weights
-  as trusted event-level `\\b100` through `\\b900` overrides so older libass
-  style parsers receive the same exact OpenType rank used by font measurement.
-  Compatibility bold shorthands may map to 400 or 700 only at configuration
-  boundaries.
-- Must construct each typed layout from immutable scalar defaults so separate
-  invocations cannot mutate or influence one another.
-- Must compile named positions through native ASS style Alignment and actual
-  margins without adding a synthetic event `\\pos`. Explicit coordinate mode
-  must use event `\\an`/`\\pos`, neutral style margins, and a previously validated
-  PlayRes envelope.
-- Must validate style, layout, and animation values that can produce invalid ASS
-  or unsafe filter input. Treat colors, font names, positions, margins, and
-  numeric values as user input.
-- Must not add bundled layout profiles or a safe-area abstraction without a
-  separate product decision and public-contract review.
-- Should test generated ASS with a real FFmpeg/libass render in opt-in integration tests, because syntactically plausible ASS can still render unexpectedly.
-- Should verify every new animation against controlled landscape and portrait
-  fixtures at entrance, emphasis, stable, and exit timestamps, including composition
-  with opacity, explicit placement, explicit line height, word intervals, and
-  shared vector boxes.
-
-### Typography measurement
-
-- Must apply text-case transformations to untrusted plain-text display
-  fragments before measurement, wrapping, and ASS escaping. Use Python's
-  locale-independent Unicode `upper`/`lower` behavior, retain the original
-  aligned-word identity and timing, and never retokenize transformed strings
-  to reconstruct aligned-word timing.
-- Must apply letter spacing in the shared measurement layer used by both
-  concrete-font and Unicode-estimate modes before wrapping or cue splitting.
-- Concrete-font measurement must translate ASS real-dimension sizing from the
-  selected SFNT face's OS/2 Windows metrics, with Pillow ascent/descent as the
-  fallback. Fragment placement must not introduce synthetic tracking because
-  the renderer and measurer used different font-size conventions.
-- Before concrete metrics are used for positioned subtitles, fontTools must
-  check the selected face's cmap against the display-cased sample. Missing-glyph
-  fallback must be measured and compiled into ASS as the same effective family;
-  a positioned run with no covering face fails with actionable `--font` or
-  `--fonts-dir` guidance. Cmap verification does not claim complete shaping or
-  final libass fallback identity.
-- Must count one tracking gap between consecutive rendered grapheme clusters on
-  each visual line. Combining marks and zero-width joiner sequences stay with
-  their base cluster, while spaces and punctuation remain measurable clusters.
-  Explicit line breaks reset the gap count; raw code-point or byte counts are
-  not valid substitutes.
-- Must expose natural ascent/descent metrics to the layout boundary and derive
-  multi-line capacity from the first natural line plus the resolved baseline
-  advance. `auto` preserves the existing single-event ASS path for one-line
-  cues without a box, while every nonempty box uses positioned lines around
-  one shared vector backdrop. Explicit line height cannot be below the natural
-  metric and must use one deterministic PlayRes rounding policy.
-- Must keep the visual-line model shared by preview, ordinary cues, progressive
-  word behavior, and active-word behavior. Synchronized per-line events may overlap in
-  time only across distinct visual lines; they must never duplicate a line's
-  glyphs or backdrop layer.
-
-### JSON contract
-
-- Must keep the documented JSON top-level shape and required metadata fields backward compatible within a release line. See [architecture.md](architecture.md#json).
-- Should add an explicit schema version before making the JSON a supported integration surface or changing its shape.
-- Must serialize only JSON-compatible values and must not emit NaN or infinity.
-- Should record timestamps in an unambiguous form. Use timezone-aware ISO 8601 values, preferably UTC, for new metadata fields.
-- Should distinguish source language, detected language, requested task, selected model, and output language when they can differ.
-- Must treat original_path and transcript text as potentially sensitive metadata. Avoid publishing generated JSON by default.
+- The shared typography, measurement, geometry, animation, and preview behavior
+  is defined in [subtitle-cue construction](architecture.md#subtitle-cue-construction)
+  and [SRT and ASS](architecture.md#srt-and-ass). Do not create a separate
+  preview-only implementation of these contracts.
+- Add opt-in FFmpeg/libass rendering coverage for changes that affect ASS
+  output; the testing section below defines integration-test requirements.
 
 ## FFmpeg and media-processing conventions
 
-- Must use a maintained argument-based integration such as ffmpeg-python or subprocess.run with an argument list and check enabled; never concatenate untrusted paths or option values into a shell command.
-- Must validate that the FFmpeg executable is available and that the required subtitle filter is supported before beginning a long run when practical.
-- Must safely escape or pass subtitle-file paths for the FFmpeg filter syntax. Paths with spaces, quotes, colons, commas, backslashes, and non-ASCII characters require dedicated coverage.
-- Must keep video-rendering policy explicit: subtitle filter, video codec, audio-stream policy, container compatibility, metadata preservation, and overwrite policy.
-- Must avoid accidental re-encoding policy changes. If a change modifies codec, quality, stream mapping, audio-copy behavior, or container handling, document it in [README.md](../README.md) and [architecture.md](architecture.md).
-- Must inspect the selected input video stream with ffprobe before model loading. The ASS canvas, rendering metadata, and FFmpeg subtitles filter must share the same normalized geometry and explicit autorotation policy.
-- Should write rendered media to a temporary destination and publish it atomically after FFmpeg succeeds.
-- Must surface FFmpeg failures with enough context to diagnose the command stage, input, output, and relevant stderr without leaking sensitive file contents.
-- Should treat malformed media as untrusted input. Bound resource use where possible and avoid recursively processing paths supplied by a user.
+- Use an argument-based API such as ffmpeg-python or subprocess argument lists;
+  never interpolate user-controlled paths or options into shell commands.
+- Treat filter paths as untrusted input. Escape them for FFmpeg filter syntax and
+  test spaces, quotes, colons, commas, backslashes, and non-ASCII characters.
+- Keep codec, quality, stream mapping, audio, container, metadata, and overwrite
+  policy explicit. Update the [README](../README.md) and
+  [architecture](architecture.md) if rendering behavior changes.
+- Follow the [FFmpeg boundary](architecture.md#ffmpeg) for preflight, selected
+  stream, geometry, and autorotation. Use temporary output and publish it only
+  after success.
+- Bound work on malformed media, avoid recursively processing user paths, and
+  report failures with enough stage/path context to diagnose them without
+  exposing sensitive contents.
 
 ## Error handling and observability
 

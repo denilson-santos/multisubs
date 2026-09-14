@@ -16,6 +16,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Subtitle backdrops | Done | 1/1 | Complete | [Open dashboard](subtitle-backdrops/README.md) |
 | Subtitle preview | In review | 1/2 | Plan 1 — Animated preview clip | [Open dashboard](subtitle-preview/README.md) |
 | Multilingual subtitle correctness | Done | 6/6 | Complete | [Open dashboard](multilingual-subtitles/README.md) |
+| Codebase simplification | In progress | 0/5 | Plan 4 — Tests and documentation consolidation | [Open dashboard](codebase-simplification/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

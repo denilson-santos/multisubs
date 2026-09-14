@@ -111,9 +111,9 @@ multisubs -i ./video.mp4 -l pt \
   --template golden-title
 ```
 
-The current Roboto Regular, white-on-translucent-black presentation remains the
-`default`. Every explicit appearance, layout, or animation option overrides only
-its corresponding template field:
+`default` uses the current Roboto Regular, white-on-translucent-black style.
+Explicit appearance, layout, and animation options override only their own
+template fields:
 
 ```bash
 multisubs -i ./video.mp4 -l pt \
@@ -122,62 +122,32 @@ multisubs -i ./video.mp4 -l pt \
   --margin-bottom 10%
 ```
 
-| Template | Good for | Font | Main presentation |
+| Template | Good for | Font | Baseline appearance and animation |
 | --- | --- | --- | --- |
-| `default` | General use | Roboto Regular | White, original case, translucent black box, bottom-center. |
-| `bold-headline` | Reels, TikTok, Shorts hooks | Montserrat ExtraBold | Compact uppercase white headline with a measured pop. |
-| `amber-word` | Explanations and speaking points | Inter SemiBold | Outlined text with an amber active-word highlight. |
-| `mint-progress` | Tips, steps, and demonstrations | Montserrat Medium | Dark panel with progressive mint word highlighting. |
-| `focus-marker` | Accessible educational captions | Atkinson Hyperlegible Next Bold | Outlined text with an amber active-word marker. |
-| `golden-title` | Concise topics and chapter titles | Oswald Bold | Golden uppercase text with a dark outline, bottom-left. |
-| `emerald-word` | Word-led explainers | Roboto Bold | White outlined text with a deep green active-word box. |
-| `kinetic-lime` | Fast explanations and tutorials | Montserrat Bold | White outlined text with a lime active-word highlight, bottom-center. |
-| `coral-marker` | Advice and interview cuts | Roboto SemiBold | White outlined text with a coral active-word marker, bottom-left. |
-| `editorial-reveal` | Storytelling and reflective clips | Lora SemiBold Italic | Warm serif text that reveals words in order, bottom-center. |
-| `headline-bounce` | Energetic punchlines and takeaways | Oswald SemiBold | Uppercase yellow outlined text with a bounded active-word bounce. |
-| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | Uppercase outlined text with an exact `#FBE003` active-word pop. |
-| `yellow-trace` | Tips and step-by-step clips | Inter Medium | White text on a compact panel with progressive `#FBE003` highlighting. |
-| `neon-lime-marker` | Energetic explainers | Oswald Medium | Outlined text with a neon-lime active-word marker. |
-| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | Neon-cyan text with progressive slide-up word reveals. |
-| `neon-magenta-pulse` | Reactions and creator commentary | Roboto Bold | Uppercase neon-magenta text with an active-word pulse. |
+| `default` | General use | Roboto Regular | 4%, white/original, 100%; box `#00000099`/25%, shadow 0px; max-height 12%; no animation. |
+| `bold-headline` | Short-form hooks | Montserrat ExtraBold | 4.8%, white uppercase; outline `#111827`/7%; pop in, fade out; max-height 9.9%. |
+| `amber-word` | Explanations | Inter SemiBold | 4.65%, white/original; outline `#111827`/5%; active-word amber highlight; max-height 9.7%. |
+| `mint-progress` | Tips and steps | Montserrat Medium | 5.24%, white/original; box `#111827D9`/15%; progressive mint highlight; max-height 11.3%. |
+| `focus-marker` | Accessible captions | Atkinson Hyperlegible Next Bold | 4.99%, white/original; outline `#111827`/4%, word box `#FFD54F`/12%; active-word; max-height 11.8%. |
+| `golden-title` | Topics and chapter titles | Oswald Bold | 5.06%, `#FACC15` uppercase; outline `#111827`/6%; bottom-left; max-height 11.3%; no animation. |
+| `emerald-word` | Word-led explainers | Roboto Bold | 4%, white/original; outline `#111827`/5%, word box `#166534FF`/12%; active-word; max-height 9.9%. |
+| `kinetic-lime` | Fast tutorials | Montserrat Bold | 5.2%, white/original; outline `#111827`/5%, active text `#D9F99D`; slide up 180ms, fade out 120ms; max-height 10.3%. |
+| `coral-marker` | Advice and interviews | Roboto SemiBold | 4%, white/original; outline `#111827`/4%, word box `#FDA4AFFF`/14%, active text `#111827`; fade in 140ms/out 120ms, word fade 70ms; bottom-left, max-height 9.8%. |
+| `editorial-reveal` | Reflective clips | Lora SemiBold Italic | 5.07%, `#FFF8ED`; outline `#111827`/4%; zoom in 200ms, fade out 160ms, progressive word fade 100ms; max-height 11.1%. |
+| `headline-bounce` | Punchlines | Oswald SemiBold | 5.06%, `#FDE68A` uppercase; outline `#111827`/6%; fade in 120ms, slide down 160ms, active-word bounce 420ms; max-height 11.3%. |
+| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | 4.9%, white uppercase; outline `#111827`/5%; active-word `#FBE003` pop 120ms; max-height 9.8%. |
+| `yellow-trace` | Step-by-step clips | Inter Medium | 4.65%, white/original; box `#111827FF`/15%; progressive `#FBE003`; max-height 10.7%. |
+| `neon-lime-marker` | Energetic explainers | Oswald Medium | 5.06%, white; outline `#111827`/4%, word box `#39FF14FF`/12%; active-word, word zoom 100ms/fade 70ms; max-height 11.1%. |
+| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | 4.99%, `#00F5FF`; outline `#111827`/5%; progressive slide-up 120ms; max-height 11.9%. |
+| `neon-magenta-pulse` | Reactions | Roboto Bold | 3.8%, `#FF4FD8` uppercase; outline `#111827`/5%; active-word pulse 400ms; max-height 9.4%. |
 
-Built-in templates share bottom-center placement, left/right margins of `18%`,
-top `0%`, bottom `3%`, and maximum width of `100%`. Font sizes are calibrated
-against the visible letter height of the default Roboto at `4%`; equal nominal
-sizes would look different across families. Optical adjustments also account
-for uppercase text, weight, and outlines; a preset may use less than `4%`.
-Each template has a maximum-height
-baseline calibrated for two lines with its bundled font and decorations.
-The default retains `12%` maximum height. Explicit CLI options override these
-baselines; changing fonts, margins, size, or line height can change line capacity.
-The exact template baselines are:
-
-| Template | Size and text | Backdrop | Native layout | Animation |
-| --- | --- | --- | --- | --- |
-| `default` | `4%`, `#FFFFFF`, original, `100%` | box `#00000099`, `25%`, shadow `0px` | max-height `12%` | none |
-| `bold-headline` | `4.8%`, `#FFFFFF`, uppercase | outline `#111827`, `7%`, shadow `0px` | max-height `9.9%` | pop in, fade out |
-| `amber-word` | `4.65%`, `#FFFFFF`, original | outline `#111827`, `5%`, shadow `0px` | max-height `9.7%` | active-word amber highlight |
-| `mint-progress` | `5.24%`, `#FFFFFF`, original | box `#111827D9`, `15%`, shadow `0px` | max-height `11.3%` | progressive mint highlight |
-| `focus-marker` | `4.99%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FFD54F`/`12%` | max-height `11.8%` | active-word highlight and box |
-| `golden-title` | `5.06%`, `#FACC15`, uppercase | outline `#111827`, `6%`, shadow `0px` | max-height `11.3%` | none |
-| `emerald-word` | `4%`, `#FFFFFF`, original | outline `#111827`, `5%`; word box `#166534FF`/`12%` | max-height `9.9%` | active-word box |
-| `kinetic-lime` | `5.2%`, `#FFFFFF`, original | outline `#111827`, `5%`; active text `#D9F99D` | max-height `10.3%` | slide up 180ms, fade out 120ms; active-word highlight |
-| `coral-marker` | `4%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#FDA4AFFF`/`14%`, active text `#111827` | max-height `9.8%` | fade in 140ms, fade out 120ms; word marker fades 70ms |
-| `editorial-reveal` | `5.07%`, `#FFF8ED`, italic | outline `#111827`, `4%`, shadow `0px` | max-height `11.1%` | zoom in 200ms, fade out 160ms; progressive word fade 100ms |
-| `headline-bounce` | `5.06%`, `#FDE68A`, uppercase | outline `#111827`, `6%`, shadow `0px` | max-height `11.3%` | fade in 120ms, slide down 160ms; active-word bounce 420ms |
-| `yellow-pop` | `4.9%`, `#FFFFFF`, uppercase | outline `#111827`, `5%`, shadow `0px` | max-height `9.8%` | active-word pop 120ms plus exact `#FBE003` highlight |
-| `yellow-trace` | `4.65%`, `#FFFFFF`, original | box `#111827FF`, `15%`, shadow `0px` | max-height `10.7%` | progressive `#FBE003` highlight |
-| `neon-lime-marker` | `5.06%`, `#FFFFFF`, original | outline `#111827`, `4%`; word box `#39FF14FF`/`12%` | max-height `11.1%` | active-word highlight; word marker zoom 100ms, fade 70ms |
-| `neon-cyan-reveal` | `4.99%`, `#00F5FF`, original | outline `#111827`, `5%`, shadow `0px` | max-height `11.9%` | progressive word slide-up 120ms |
-| `neon-magenta-pulse` | `3.8%`, `#FF4FD8`, uppercase | outline `#111827`, `5%`, shadow `0px` | max-height `9.4%` | active-word pulse 400ms |
-
-All use `auto` line height, zero letter spacing, and full opacity. The static layout preview
-suppresses motion and shows a deterministic representative state; the animated
-preview clip runs the same phases with simulated word times. `progressive` word
-tracks affect the first half of the cue in the static preview, while
-`active-word` tracks affect only its first word. Word-highlight templates require
-aligned word timing during transcription; disable an inherited phase without
-changing the other tracks:
+Templates use 18% side margins, 0% top margin, 3% bottom margin, 100% maximum
+width, automatic line height, zero letter spacing, full opacity, and no shadow.
+Placement is bottom-center except `golden-title` and `coral-marker`
+(bottom-left). Sizes are optically calibrated; maximum heights target two
+lines. Explicit flags override template values. Static previews suppress
+motion; animated previews use simulated word times. For example, disable an
+inherited highlight phase with:
 
 ```bash
 multisubs -i ./video.mp4 --preview-layout \
@@ -215,23 +185,13 @@ multisubs -i ./video.mp4 -l pt \
   --template my-yellow-captions
 ~~~
 
-The template-dir option reads only immediate regular JSON files. Each file
-must use schema_version 1 and a unique lowercase kebab-case name; description,
-base, style, layout, and animation are optional. base names one of the
-built-in templates and defaults to default; it never inherits another custom
-file. Omitted fields inherit the base, and explicit CLI options then override
-the corresponding fields. Custom names take precedence over built-in names for
-that invocation, including default. The directory may be empty, and malformed
-or duplicate files are reported even when another template is selected.
-
-The public JSON mirrors the semantic renderer fields: style.typography
-(font_family, font_weight, font_size, italic, letter_spacing, line_height,
-text_case, color, highlight_color), style.backdrop, style.word_backdrop,
-style.shadow, style.opacity, layout.position, layout.margins, layout.max_width,
-layout.max_height, and independent animation.cue and animation.word tracks.
-Each animation phase contains a supported type and, for duration-bearing
-effects, an optional duration_ms. Font directories and explicit coordinates
-remain CLI options.
+Only immediate regular JSON files are read. Each uses schema version 1 and a
+unique lowercase kebab-case name; optional fields inherit from a built-in base
+(default: `default`, never another custom file), then explicit CLI options
+override them. Custom names take precedence over built-ins for that invocation.
+Invalid files are reported even when they are not selected. See [internal
+template resources](docs/architecture.md#internal-template-resources) for the
+complete data contract.
 
 ### Translate speech to English
 
@@ -264,14 +224,8 @@ multisubs -i ./video.mp4 -o ./previews \
 
 Without `--preview-at`, the video midpoint is used. Preview styling, wrapping,
 placement, coordinates, and custom fonts match the final render path. Output is
-saved as `<video-stem>-subtitle-preview.png` with a numeric suffix when needed.
-When the sample is larger than the resolved envelope, the preview keeps the
-first prospective cue and uses all visual lines that fit before choosing its
-next cue boundary. Sentence, clause, and pause boundaries still take priority;
-among equivalent boundaries, the longest fitting prefix is retained. Words
-that would belong to later hypothetical cues are omitted from this static
-frame. Font metrics, backdrop/shadow allowances, and `--max-height` therefore
-determine both the line breaks and how much sample text is visible.
+saved as `<video-stem>-subtitle-preview.png` with a numeric suffix on collision.
+If the sample does not fit, the preview shows only its first fitting cue.
 
 ### Preview subtitle animation
 
@@ -286,16 +240,13 @@ multisubs -i ./video.mp4 -o ./previews \
   --preview-text "This is how the word animation will look"
 ```
 
-The selected frame is captured once and frozen as the background. `--preview-at`
-therefore chooses the background frame only; the subtitle cue starts at 500 ms,
-and the clip adds 500 ms before and after it. Duration accepts whole `ms` or `s`
-values from 1 to 15 seconds, defaults to `4s`, and the total clip is one second
-longer. Word times are deterministic demonstrations, not synchronization with
-source speech. The output is saved as
-`<video-stem>-subtitle-animation-preview.mp4`, with a numeric suffix on
-collision. `--preview-guides` remains available and labels the timing as
-simulated. No JSON, SRT, ASS, audio, or transcription directory is published;
-`--keep-transcriptions` is rejected in both preview modes.
+The selected frame is frozen behind a cue that starts 500 ms into the clip,
+with 500 ms before and after it. Duration accepts whole `ms` or `s` values from
+1 to 15 seconds, defaults to `4s`, and the total clip is one second longer.
+Word times are simulated, not synchronized to speech. The output is
+`<video-stem>-subtitle-animation-preview.mp4` (numbered on collision).
+`--preview-guides` labels simulated timing. Preview modes publish no transcript
+artifacts and reject `--keep-transcriptions`.
 
 ### Add subtitle animations
 
@@ -313,14 +264,11 @@ multisubs -i ./video.mp4 -l pt \
   --animation-cue-text-exit fade
 ```
 
-Entrance supports `none`, `fade`, the applicable slide directions, `pop`, and
-`zoom`. Emphasis supports `none`, `pulse`, `bounce`, `float`, and `breathe`;
-cue tracks additionally support `shake` and `flash`. Exit supports `none`,
-`fade`, the applicable slide directions, and `zoom`. Every motion phase has a
-deterministic default duration. Append `-duration` to its option to use a value
-from `10ms` through `5000ms`, written in milliseconds or seconds.
+Each phase has a deterministic duration; append `-duration` to override it
+with `10ms`–`5000ms`, written in milliseconds or seconds. Run `multisubs --help`
+for the choices available to each track.
 
-Word text can be highlighted progressively, providing a karaoke-style result:
+Word text can be highlighted progressively:
 
 ```bash
 multisubs -i ./video.mp4 -l pt \
@@ -343,19 +291,11 @@ multisubs -i ./video.mp4 -l pt \
   --animation-word-text-highlight-color '#111827'
 ```
 
-`active-word` affects only the current validated alignment-record interval and
-leaves pauses undecorated. `progressive` keeps each affected record visible
-through the end of the cue. Word behavior requires source-language alignment
-and therefore cannot be combined with translation. Cues with incomplete timing
-or record-to-fragment mappings fall back to ordinary subtitles. The positioned
-word renderer also conservatively suppresses both word tracks for
-bidirectional and contextual-shaping text, including Arabic, Persian, Urdu,
-Hebrew, Hindi, Telugu, and Malayalam. Those cues remain complete logical-line
-events so libass preserves joining, marks, and visual order; cue-level styling
-and animation remain active. Preview uses the same decision and reports a
-warning outside the image or clip. It does not invent production timing: safe
-text shows the first simulated effect unit for `active-word` and the first half
-of the cue for `progressive`.
+`active-word` follows only the current alignment interval; `progressive` keeps
+each affected word visible through the cue. Word effects require source-language
+alignment and are disabled for translation or incomplete mappings. Unsupported
+shaping cases retain cue-level effects and fall back to complete-line word
+rendering; previews use the same fallback and report a warning.
 
 ### Customize typography
 
@@ -377,19 +317,9 @@ multisubs -i ./video.mp4 -l pt \
 Colors use `#RRGGBB` or `#RRGGBBAA`, where `00` is transparent and `FF` is
 opaque. Quote colors in the shell because `#` may start a comment.
 
-The typography controls include:
-
-- `--font-weight`: named weights or numeric ranks from 100 through 900.
-- `--letter-spacing`: non-negative tracking in `%` or PlayRes `px`.
-- `--line-height`: `auto`, a percentage of the natural line height, or PlayRes
-  pixels.
-- `--opacity`: multiplies the alpha of text, cue/word backdrops, shadow, and timed
-  highlighting without changing layout.
-- `--text-case`: `original`, `uppercase`, or `lowercase`, applied before
-  measurement and wrapping.
-
-JSON keeps the original transcript and aligned words even when the displayed
-case changes.
+Lengths require `%` or PlayRes `px`. Font-weight accepts named or 100–900
+numeric ranks. Text case is applied before measurement; retained JSON keeps the
+original transcript and aligned words.
 
 ### Use a bundled font
 
@@ -412,13 +342,10 @@ multisubs -i ./video.mp4 \
   --italic
 ```
 
-Every face is an unmodified static TTF served by the official Google Fonts API
-and recorded with its exact versioned source URL in a packaged integrity
-manifest. Each family includes the `OFL.txt` from the same pinned Google Fonts
-catalog revision; no font download or font-cache write happens while multisubs
-runs. Width and optical-size axes are kept at their Google Fonts defaults
-because the CLI currently exposes weight and italic selection only. Shipping
-all faces adds about 13 MB to the unpacked package.
+The unmodified static TTF faces are pinned in a package integrity manifest and
+each family includes its OFL license. They work offline; multisubs does not
+download fonts or write the system font cache. All faces add about 13 MB to the
+unpacked package.
 
 ### Use a custom font
 
@@ -443,49 +370,20 @@ multisubs -i ./video.mp4 \
   --italic
 ```
 
-`--font` matches the internal family metadata stored in the font, which may
-differ from its filename. Multiple families and all their weight/italic faces
-may share the same directory. The closest available weight is selected when an
-exact face is absent, with a visible substitution diagnostic.
-
-A custom matching family takes precedence over the same bundled family;
-bundled families take precedence over fontconfig. After transcription or when
-preview text is available, multisubs checks the selected face's Unicode cmap
-against the displayed text. If a glyph is absent, it selects a covering face
-from the custom directory or a bounded fontconfig candidate search, measures
-with that face, and writes the same effective family into ASS. The diagnostic
-and JSON `text_measurement` object retain the requested family, effective family,
-provider, and fallback reason. If no covering face can be established for a
-positioned subtitle, the run fails with guidance to choose `--font` or
-`--fonts-dir`; it never downloads a replacement. The custom directory is used
-only for that invocation and does not install fonts globally. You are
-responsible for ensuring that supplied fonts may be used and distributed in
-your intended output.
+`--font` matches family metadata, not filenames. A custom matching family takes
+precedence over its bundled equivalent; bundled fonts precede fontconfig.
+Missing glyphs trigger a bounded search and visible fallback diagnostic. If no
+covering face is found for positioned text, multisubs asks you to choose a
+family or `--fonts-dir`; it never downloads one. Custom fonts are used only for
+this run; ensure you have rights to use and distribute them.
 
 ### Coverage and fallback diagnostics
 
-Coverage is checked after display casing and before wrapping, so Japanese,
-Chinese, Korean, RTL, Indic, and mixed-script cues use advances from a face
-that contains their displayed characters. A language code is only a search
-preference; it is not treated as proof that a requested family has every glyph.
-The fallback search is bounded by font-file size, collection faces, candidate
-count, and fontconfig subprocess time. Combining marks remain part of coverage
-checks, while non-rendering controls and variation selectors are ignored.
-
-When `--keep-transcriptions` is enabled, inspect `rendering.text_measurement`
-in the retained JSON. `coverage: "verified"` means the cmap contains all
-required code points; it does not claim that cmap lookup alone proves every
-shaping or libass substitution detail. `font_source` and `fallback_reason`
-explain a replacement. A `unicode-estimate` record is an explicit legacy path
-for runs without concrete font metrics and must not be interpreted as verified
-glyph coverage.
-
-The regression matrix contains one synthetic UTF-8 sample for every supported
-language code and controlled FFmpeg/libass renders for the higher-risk writing
-systems. This verifies source preservation, selected-face coverage, and the
-documented renderer strategy for those samples; it does not prove that one font
-covers every character in a language or that WhisperX recognized the audio
-correctly.
+Coverage is checked against displayed text before wrapping. With
+`--keep-transcriptions`, `rendering.text_measurement` reports the requested and
+resolved face and fallback reason. `coverage: "verified"` confirms cmap
+coverage, not complete shaping behavior; `unicode-estimate` denotes an
+unverified fallback.
 
 ## ⚙️ Command reference
 
@@ -636,32 +534,15 @@ the canvas; invalid coordinates are rejected instead of being moved or clipped.
 
 ### Adaptive wrapping
 
-multisubs measures the selected custom, bundled, or fontconfig face with Pillow
-and RAQM when a concrete face is available. Once displayed subtitle text is
-known, fontTools checks that face's cmap and the same effective family is
-compiled into ASS. The selected custom or bundled directory is also passed to
-FFmpeg/libass. Otherwise, it uses a Unicode-aware width estimate. Wrapping takes
-font size, weight, letter spacing, line height, maximum dimensions, backdrop,
-and shadow into account.
-
-The aligned segment's source text is authoritative for separators and adjacency;
-the alignment records provide timing and stable identity, not lexical words.
-Japanese character records are grouped with Sudachi mode B and Chinese records
-with jieba's packaged dictionary/HMM. Unicode sentence/clause marks, pauses,
-and derived groups guide cue boundaries and preferred line breaks; visual line
-breaks remain a separate Unicode decision. Word text and word backdrops still
-use each validated alignment record as their timing unit, even when one
-linguistic group spans multiple visual lines. Korean spaces, CJK/Latin
-adjacency, punctuation, NBSP, combining sequences, and emoji joiners are
-preserved through wrapping. Text is never truncated. An oversized linguistic
-group is subdivided only where a legal grapheme/line boundary coincides with
-existing source timing; otherwise it remains intact and may overflow the
-approximate budget. SRT and ASS receive the same intentional line breaks; JSON
-keeps original cue text and aligned records beside the rendered `display_text`.
-If a source-to-alignment map or record-to-fragment effect mapping is incomplete,
-the complete source cue remains at its coarse segment time, word-dependent
-effects are disabled, and JSON records separate bounded mapping/effect
-diagnostics instead of inventing timestamps.
+Wrapping uses the selected font's measured metrics when available and a
+Unicode-aware estimate otherwise; size, spacing, line height, decorations, and
+maximum dimensions all contribute. Japanese and Chinese records receive
+[language-specific grouping](docs/architecture.md#unicode-segmentation-and-source-mapping),
+while validated alignment records remain the timing units for word effects.
+Text is never truncated. If a source/alignment map is incomplete, the full cue
+keeps its segment timing and word effects are disabled rather than inventing
+timestamps. SRT and ASS share intentional line breaks; JSON retains source text
+beside rendered `display_text`.
 
 ## 🌍 Supported languages
 
@@ -721,30 +602,12 @@ directory. Completed artifacts are published only after FFmpeg succeeds. If
 processing fails, transcription artifacts are retained there for diagnosis;
 partial final media is not published.
 
-When `--keep-transcriptions` is enabled, the versioned JSON transcript includes
-source and processing metadata, original and displayed cue text, render
-geometry, resolved layout and typography, wrapping diagnostics, and the four
-independent cue/word text/backdrop animation tracks. Original WhisperX word
-records, including records without usable times, are retained as supplied. A
-lossy source-to-alignment map adds per-cue `alignment_mapping` counts/reasons
-and aggregate `metadata.rendering.text_mapping` diagnostics; internal spans,
-offset tables, font objects, paths, and generated ASS tags are not serialized.
-Mapped cues also include additive `segmentation` diagnostics with the strategy,
-backend version, alignment granularity, derived-group count, emergency
-subdivision count, and bounded fallback information. When word-dependent effects
-are requested, each mapped cue additionally records `word_effect` diagnostics;
-the `units` value is `alignment-records`, and aggregate
-`metadata.rendering.word_effects` counts only cues that actually suppress those
-tracks, records their fallback reasons, and summarizes whether cues used
-`positioned-fragments` or shaping-safe `full-line` rendering. Original `words`
-are not replaced by linguistic groups.
-Rendering diagnostics also record the
-requested and resolved template names; omitted selection is recorded as
-requested `null` and resolved `default`. A custom selection additionally
-records source `custom`, schema_version `1`, and its resolved built-in base;
-custom directory paths, descriptions, and raw JSON are never stored. The current
-retained JSON contract uses schema version `3` and stores animation data under
-`metadata.rendering.animation`.
+When `--keep-transcriptions` is enabled, the schema-3 JSON preserves source text
+and WhisperX word records beside display text, geometry, resolved styling,
+animation, template identity, and bounded text-mapping, segmentation, and
+word-effect diagnostics. Word records are not replaced by derived linguistic
+groups; internal paths, font objects, ASS tags, and custom template JSON are
+not stored. See the [JSON contract](docs/architecture.md#json) for field details.
 
 ## 🧪 Development
 
@@ -765,16 +628,11 @@ The default test suite is hermetic and excludes tests marked `integration`.
 Avoid a full transcription as a routine smoke test because model loading can
 download large assets and consume significant CPU, GPU, memory, and time.
 
-For local subtitle debugging, a source checkout includes
-`python -m scripts.replay_subtitle_layout retained.json --output-dir ./data/replays`.
-It writes collision-safe JSON/SRT/ASS and an evidence manifest without loading
-speech models. Add `--render` to render on a synthetic background, or additionally
-pass `--uncaptioned-video original.mp4` for an explicitly selected clean input.
-The helper uses the current `amber-word` template at the center; select another
-with `--template` and optionally `--font`. Saved rendering settings are not
-imported. Retained JSON has already lost any text or boundaries discarded by
-earlier processing, so replay cannot recover them. Files remain local and are
-never overwritten. See the [regression and backend evaluation instructions](docs/plans/multilingual-subtitles/00-regressions-and-decisions.md).
+For local debugging, `python -m scripts.replay_subtitle_layout retained.json`
+rebuilds collision-safe JSON/SRT/ASS without loading speech models. `--render`
+uses a synthetic background; `--uncaptioned-video` explicitly selects a clean
+video. Replay cannot recover text or boundaries discarded by earlier
+processing. See the [regression instructions](docs/plans/multilingual-subtitles/00-regressions-and-decisions.md).
 
 The CLI exits with status `0` on success, `2` for invalid arguments or paths,
 and `1` for dependency, transcription, artifact, or FFmpeg failures.
@@ -803,34 +661,16 @@ and system tools retain their own licenses.
 
 ## ⚠️ Current limitations
 
-- One local input video is processed per invocation.
-- Translation output is fixed to English.
-- WhisperX can return incomplete alignment for punctuation, omitted words, or
-  malformed times. Those cues retain complete source text at segment timing but
-  cannot use word-dependent effects; the retained JSON reports the fallback
-  reason and count. Source distinctions already normalized or omitted by
-  WhisperX cannot be recovered from audio after alignment.
-- Japanese and Chinese grouping is deterministic for the pinned local
-  dictionaries but is not guaranteed to match every human editorial choice.
-  Very short aligned intervals remain short; grouping never invents a minimum
-  highlight duration. An interval shorter than the video frame cadence may not
-  be visible in every frame, while its timestamp remains unchanged.
-- Aligned-word behavior is unavailable for translated transcription output;
-  static PNG previews suppress all motion and show one representative state for
-  each supported word track, while animated MP4 previews use simulated timing.
-  Bidirectional and contextual-shaping samples use the same complete-line
-  word-effect fallback as production; arbitrary per-word RTL/Indic effects are
-  not claimed as supported.
-- A static preview shows only the first fitting sample cue; later hypothetical
-  cues are not rendered in the same frame.
-- Animation distance, scale, and easing are fixed per semantic type; phase
-  duration can be customized from `10ms` through `5000ms`.
-- There is no interactive subtitle editor or graphical interface.
-- Speaker diarization and speaker-specific styling are not supported.
-- The output uses hard subtitles; selectable soft subtitle tracks are not
-  created.
-- FFmpeg and ffprobe must be available on the host; animated MP4 previews also
-  need the `libx264` encoder. The selected Whisper model is required only for
-  normal transcription.
-- Font families outside the six bundled families require `--fonts-dir` or a
-  compatible system font provider.
+- One local video is processed per invocation; there is no graphical editor or
+  speaker diarization.
+- Translation always outputs English. Detection selects one language per run
+  and can be unreliable for short or ambiguous audio.
+- Japanese and Chinese grouping is deterministic but may differ from editorial
+  choices.
+- Word effects require usable alignment. Incomplete maps or unsupported
+  shaping retain the complete cue and use the documented fallback; very short
+  word intervals may be shorter than one visible video frame.
+- Static previews show one fitting cue without motion; animated previews use
+  simulated timing.
+- Animation distance, scale, and easing are fixed by effect type. Output uses
+  hard rather than selectable soft subtitles.
