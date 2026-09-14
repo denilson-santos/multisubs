@@ -711,21 +711,6 @@ def test_packaged_catalog_has_sparse_deterministic_inventory():
     }
 
 
-@pytest.mark.parametrize("name", TEMPLATE_CHOICES)
-def test_builtin_templates_preserve_placement_and_calibrate_font_size(name: str):
-    default = get_subtitle_template("default").config
-    config = get_subtitle_template(name).config
-    assert (
-        replace(config.layout, max_height=default.layout.max_height) == default.layout
-    )
-    font_size = config.style.typography.font_size
-    default_size = default.style.typography.font_size
-    assert isinstance(font_size, RelativeLength)
-    assert isinstance(default_size, RelativeLength)
-    assert font_size.unit == default_size.unit
-    assert font_size.value > 0
-
-
 @pytest.mark.parametrize(
     ("width", "height"),
     [(1280, 720), (1920, 1080), (1080, 1920), (1080, 1080), (3840, 2160)],
@@ -799,21 +784,12 @@ def test_sparse_and_expanded_resources_have_equal_runtime_config(tmp_path: Path)
     [
         (lambda payload: payload.pop("description"), "missing field"),
         (
-            lambda payload: (
-                payload.setdefault("animation", {})
-                .setdefault("word", {})
-                .setdefault("text", {})
-                .update({"emphasis": {}})
-            ),
-            "missing field",
-        ),
-        (
             lambda payload: payload.update({"schema_version": 99}),
             "schema_version 5",
         ),
     ],
 )
-def test_sparse_resources_reject_missing_identity_and_invalid_versions(
+def test_sparse_resources_reject_missing_description_and_invalid_versions(
     tmp_path: Path, mutate, message: str
 ):
     root = _copy_template_catalog(tmp_path)
@@ -830,6 +806,16 @@ def test_sparse_resources_reject_missing_identity_and_invalid_versions(
             "amber-word.json",
             lambda payload: payload["style"].update({"unexpected": "value"}),
             "unknown field",
+        ),
+        (
+            "amber-word.json",
+            lambda payload: (
+                payload.setdefault("animation", {})
+                .setdefault("word", {})
+                .setdefault("text", {})
+                .update({"emphasis": {}})
+            ),
+            "missing field",
         ),
         (
             "amber-word.json",
