@@ -1,6 +1,6 @@
 # Simplify ASS and animation rendering
 
-Status: In progress
+Status: In review
 
 Depends on: [Plan 1](01-text-and-layout.md).
 

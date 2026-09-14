@@ -1,6 +1,6 @@
 # Simplify pipeline orchestration and artifact ownership
 
-Status: In progress
+Status: In review
 
 Depends on: [Plan 0](00-configuration-and-requests.md),
 [Plan 1](01-text-and-layout.md), and

@@ -1,6 +1,6 @@
 # Simplify configuration and request assembly
 
-Status: In progress
+Status: In review
 
 Depends on: the current CLI, template, and configuration contracts in
 `origin/main` at `6b64077`.
@@ -75,9 +75,10 @@ Suggested commits:
 2. `refactor: simplify request and configuration assembly`
 3. `refactor: clarify template loading boundaries`
 
-Draft PR title: `refactor: simplify configuration and request assembly`.
-Before the PR, mark this plan/package/catalog `In review`, retain the branch as
-delivery reference, run the repository gate, and push the complete branch.
+Draft PR title: `refactor: simplify codebase, tests, and documentation`.
+This plan, package, and catalog are `In review`, with the task branch retained
+as the delivery reference. Run the repository gate and push the complete branch
+before opening the PR.
 After confirmed merge, mark Plan 0 `Done` and point delivery to the merged PR.
 
 ## Acceptance criteria

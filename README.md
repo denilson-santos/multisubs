@@ -294,8 +294,9 @@ multisubs -i ./video.mp4 -l pt \
 `active-word` follows only the current alignment interval; `progressive` keeps
 each affected word visible through the cue. Word effects require source-language
 alignment and are disabled for translation or incomplete mappings. Unsupported
-shaping cases retain cue-level effects and fall back to complete-line word
-rendering; previews use the same fallback and report a warning.
+shaping cases retain cue-level effects and fall back to complete logical-line
+rendering; word tracks are suppressed. Previews use the same fallback and
+report a warning.
 
 ### Customize typography
 

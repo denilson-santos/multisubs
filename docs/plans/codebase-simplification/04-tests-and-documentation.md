@@ -1,6 +1,6 @@
 # Consolidate tests and documentation
 
-Status: In progress
+Status: In review
 
 Depends on: [Plans 0–3](README.md#plans-and-progress).
 
