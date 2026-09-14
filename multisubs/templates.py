@@ -138,131 +138,14 @@ def _load_complete_template(
         )
     description = _expect_string(data["description"], context=f"{context}.description")
 
-    style = _expect_object(data["style"], context=f"{context}.style")
-    _expect_keys(
-        style,
-        {"typography", "backdrop", "word_backdrop", "shadow", "opacity"},
-        context=f"{context}.style",
-    )
-    typography = _expect_object(
-        style["typography"], context=f"{context}.style.typography"
-    )
-    _expect_keys(
-        typography,
-        {
-            "font_family",
-            "font_weight",
-            "font_size",
-            "italic",
-            "letter_spacing",
-            "line_height",
-            "text_case",
-            "color",
-            "highlight_color",
-        },
-        context=f"{context}.style.typography",
-    )
-    for field in (
-        "font_family",
-        "font_weight",
-        "font_size",
-        "letter_spacing",
-        "line_height",
-        "text_case",
-        "color",
-    ):
-        _expect_string(typography[field], context=f"{context}.style.typography.{field}")
-    italic = _expect_boolean(
-        typography["italic"], context=f"{context}.style.typography.italic"
-    )
-    highlight_color = _expect_nullable_string(
-        typography["highlight_color"],
-        context=f"{context}.style.typography.highlight_color",
+    appearance_values, style_relative_values, highlight_color = _read_complete_style(
+        data["style"], context=context, name=expected_name
     )
 
-    backdrop = _expect_object(style["backdrop"], context=f"{context}.style.backdrop")
-    _expect_keys(
-        backdrop, {"type", "color", "size"}, context=f"{context}.style.backdrop"
+    position, margins, layout_values = _read_complete_layout(
+        data["layout"], context=context
     )
-    for field in ("type", "color", "size"):
-        _expect_string(backdrop[field], context=f"{context}.style.backdrop.{field}")
-
-    word_backdrop = _expect_object(
-        style["word_backdrop"], context=f"{context}.style.word_backdrop"
-    )
-    _expect_keys(
-        word_backdrop,
-        {"type", "color", "size"},
-        context=f"{context}.style.word_backdrop",
-    )
-    for field in ("type", "color", "size"):
-        _expect_string(
-            word_backdrop[field], context=f"{context}.style.word_backdrop.{field}"
-        )
-
-    shadow = _expect_object(style["shadow"], context=f"{context}.style.shadow")
-    _expect_keys(shadow, {"size"}, context=f"{context}.style.shadow")
-    _expect_string(shadow["size"], context=f"{context}.style.shadow.size")
-    _expect_string(style["opacity"], context=f"{context}.style.opacity")
-
-    layout = _expect_object(data["layout"], context=f"{context}.layout")
-    _expect_keys(
-        layout,
-        {"position", "margins", "max_width", "max_height"},
-        context=f"{context}.layout",
-    )
-    _expect_string(layout["position"], context=f"{context}.layout.position")
-    margins = _expect_object(layout["margins"], context=f"{context}.layout.margins")
-    _expect_keys(
-        margins,
-        {"left", "right", "top", "bottom"},
-        context=f"{context}.layout.margins",
-    )
-    for field in ("left", "right", "top", "bottom"):
-        _expect_string(margins[field], context=f"{context}.layout.margins.{field}")
-    _expect_string(layout["max_width"], context=f"{context}.layout.max_width")
-    _expect_string(layout["max_height"], context=f"{context}.layout.max_height")
-
-    animation = _expect_object(data["animation"], context=f"{context}.animation")
-    _expect_keys(animation, {"cue", "word"}, context=f"{context}.animation")
-    cue = _expect_object(animation["cue"], context=f"{context}.animation.cue")
-    _expect_keys(cue, {"text", "backdrop"}, context=f"{context}.animation.cue")
-    word = _expect_object(animation["word"], context=f"{context}.animation.word")
-    _expect_keys(word, {"text", "backdrop"}, context=f"{context}.animation.word")
-    animation_values: dict[str, object] = {}
-    for scope, group in (("cue", cue), ("word", word)):
-        for element in ("text", "backdrop"):
-            track = _expect_object(
-                group[element], context=f"{context}.animation.{scope}.{element}"
-            )
-            expected = {"entrance", "emphasis", "exit"}
-            if scope == "word":
-                expected.add("mode")
-            _expect_keys(
-                track, expected, context=f"{context}.animation.{scope}.{element}"
-            )
-            prefix = f"{scope}_{element}"
-            for phase_name in ("entrance", "emphasis", "exit"):
-                phase_type, duration_ms = _load_animation_phase(
-                    track[phase_name],
-                    context=(f"{context}.animation.{scope}.{element}.{phase_name}"),
-                )
-                animation_values[f"{prefix}_{phase_name}"] = phase_type
-                if duration_ms is not None:
-                    animation_values[f"{prefix}_{phase_name}_duration"] = (
-                        f"{duration_ms}ms"
-                    )
-            if scope == "word":
-                mode_name = _expect_string(
-                    track["mode"],
-                    context=f"{context}.animation.{scope}.{element}.mode",
-                )
-                try:
-                    animation_values[f"{prefix}_mode"] = WordAnimationMode(mode_name)
-                except ValueError as exc:
-                    raise TemplateError(
-                        f"{context}.animation.{scope}.{element}.mode is not supported"
-                    ) from exc
+    animation_values = _read_complete_animation(data["animation"], context=context)
 
     word_text_highlighted = (
         animation_values["word_text_emphasis"] == CueAnimationType.HIGHLIGHT.value
@@ -277,37 +160,12 @@ def _load_complete_template(
             f"{context}.style.typography.highlight_color is required for highlight"
         )
 
-    appearance_values: dict[str, object] = {
-        "font": typography["font_family"],
-        "font_weight": typography["font_weight"],
-        "italic": italic,
-        "text_color": typography["color"],
-        "text_case": typography["text_case"],
-        "backdrop": backdrop["type"],
-        "backdrop_color": backdrop["color"],
-        "word_backdrop": word_backdrop["type"],
-        "word_backdrop_color": word_backdrop["color"],
-        "opacity": style["opacity"],
-    }
-    if name == DEFAULT_SUBTITLE_TEMPLATE and typography["font_weight"] == "regular":
-        appearance_values.pop("font_weight")
     if word_text_highlighted:
         animation_values["word_text_highlight_color"] = highlight_color
     relative_values = {
-        "font_size": typography["font_size"],
-        "letter_spacing": typography["letter_spacing"],
-        "line_height": typography["line_height"],
-        "outline_weight": backdrop["size"],
-        "word_backdrop_size": word_backdrop["size"],
-        "shadow_weight": shadow["size"],
-        "margin_left": margins["left"],
-        "margin_right": margins["right"],
-        "margin_top": margins["top"],
-        "margin_bottom": margins["bottom"],
-        "max_width": layout["max_width"],
-        "max_height": layout["max_height"],
+        **style_relative_values,
+        **layout_values,
     }
-    position = str(layout["position"])
     if position.startswith("top-"):
         relative_values.pop("margin_bottom")
     elif position.startswith("bottom-"):
@@ -341,6 +199,183 @@ def _load_complete_template(
     except ValidationError as exc:
         raise TemplateError(f"{context} is semantically invalid: {exc}") from exc
     return SubtitleTemplate(name=name, description=description, config=config)
+
+
+def _read_complete_style(
+    value: Any,
+    *,
+    context: str,
+    name: str,
+) -> tuple[dict[str, object], dict[str, str], str | None]:
+    """Validate a complete template style and map it to config overrides."""
+    style = _expect_object(value, context=f"{context}.style")
+    _expect_keys(
+        style,
+        {"typography", "backdrop", "word_backdrop", "shadow", "opacity"},
+        context=f"{context}.style",
+    )
+    typography = _expect_object(
+        style["typography"], context=f"{context}.style.typography"
+    )
+    typography_context = f"{context}.style.typography"
+    typography_fields = (
+        "font_family",
+        "font_weight",
+        "font_size",
+        "letter_spacing",
+        "line_height",
+        "text_case",
+        "color",
+    )
+    _expect_keys(
+        typography,
+        {*typography_fields, "italic", "highlight_color"},
+        context=typography_context,
+    )
+    text_values = {
+        field: _expect_string(
+            typography[field], context=f"{typography_context}.{field}"
+        )
+        for field in typography_fields
+    }
+    italic = _expect_boolean(
+        typography["italic"], context=f"{typography_context}.italic"
+    )
+    highlight_color = _expect_nullable_string(
+        typography["highlight_color"],
+        context=f"{typography_context}.highlight_color",
+    )
+    backdrop = _read_complete_backdrop(
+        style["backdrop"], context=f"{context}.style.backdrop"
+    )
+    word_backdrop = _read_complete_backdrop(
+        style["word_backdrop"], context=f"{context}.style.word_backdrop"
+    )
+    shadow = _expect_object(style["shadow"], context=f"{context}.style.shadow")
+    _expect_keys(shadow, {"size"}, context=f"{context}.style.shadow")
+    shadow_size = _expect_string(shadow["size"], context=f"{context}.style.shadow.size")
+    opacity = _expect_string(style["opacity"], context=f"{context}.style.opacity")
+
+    appearance_values: dict[str, object] = {
+        "font": text_values["font_family"],
+        "font_weight": text_values["font_weight"],
+        "italic": italic,
+        "text_color": text_values["color"],
+        "text_case": text_values["text_case"],
+        "backdrop": backdrop["type"],
+        "backdrop_color": backdrop["color"],
+        "word_backdrop": word_backdrop["type"],
+        "word_backdrop_color": word_backdrop["color"],
+        "opacity": opacity,
+    }
+    if name == DEFAULT_SUBTITLE_TEMPLATE and text_values["font_weight"] == "regular":
+        appearance_values.pop("font_weight")
+    relative_values = {
+        "font_size": text_values["font_size"],
+        "letter_spacing": text_values["letter_spacing"],
+        "line_height": text_values["line_height"],
+        "outline_weight": backdrop["size"],
+        "word_backdrop_size": word_backdrop["size"],
+        "shadow_weight": shadow_size,
+    }
+    return appearance_values, relative_values, highlight_color
+
+
+def _read_complete_layout(
+    value: Any,
+    *,
+    context: str,
+) -> tuple[str, dict[str, str], dict[str, str]]:
+    """Validate layout data and translate its keys to configuration names."""
+    layout = _expect_object(value, context=f"{context}.layout")
+    layout_context = f"{context}.layout"
+    _expect_keys(
+        layout,
+        {"position", "margins", "max_width", "max_height"},
+        context=layout_context,
+    )
+    position = _expect_string(layout["position"], context=f"{layout_context}.position")
+    margins = _expect_object(layout["margins"], context=f"{layout_context}.margins")
+    _expect_keys(
+        margins,
+        {"left", "right", "top", "bottom"},
+        context=f"{layout_context}.margins",
+    )
+    parsed_margins = {
+        field: _expect_string(
+            margins[field], context=f"{layout_context}.margins.{field}"
+        )
+        for field in ("left", "right", "top", "bottom")
+    }
+    width = _expect_string(layout["max_width"], context=f"{layout_context}.max_width")
+    height = _expect_string(
+        layout["max_height"], context=f"{layout_context}.max_height"
+    )
+    layout_values = {
+        f"margin_{field}": margin for field, margin in parsed_margins.items()
+    }
+    layout_values.update(max_width=width, max_height=height)
+    return position, parsed_margins, layout_values
+
+
+def _read_complete_animation(
+    value: Any,
+    *,
+    context: str,
+) -> dict[str, object]:
+    """Validate complete cue and word animation tracks."""
+    animation = _expect_object(value, context=f"{context}.animation")
+    _expect_keys(animation, {"cue", "word"}, context=f"{context}.animation")
+    groups = {
+        scope: _expect_object(animation[scope], context=f"{context}.animation.{scope}")
+        for scope in ("cue", "word")
+    }
+    for scope, group in groups.items():
+        _expect_keys(
+            group,
+            {"text", "backdrop"},
+            context=f"{context}.animation.{scope}",
+        )
+
+    values: dict[str, object] = {}
+    for scope, group in groups.items():
+        for element in ("text", "backdrop"):
+            track_context = f"{context}.animation.{scope}.{element}"
+            track = _expect_object(group[element], context=track_context)
+            expected_fields = {"entrance", "emphasis", "exit"}
+            if scope == "word":
+                expected_fields.add("mode")
+            _expect_keys(track, expected_fields, context=track_context)
+            prefix = f"{scope}_{element}"
+            for phase_name in ("entrance", "emphasis", "exit"):
+                phase_type, duration_ms = _load_animation_phase(
+                    track[phase_name],
+                    context=f"{track_context}.{phase_name}",
+                )
+                values[f"{prefix}_{phase_name}"] = phase_type
+                if duration_ms is not None:
+                    values[f"{prefix}_{phase_name}_duration"] = f"{duration_ms}ms"
+            if scope == "word":
+                mode_name = _expect_string(
+                    track["mode"], context=f"{track_context}.mode"
+                )
+                try:
+                    values[f"{prefix}_mode"] = WordAnimationMode(mode_name)
+                except ValueError as exc:
+                    raise TemplateError(
+                        f"{track_context}.mode is not supported"
+                    ) from exc
+    return values
+
+
+def _read_complete_backdrop(value: Any, *, context: str) -> dict[str, str]:
+    backdrop = _expect_object(value, context=context)
+    fields = ("type", "color", "size")
+    _expect_keys(backdrop, set(fields), context=context)
+    return {
+        field: _expect_string(backdrop[field], context=f"{context}.{field}")
+        for field in fields
+    }
 
 
 def _expect_allowed_keys(
@@ -522,103 +557,124 @@ def _expand_sparse_template_data(
     expanded["description"] = data["description"]
 
     if "style" in data:
-        style = _merge_sparse_object(
-            expanded["style"],
-            data["style"],
-            allowed={"typography", "backdrop", "word_backdrop", "shadow", "opacity"},
-            context="Template.style",
-        )
-        if "typography" in data["style"]:
-            style["typography"] = _merge_sparse_object(
-                expanded["style"]["typography"],
-                data["style"]["typography"],
-                allowed={
-                    "font_family",
-                    "font_weight",
-                    "font_size",
-                    "italic",
-                    "letter_spacing",
-                    "line_height",
-                    "text_case",
-                    "color",
-                    "highlight_color",
-                },
-                context="Template.style.typography",
-            )
-        for element, allowed in (
-            ("backdrop", {"type", "color", "size"}),
-            ("word_backdrop", {"type", "color", "size"}),
-            ("shadow", {"size"}),
-        ):
-            if element in data["style"]:
-                style[element] = _merge_sparse_object(
-                    expanded["style"][element],
-                    data["style"][element],
-                    allowed=allowed,
-                    context=f"Template.style.{element}",
-                )
-        expanded["style"] = style
+        expanded["style"] = _expand_sparse_style_data(expanded["style"], data["style"])
 
     if "layout" in data:
-        layout = _merge_sparse_object(
-            expanded["layout"],
-            data["layout"],
-            allowed={"position", "margins", "max_width", "max_height"},
-            context="Template.layout",
+        expanded["layout"] = _expand_sparse_layout_data(
+            expanded["layout"], data["layout"]
         )
-        if "margins" in data["layout"]:
-            layout["margins"] = _merge_sparse_object(
-                expanded["layout"]["margins"],
-                data["layout"]["margins"],
-                allowed={"left", "right", "top", "bottom"},
-                context="Template.layout.margins",
-            )
-        expanded["layout"] = layout
 
     if "animation" in data:
-        animation = _merge_sparse_object(
+        expanded["animation"] = _expand_sparse_animation_data(
             expanded["animation"],
             data["animation"],
-            allowed={"cue", "word"},
-            context="Template.animation",
+            reset_animation_duration=reset_animation_duration,
         )
-        for scope in ("cue", "word"):
-            if scope not in data["animation"]:
-                continue
-            group = _merge_sparse_object(
-                expanded["animation"][scope],
-                data["animation"][scope],
-                allowed={"text", "backdrop"},
-                context=f"Template.animation.{scope}",
-            )
-            for element in ("text", "backdrop"):
-                if element not in data["animation"][scope]:
-                    continue
-                track_base = expanded["animation"][scope][element]
-                track = _merge_sparse_object(
-                    track_base,
-                    data["animation"][scope][element],
-                    allowed=(
-                        {"mode", "entrance", "emphasis", "exit"}
-                        if scope == "word"
-                        else {"entrance", "emphasis", "exit"}
-                    ),
-                    context=f"Template.animation.{scope}.{element}",
-                )
-                for phase_name in ("entrance", "emphasis", "exit"):
-                    if phase_name in data["animation"][scope][element]:
-                        track[phase_name] = _merge_sparse_phase(
-                            track_base[phase_name],
-                            data["animation"][scope][element][phase_name],
-                            context=(
-                                f"Template.animation.{scope}.{element}.{phase_name}"
-                            ),
-                            reset_duration_on_type_change=reset_animation_duration,
-                        )
-                group[element] = track
-            animation[scope] = group
-        expanded["animation"] = animation
     return expanded
+
+
+def _expand_sparse_style_data(base: Mapping[str, Any], value: Any) -> dict[str, Any]:
+    style = _merge_sparse_object(
+        base,
+        value,
+        allowed={"typography", "backdrop", "word_backdrop", "shadow", "opacity"},
+        context="Template.style",
+    )
+    if "typography" in value:
+        style["typography"] = _merge_sparse_object(
+            base["typography"],
+            value["typography"],
+            allowed={
+                "font_family",
+                "font_weight",
+                "font_size",
+                "italic",
+                "letter_spacing",
+                "line_height",
+                "text_case",
+                "color",
+                "highlight_color",
+            },
+            context="Template.style.typography",
+        )
+    for element, allowed in (
+        ("backdrop", {"type", "color", "size"}),
+        ("word_backdrop", {"type", "color", "size"}),
+        ("shadow", {"size"}),
+    ):
+        if element in value:
+            style[element] = _merge_sparse_object(
+                base[element],
+                value[element],
+                allowed=allowed,
+                context=f"Template.style.{element}",
+            )
+    return style
+
+
+def _expand_sparse_layout_data(base: Mapping[str, Any], value: Any) -> dict[str, Any]:
+    layout = _merge_sparse_object(
+        base,
+        value,
+        allowed={"position", "margins", "max_width", "max_height"},
+        context="Template.layout",
+    )
+    if "margins" in value:
+        layout["margins"] = _merge_sparse_object(
+            base["margins"],
+            value["margins"],
+            allowed={"left", "right", "top", "bottom"},
+            context="Template.layout.margins",
+        )
+    return layout
+
+
+def _expand_sparse_animation_data(
+    base: Mapping[str, Any],
+    value: Any,
+    *,
+    reset_animation_duration: bool,
+) -> dict[str, Any]:
+    animation = _merge_sparse_object(
+        base,
+        value,
+        allowed={"cue", "word"},
+        context="Template.animation",
+    )
+    for scope in ("cue", "word"):
+        if scope not in value:
+            continue
+        group = _merge_sparse_object(
+            base[scope],
+            value[scope],
+            allowed={"text", "backdrop"},
+            context=f"Template.animation.{scope}",
+        )
+        for element in ("text", "backdrop"):
+            if element not in value[scope]:
+                continue
+            track_base = base[scope][element]
+            track = _merge_sparse_object(
+                track_base,
+                value[scope][element],
+                allowed=(
+                    {"mode", "entrance", "emphasis", "exit"}
+                    if scope == "word"
+                    else {"entrance", "emphasis", "exit"}
+                ),
+                context=f"Template.animation.{scope}.{element}",
+            )
+            for phase_name in ("entrance", "emphasis", "exit"):
+                if phase_name in value[scope][element]:
+                    track[phase_name] = _merge_sparse_phase(
+                        track_base[phase_name],
+                        value[scope][element][phase_name],
+                        context=f"Template.animation.{scope}.{element}.{phase_name}",
+                        reset_duration_on_type_change=reset_animation_duration,
+                    )
+            group[element] = track
+        animation[scope] = group
+    return animation
 
 
 def _load_sparse_template(
@@ -691,6 +747,27 @@ def _load_animation_phase(value: Any, *, context: str) -> tuple[str, int | None]
 def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:
     if root is None:
         root = resources.files("multisubs").joinpath("assets").joinpath("templates")
+    index_version, filenames = _read_template_index(root)
+    _validate_template_inventory(root, filenames)
+
+    templates = tuple(
+        _load_template(
+            root.joinpath(filename),
+            filename.removesuffix(".json"),
+            schema_version=index_version,
+        )
+        for filename in filenames
+    )
+    names = tuple(template.name for template in templates)
+    if len(names) != len(set(names)):
+        raise TemplateError("Packaged subtitle templates contain duplicate names")
+    if DEFAULT_SUBTITLE_TEMPLATE not in names:
+        raise TemplateError("Template catalog must contain the default template")
+    return templates
+
+
+def _read_template_index(root: Any) -> tuple[int, list[str]]:
+    """Read and validate the packaged template inventory and its stable order."""
     index = _read_json(root.joinpath(_INDEX_RESOURCE))
     _expect_keys(index, {"schema_version", "templates"}, context="Template index")
     index_version = index["schema_version"]
@@ -721,7 +798,10 @@ def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:
         if filename in checked_filenames:
             raise TemplateError(f"Template index contains duplicate file '{filename}'")
         checked_filenames.append(filename)
+    return index_version, checked_filenames
 
+
+def _validate_template_inventory(root: Any, filenames: list[str]) -> None:
     try:
         discovered = {
             item.name
@@ -732,7 +812,7 @@ def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:
         }
     except OSError as exc:
         raise TemplateError("Could not enumerate packaged subtitle templates") from exc
-    indexed = set(checked_filenames)
+    indexed = set(filenames)
     if discovered != indexed:
         missing = indexed - discovered
         unindexed = discovered - indexed
@@ -746,21 +826,6 @@ def _load_template_catalog(root: Any = None) -> tuple[SubtitleTemplate, ...]:
             + "; ".join(details)
             + ")"
         )
-
-    templates = tuple(
-        _load_template(
-            root.joinpath(filename),
-            filename.removesuffix(".json"),
-            schema_version=index_version,
-        )
-        for filename in checked_filenames
-    )
-    names = tuple(template.name for template in templates)
-    if len(names) != len(set(names)):
-        raise TemplateError("Packaged subtitle templates contain duplicate names")
-    if DEFAULT_SUBTITLE_TEMPLATE not in names:
-        raise TemplateError("Template catalog must contain the default template")
-    return templates
 
 
 _CATALOG_ERROR: TemplateError | None = None

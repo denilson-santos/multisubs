@@ -133,6 +133,17 @@ def _reject_custom_nulls(
 
 
 def _read_custom_template_files(directory: Path) -> list[tuple[Path, dict[str, Any]]]:
+    """Read validated JSON files after a bounded directory scan."""
+    loaded: list[tuple[Path, dict[str, Any]]] = []
+    total_bytes = 0
+    for entry in _custom_template_entries(directory):
+        data, total_bytes = _read_bounded_custom_template(entry, total_bytes)
+        loaded.append((entry, data))
+    return loaded
+
+
+def _custom_template_entries(directory: Path) -> list[Path]:
+    """Return immediate regular JSON files, rejecting links and special files."""
     try:
         entries = sorted(directory.iterdir(), key=lambda item: item.name)
     except OSError as exc:
@@ -166,45 +177,48 @@ def _read_custom_template_files(directory: Path) -> list[tuple[Path, dict[str, A
             "Custom subtitle template directory contains more than "
             f"{MAX_CUSTOM_TEMPLATE_COUNT} JSON files"
         )
+    return json_entries
 
-    total_bytes = 0
-    loaded: list[tuple[Path, dict[str, Any]]] = []
-    for entry in json_entries:
-        try:
-            info = entry.stat(follow_symlinks=False)
-        except OSError as exc:
-            raise TemplateError(
-                f"Could not inspect custom subtitle template '{entry}'"
-            ) from exc
-        if not stat.S_ISREG(info.st_mode):
-            raise TemplateError(
-                f"Custom subtitle template '{entry}' must be a regular file"
-            )
-        if info.st_size > MAX_CUSTOM_TEMPLATE_BYTES:
-            raise TemplateError(
-                f"Custom subtitle template '{entry}' exceeds the maximum size of "
-                f"{MAX_CUSTOM_TEMPLATE_BYTES} bytes"
-            )
-        total_bytes += info.st_size
-        if total_bytes > MAX_CUSTOM_TEMPLATE_TOTAL_BYTES:
-            raise TemplateError(
-                "Custom subtitle templates exceed the total size limit of "
-                f"{MAX_CUSTOM_TEMPLATE_TOTAL_BYTES} bytes"
-            )
-        try:
-            with entry.open("rb") as stream:
-                raw = stream.read(MAX_CUSTOM_TEMPLATE_BYTES + 1)
-        except OSError as exc:
-            raise TemplateError(
-                f"Could not read custom subtitle template '{entry}'"
-            ) from exc
-        if len(raw) > MAX_CUSTOM_TEMPLATE_BYTES:
-            raise TemplateError(
-                f"Custom subtitle template '{entry}' exceeds the maximum size of "
-                f"{MAX_CUSTOM_TEMPLATE_BYTES} bytes"
-            )
-        loaded.append((entry, _read_custom_json(entry, raw)))
-    return loaded
+
+def _read_bounded_custom_template(
+    entry: Path,
+    total_bytes: int,
+) -> tuple[dict[str, Any], int]:
+    """Recheck and read one template within per-file and aggregate limits."""
+    try:
+        info = entry.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise TemplateError(
+            f"Could not inspect custom subtitle template '{entry}'"
+        ) from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise TemplateError(
+            f"Custom subtitle template '{entry}' must be a regular file"
+        )
+    if info.st_size > MAX_CUSTOM_TEMPLATE_BYTES:
+        raise TemplateError(
+            f"Custom subtitle template '{entry}' exceeds the maximum size of "
+            f"{MAX_CUSTOM_TEMPLATE_BYTES} bytes"
+        )
+    total_bytes += info.st_size
+    if total_bytes > MAX_CUSTOM_TEMPLATE_TOTAL_BYTES:
+        raise TemplateError(
+            "Custom subtitle templates exceed the total size limit of "
+            f"{MAX_CUSTOM_TEMPLATE_TOTAL_BYTES} bytes"
+        )
+    try:
+        with entry.open("rb") as stream:
+            raw = stream.read(MAX_CUSTOM_TEMPLATE_BYTES + 1)
+    except OSError as exc:
+        raise TemplateError(
+            f"Could not read custom subtitle template '{entry}'"
+        ) from exc
+    if len(raw) > MAX_CUSTOM_TEMPLATE_BYTES:
+        raise TemplateError(
+            f"Custom subtitle template '{entry}' exceeds the maximum size of "
+            f"{MAX_CUSTOM_TEMPLATE_BYTES} bytes"
+        )
+    return _read_custom_json(entry, raw), total_bytes
 
 
 def _parse_custom_template(
@@ -214,6 +228,47 @@ def _parse_custom_template(
     builtins: dict[str, SubtitleTemplate],
 ) -> tuple[str, SubtitleTemplate, str]:
     context = f"Custom subtitle template '{path}'"
+    name, description, base_name = _custom_template_identity(
+        data,
+        context=context,
+        builtins=builtins,
+    )
+    base_template = builtins[base_name]
+    sparse_data = _build_sparse_custom_data(
+        data,
+        name=name,
+        description=description,
+        base_template=base_template,
+    )
+    base_data = _template_data_from_config(
+        base_template.config,
+        name=base_template.name,
+        description=base_template.description,
+    )
+    expanded = _expand_sparse_template_data(
+        sparse_data,
+        expected_name=name,
+        base_data=base_data,
+        reset_animation_duration=True,
+    )
+    resource = _CustomTemplateResource(path)
+    template = _load_sparse_template(resource, name, data=expanded)
+    if base_name == DEFAULT_SUBTITLE_TEMPLATE:
+        template = _preserve_default_font_weight_input(
+            template,
+            data,
+            base_template=base_template,
+        )
+    return name, template, base_name
+
+
+def _custom_template_identity(
+    data: dict[str, Any],
+    *,
+    context: str,
+    builtins: dict[str, SubtitleTemplate],
+) -> tuple[str, str, str]:
+    """Validate required identity and resolve the built-in inheritance target."""
     _expect_allowed_keys(data, _CUSTOM_TOP_LEVEL_KEYS, context=context)
     _reject_custom_nulls(data, context=context)
     if "schema_version" not in data:
@@ -241,7 +296,17 @@ def _parse_custom_template(
             f"{context}.base must name a built-in subtitle template; "
             f"supported values are: {', '.join(TEMPLATE_CHOICES)}"
         )
+    return name, description, base_name
 
+
+def _build_sparse_custom_data(
+    data: dict[str, Any],
+    *,
+    name: str,
+    description: str,
+    base_template: SubtitleTemplate,
+) -> dict[str, Any]:
+    """Copy authored fields and clear inherited highlight color when disabled."""
     sparse_data: dict[str, Any] = {
         "schema_version": 5,
         "name": name,
@@ -251,7 +316,6 @@ def _parse_custom_template(
         if field in data:
             sparse_data[field] = deepcopy(data[field])
 
-    base_template = builtins[base_name]
     animation_value = data.get("animation")
     word_value = (
         animation_value.get("word") if isinstance(animation_value, dict) else None
@@ -274,32 +338,27 @@ def _parse_custom_template(
             typography_value = style_value.setdefault("typography", {})
             if isinstance(typography_value, dict):
                 typography_value.setdefault("highlight_color", None)
+    return sparse_data
 
-    base_data = _template_data_from_config(
-        base_template.config,
-        name=base_template.name,
-        description=base_template.description,
+
+def _preserve_default_font_weight_input(
+    template: SubtitleTemplate,
+    data: dict[str, Any],
+    *,
+    base_template: SubtitleTemplate,
+) -> SubtitleTemplate:
+    typography_override = data.get("style", {}).get("typography", {})
+    if "font_weight" in typography_override:
+        return template
+
+    base_typography = base_template.config.style.typography
+    typography = replace(
+        template.config.style.typography,
+        font_weight_input=base_typography.font_weight_input,
+        font_weight_input_form=base_typography.font_weight_input_form,
     )
-    expanded = _expand_sparse_template_data(
-        sparse_data,
-        expected_name=name,
-        base_data=base_data,
-        reset_animation_duration=True,
-    )
-    resource = _CustomTemplateResource(path)
-    template = _load_sparse_template(resource, name, data=expanded)
-    if base_name == DEFAULT_SUBTITLE_TEMPLATE:
-        typography_override = data.get("style", {}).get("typography", {})
-        if "font_weight" not in typography_override:
-            base_typography = base_template.config.style.typography
-            typography = replace(
-                template.config.style.typography,
-                font_weight_input=base_typography.font_weight_input,
-                font_weight_input_form=base_typography.font_weight_input_form,
-            )
-            style = replace(template.config.style, typography=typography)
-            template = replace(template, config=replace(template.config, style=style))
-    return name, template, base_name
+    style = replace(template.config.style, typography=typography)
+    return replace(template, config=replace(template.config, style=style))
 
 
 def load_custom_template_directory(
