@@ -22,12 +22,18 @@ def speech_runtime(tmp_path, monkeypatch):
             "segments": [{"start": 0.0, "end": 1.0, "text": "Hello."}],
         },
         "loads": [],
+        "transcriptions": [],
         "alignments": [],
     }
 
     def load_model(*args, **kwargs):
         state["loads"].append(kwargs)
-        return SimpleNamespace(transcribe=lambda audio: state["result"])
+
+        def transcribe(audio, **options):
+            state["transcriptions"].append({"audio": audio, **options})
+            return state["result"]
+
+        return SimpleNamespace(transcribe=transcribe)
 
     def load_align_model(**kwargs):
         state["alignments"].append(kwargs["language_code"])
@@ -58,8 +64,8 @@ def speech_runtime(tmp_path, monkeypatch):
         ("ja", "turbo", "transcribe", "ja", "ja"),
         (None, "small.en", "transcribe", "en", "en"),
         ("en", "small.en", "transcribe", "en", "en"),
-        (None, "medium", "translate", "pt", "en"),
-        ("ja", "medium", "translate", "ja", "en"),
+        (None, "medium", "translate", "pt", None),
+        ("ja", "medium", "translate", "ja", None),
     ],
 )
 def test_source_selection_and_alignment(
@@ -70,9 +76,20 @@ def test_source_selection_and_alignment(
     document = transcriber.transcribe_video(
         source, lang, task, model, progress=messages.append
     )
-    assert state["loads"][0]["language"] == ("en" if model.endswith(".en") else lang)
+    inference_language = "en" if model.endswith(".en") else lang
+    assert state["loads"][0]["language"] == inference_language
     assert state["loads"][0]["task"] == task
-    assert state["alignments"] == [expected_alignment]
+    expected_transcription = {
+        "audio": "audio",
+        "language": inference_language,
+        "task": task,
+    }
+    if task == "translate":
+        expected_transcription["chunk_size"] = int(transcriber.MAX_CUE_DURATION)
+    assert state["transcriptions"] == [expected_transcription]
+    assert state["alignments"] == (
+        [] if expected_alignment is None else [expected_alignment]
+    )
     assert document.language == expected_source
     if lang is None and not model.endswith(".en"):
         assert f"Detected source language: {expected_source}." in messages

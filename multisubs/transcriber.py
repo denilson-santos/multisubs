@@ -242,7 +242,7 @@ def transcribe_video(
     *,
     progress: ProgressReporter = None,
 ) -> TranscriptDocument:
-    """Transcribe and align one video without serializing output artifacts."""
+    """Transcribe one video and align source-language words when supported."""
     source_path = _normalise_input_path(input_path)
     if model_name.endswith(".en"):
         if lang not in (None, "en"):
@@ -285,7 +285,13 @@ def transcribe_video(
     _report(progress, "Transcribing audio...")
     try:
         audio = whisperx.load_audio(str(source_path))
-        result = model.transcribe(audio)
+        transcription_options: dict[str, object] = {
+            "language": lang,
+            "task": task,
+        }
+        if task == "translate":
+            transcription_options["chunk_size"] = int(MAX_CUE_DURATION)
+        result = model.transcribe(audio, **transcription_options)
     except Exception as exc:  # Enrich the external boundary with source context.
         raise TranscriptionError(
             f"Could not transcribe '{source_path}': {exc}"
@@ -304,35 +310,36 @@ def transcribe_video(
         )
     if lang is None:
         _report(progress, f"Detected source language: {source_language}.")
-    alignment_language = "en" if task == "translate" else source_language
 
-    _report(progress, "Aligning words for subtitle timing...")
-    try:
-        align_model, align_metadata = _load_model_with_retries(
-            lambda: whisperx.load_align_model(
-                language_code=alignment_language,
-                device=device,
-            ),
-            operation=f"Loading alignment model for '{alignment_language}'",
-            progress=progress,
-        )
-        aligned_result = whisperx.align(
-            raw_segments,
-            align_model,
-            align_metadata,
-            audio,
-            device,
-            return_char_alignments=False,
-        )
-    except Exception as exc:  # WhisperX alignment errors are dependency-specific.
-        raise TranscriptionError(
-            f"Could not align transcript words for '{source_path}': {exc}"
-        ) from exc
+    aligned_segments = raw_segments
+    if task != "translate":
+        _report(progress, "Aligning words for subtitle timing...")
+        try:
+            align_model, align_metadata = _load_model_with_retries(
+                lambda: whisperx.load_align_model(
+                    language_code=source_language,
+                    device=device,
+                ),
+                operation=f"Loading alignment model for '{source_language}'",
+                progress=progress,
+            )
+            aligned_result = whisperx.align(
+                raw_segments,
+                align_model,
+                align_metadata,
+                audio,
+                device,
+                return_char_alignments=False,
+            )
+        except Exception as exc:  # WhisperX errors have no stable hierarchy.
+            raise TranscriptionError(
+                f"Could not align transcript words for '{source_path}': {exc}"
+            ) from exc
 
-    aligned_mapping = _require_mapping(aligned_result, "WhisperX alignment result")
-    aligned_segments = _require_sequence(
-        aligned_mapping.get("segments"), "aligned segments"
-    )
+        aligned_mapping = _require_mapping(aligned_result, "WhisperX alignment result")
+        aligned_segments = _require_sequence(
+            aligned_mapping.get("segments"), "aligned segments"
+        )
     segments = _build_subtitle_segments(
         aligned_segments,
         language="en" if task == "translate" else source_language,

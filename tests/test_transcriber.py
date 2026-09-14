@@ -921,8 +921,10 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
         cuda = FakeCuda()
 
     class FakeModel:
-        def transcribe(self, audio):
+        def transcribe(self, audio, *, language, task):
             assert audio == "audio"
+            assert language is None
+            assert task == "transcribe"
             return {
                 "text": "Hello world.",
                 "language": "en",
