@@ -139,7 +139,9 @@ class ParakeetAdapter:
         with temporary_wav(request.input_path) as audio_path:
             report(request.progress, "Transcribing audio with Parakeet...")
             try:
-                output = model.transcribe([str(audio_path)], timestamps=True)
+                output = model.transcribe(
+                    [str(audio_path)], timestamps=True, verbose=request.verbose
+                )
                 hypothesis = output[0]
             except Exception as exc:
                 raise TranscriptionError(

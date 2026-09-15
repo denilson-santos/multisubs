@@ -44,9 +44,9 @@ the selected ASR must download model assets that are not already cached.
   source language supports word timestamps.
 - The Python package installs `fontTools` for bounded Unicode cmap checks,
   `uniseg` 0.10.1 for pinned Unicode boundary data, SudachiPy/SudachiDict-small
-  for Japanese grouping, and jieba for Chinese grouping. Their dictionaries
-  are installed with the package dependencies; no font or dictionary is
-  downloaded while multisubs runs.
+  for Japanese grouping, jieba for Chinese grouping, and Typer for the CLI.
+  The dictionaries are installed with the package dependencies; no font or
+  dictionary is downloaded while multisubs runs.
 
 CUDA is selected automatically when the chosen runtime reports an available
 GPU. WhisperX and Faster-Whisper use float16 on CUDA and int8 on CPU; Parakeet
@@ -486,7 +486,7 @@ unverified fallback.
 
 ## ⚙️ Command reference
 
-Run `multisubs --help` for the parser's complete, authoritative help text.
+Run `multisubs --help` for the CLI's complete, authoritative help text.
 
 ### Input and processing
 
@@ -499,8 +499,16 @@ Run `multisubs --help` for the parser's complete, authoritative help text.
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
 | `-m`, `--model MODEL` | backend default | Model used by the selected ASR. |
 | `-k`, `--keep-transcriptions` | off | Keep JSON, SRT, and ASS in a `subtitles` directory. |
+| `--verbose` | off | Show detailed processing progress and backend logs. |
 | `-v`, `--version` | — | Print the package version. |
 | `-h`, `--help` | — | Show CLI help and backend-dependent support guidance. |
+
+By default, multisubs shows only its own processing stages, relevant subtitle
+warnings, errors, and final output path. Output printed by ASR runtimes and
+native libraries is suppressed during processing, including backend warnings
+and progress bars. Use `--verbose` to show detailed stages and the raw backend
+output when diagnosing a run. If a backend fails, multisubs still reports the
+failed operation; rerun with `--verbose` to inspect the backend diagnostics.
 
 WhisperX models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 `medium.en`, `medium`, `large`, and `turbo`. Faster-Whisper accepts the same

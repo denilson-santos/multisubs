@@ -3,6 +3,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from test_cli_helpers import TestParser
 
 from multisubs import cli, transcriber
 from multisubs.custom_templates import (
@@ -180,7 +181,7 @@ def test_cli_resolves_custom_template_with_both_argument_forms(tmp_path: Path):
     directory = tmp_path / "templates"
     directory.mkdir()
     _write_template(directory, "custom.json", schema_version=1, name="custom")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     for option in ("--template custom", "--template=custom"):
         args = parser.parse_args(

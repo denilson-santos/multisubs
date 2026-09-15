@@ -1,7 +1,12 @@
+import logging
+import os
+import sys
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from test_cli_helpers import TestParser
+from typer.testing import CliRunner
 
 from multisubs import cli
 from multisubs.config import parse_relative_length, validate_subtitle_config
@@ -64,11 +69,165 @@ def _artifacts(tmp_path: Path, input_path: Path) -> RunArtifacts:
     return RunArtifacts(work_dir, transcripts, video)
 
 
-def test_missing_input_is_argparse_error(tmp_path: Path):
+def test_missing_input_is_typer_error(tmp_path: Path):
     with pytest.raises(SystemExit) as error:
         cli.main(["-i", str(tmp_path / "missing.mp4")])
 
     assert error.value.code == 2
+
+
+def test_help_and_version_exit_without_input(capsys):
+    assert cli.main(["--help"]) == 0
+    assert "--input-path" in capsys.readouterr().out
+
+    assert cli.main(["--version"]) == 0
+    assert "multisubs " in capsys.readouterr().out
+
+
+def test_help_uses_rich_rendering():
+    result = CliRunner().invoke(cli.app, ["--help"], color=True)
+
+    assert result.exit_code == 0
+    assert "╭─ Options" in result.output
+
+
+def test_verbose_controls_progress_and_backend_logs(tmp_path, monkeypatch, capfd):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    request = _request(input_path, tmp_path)
+    monkeypatch.setattr(cli, "_build_request", lambda *_: request)
+
+    verbosity: list[bool] = []
+    nemo_logger = logging.getLogger("nemo_logger")
+    previous_level = nemo_logger.level
+    previous_propagate = nemo_logger.propagate
+    previous_handlers = list(nemo_logger.handlers)
+    for previous_handler in previous_handlers:
+        nemo_logger.removeHandler(previous_handler)
+    handler: logging.Handler | None = None
+
+    def run_request(_request, progress, *, verbose):
+        nonlocal handler
+        if handler is None:
+            handler = logging.StreamHandler(sys.stderr)
+            nemo_logger.addHandler(handler)
+        verbosity.append(verbose)
+        progress("Generating transcripts for 'video.mp4'...")
+        progress("Detected video layout: 1920x1080 (stream 0, rotation 0°, SAR 1:1).")
+        progress("Resolved subtitle animations: cue.text=none/none/none.")
+        progress("Completed JSON transcript.")
+        progress("Warning: A subtitle effect was suppressed.")
+        logging.getLogger("multisubs.test_backend").debug("decoder details")
+        logging.getLogger("nemo_logger").warning(
+            "Full CUDA graph compilation failed: CUDA failure! 35."
+        )
+        logging.getLogger("nemo_logger").warning("Other backend warning")
+        logging.getLogger("nemo_logger").error("backend error")
+        print("vendor stdout")
+        print("vendor stderr", file=sys.stderr)
+        os.write(1, b"native stdout\n")
+        os.write(2, b"native stderr\n")
+        return tmp_path / "output.mp4"
+
+    monkeypatch.setattr(cli, "_run_request", run_request)
+    nemo_logger.setLevel(logging.INFO)
+    nemo_logger.propagate = False
+    root_logger = logging.getLogger()
+    previous_root_level = root_logger.level
+    previous_disabled_level = root_logger.manager.disable
+    try:
+        assert cli.main(["-i", str(input_path)]) == 0
+        default = capfd.readouterr()
+        assert "Generating transcripts" in default.out
+        assert "Detected video layout: 1920x1080." in default.out
+        assert "stream 0" not in default.out
+        assert "Warning: A subtitle effect" in default.out
+        assert "Resolved subtitle animations" not in default.out
+        assert "Completed JSON transcript" not in default.out
+        assert "Full CUDA graph compilation failed" not in default.err
+        assert "Other backend warning" not in default.err
+        assert "decoder details" not in default.err
+        assert "backend error" not in default.err
+        assert "vendor stdout" not in default.out
+        assert "vendor stderr" not in default.err
+        assert "native stdout" not in default.out
+        assert "native stderr" not in default.err
+        assert verbosity == [False]
+
+        assert cli.main(["-i", str(input_path), "--verbose"]) == 0
+        verbose = capfd.readouterr()
+        assert "Resolved subtitle animations" in verbose.out
+        assert "stream 0" in verbose.out
+        assert "Completed JSON transcript" in verbose.out
+        assert "Full CUDA graph compilation failed" in verbose.err
+        assert "decoder details" in verbose.err
+        assert "vendor stdout" in verbose.out
+        assert "vendor stderr" in verbose.err
+        assert "native stdout" in verbose.out
+        assert "native stderr" in verbose.err
+        assert verbosity == [False, True]
+    finally:
+        assert root_logger.level == previous_root_level
+        assert root_logger.manager.disable == previous_disabled_level
+        if handler is not None:
+            nemo_logger.removeHandler(handler)
+            handler.close()
+        for previous_handler in previous_handlers:
+            nemo_logger.addHandler(previous_handler)
+        nemo_logger.setLevel(previous_level)
+        nemo_logger.propagate = previous_propagate
+
+
+def test_quiet_runtime_restores_output_after_backend_failure(
+    tmp_path, monkeypatch, capfd
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    monkeypatch.setattr(
+        cli, "_build_request", lambda *_: _request(input_path, tmp_path)
+    )
+
+    def fail_request(_request, progress, *, verbose):
+        progress("Loading Parakeet model...")
+        print("vendor failure detail", file=sys.stderr)
+        os.write(2, b"native failure detail\n")
+        raise TranscriptionError("Parakeet could not transcribe the video")
+
+    monkeypatch.setattr(cli, "_run_request", fail_request)
+
+    assert cli.main(["-i", str(input_path)]) == 1
+    failed = capfd.readouterr()
+    assert "Loading Parakeet model" in failed.out
+    assert "Error: Parakeet could not transcribe the video" in failed.err
+    assert "vendor failure detail" not in failed.err
+    assert "native failure detail" not in failed.err
+
+    print("stdout restored")
+    os.write(2, b"stderr restored\n")
+    restored = capfd.readouterr()
+    assert "stdout restored" in restored.out
+    assert "stderr restored" in restored.err
+
+
+def test_quiet_runtime_preserves_python_stdout_capture(tmp_path, monkeypatch, capsys):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    monkeypatch.setattr(
+        cli, "_build_request", lambda *_: _request(input_path, tmp_path)
+    )
+
+    def run_request(_request, progress, *, verbose):
+        progress("Transcribing audio with Parakeet...")
+        print("vendor stdout")
+        return tmp_path / "output.mp4"
+
+    monkeypatch.setattr(cli, "_run_request", run_request)
+
+    assert cli.main(["-i", str(input_path)]) == 0
+    output = capsys.readouterr()
+    assert "Transcribing audio with Parakeet" in output.out
+    assert "File saved in:" in output.out
+    assert "vendor stdout" not in output.out
 
 
 def test_language_without_default_alignment_model_is_rejected(tmp_path: Path):
@@ -91,7 +250,7 @@ def test_translation_restriction_is_rejected_before_processing(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_invalid_semantic_color_is_argparse_error(tmp_path: Path):
+def test_invalid_semantic_color_is_typer_error(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
 
@@ -113,7 +272,7 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -159,7 +318,7 @@ def test_build_request_accepts_semantic_appearance_and_named_position(
 def test_build_request_uses_fixed_layout_defaults(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(["-i", str(input_path)])
 
     request = cli._build_request(args, parser)
@@ -190,7 +349,7 @@ def test_build_request_accepts_named_alias_and_numeric_font_weights(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     request = cli._build_request(
         parser.parse_args(["-i", str(input_path), "--font-weight", raw_weight]),
@@ -209,7 +368,7 @@ def test_font_weight_conflicts_with_bold_shorthand_before_runtime(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
@@ -232,7 +391,7 @@ def test_font_weight_conflicts_with_bold_shorthand_before_runtime(
 def test_invalid_font_weight_fails_before_runtime(tmp_path: Path, raw_weight: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
@@ -246,7 +405,7 @@ def test_invalid_font_weight_fails_before_runtime(tmp_path: Path, raw_weight: st
 def test_build_request_accepts_relative_layout_values(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -301,7 +460,7 @@ def test_build_request_accepts_complete_explicit_coordinate_envelope(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -358,7 +517,7 @@ def test_build_request_accepts_complete_explicit_coordinate_envelope(
 def test_custom_coordinate_conflicts_fail_before_runtime(tmp_path: Path, arguments):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
@@ -411,7 +570,7 @@ def test_ineffective_margin_options_fail_with_actionable_errors(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
@@ -425,7 +584,7 @@ def test_ineffective_margin_options_fail_with_actionable_errors(
 def test_removed_style_options_are_rejected(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--style-font-size", "22"])
 
@@ -433,7 +592,7 @@ def test_removed_style_options_are_rejected(tmp_path: Path):
 
 
 def test_help_exposes_semantic_options_without_ass_style_flags():
-    help_text = cli.build_parser().format_help()
+    help_text = TestParser().format_help()
     compact_help = "".join(help_text.split())
 
     assert "--font NAME" in help_text
@@ -443,7 +602,7 @@ def test_help_exposes_semantic_options_without_ass_style_flags():
     assert "100,200,300,400" in compact_help
     assert "hairline,ultra-light,normal,book" in compact_help
     assert "spacesandunderscoresnormalizetohyphens" in compact_help
-    assert "--bold, --no-bold" in help_text
+    assert "--bold / --no-bold" in help_text
     assert "--backdrop {none,outline,box}" in help_text
     assert "--opacity PERCENT" in help_text
     assert "--text-case {original,uppercase,lowercase}" in help_text
@@ -455,7 +614,7 @@ def test_help_exposes_semantic_options_without_ass_style_flags():
 def test_relative_layout_options_require_explicit_units(tmp_path: Path, value: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--font-size", value])
@@ -467,7 +626,7 @@ def test_relative_layout_options_require_explicit_units(tmp_path: Path, value: s
 def test_opacity_requires_bounded_explicit_percentage(tmp_path: Path, value: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--opacity", value])
@@ -479,7 +638,7 @@ def test_opacity_requires_bounded_explicit_percentage(tmp_path: Path, value: str
 def test_text_case_rejects_unknown_values_before_runtime(tmp_path: Path, value: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--text-case", value])
@@ -496,7 +655,7 @@ def test_numeric_alignment_and_position_values_are_rejected(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), option, value])
@@ -505,10 +664,10 @@ def test_numeric_alignment_and_position_values_are_rejected(
 
 
 @pytest.mark.parametrize("value", ["auto", "portrait", "vertical-social"])
-def test_removed_layout_option_is_argparse_error(tmp_path: Path, value: str):
+def test_removed_layout_option_is_typer_error(tmp_path: Path, value: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         parser.parse_args(["-i", str(input_path), "--layout", value])
@@ -517,12 +676,13 @@ def test_removed_layout_option_is_argparse_error(tmp_path: Path, value: str):
 
 
 def test_help_exposes_fixed_defaults_without_layout_or_safe_area():
-    help_text = cli.build_parser().format_help()
+    help_text = TestParser().format_help()
+    compact_help = "".join(help_text.split())
 
     assert "--layout" not in help_text
     assert "--safe-area" not in help_text
     for value in ("bottom-center", "18%", "3%", "100%", "12%"):
-        assert value in help_text
+        assert value in compact_help
 
 
 def test_default_publication_keeps_video_only(tmp_path: Path):
@@ -602,9 +762,10 @@ def test_run_request_cleans_private_work_dir_after_default_success(
     request = _request(input_path, output_dir)
 
     def fake_transcription(
-        source, language, task, model_name, *, asr_backend, progress
+        source, language, task, model_name, *, asr_backend, progress, verbose
     ):
         assert asr_backend == "whisperx"
+        assert verbose is False
         return TranscriptDocument(
             source_path=Path(source),
             language=language,

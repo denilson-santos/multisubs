@@ -5,6 +5,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from test_cli_helpers import TestParser
 
 from multisubs import cli, transcriber
 from multisubs import templates as template_catalog
@@ -624,7 +625,7 @@ EXPECTED_ANIMATIONS = {
 def _build_request(tmp_path: Path, *options: str):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     return cli._build_request(
         parser.parse_args(["-i", str(input_path), *options]), parser
     )
@@ -1048,7 +1049,7 @@ def test_request_build_rejects_unknown_template_after_directory_resolution(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     args = parser.parse_args(["-i", str(input_path), "--template", "unknown-template"])
 
@@ -1061,7 +1062,7 @@ def test_request_build_rejects_unknown_template_after_directory_resolution(
 def test_parser_exposes_template_and_template_directory_options(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     assert "--template" in parser.format_help()
     assert "--template-dir" in parser.format_help()

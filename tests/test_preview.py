@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from test_cli_helpers import TestParser
 
 from multisubs import cli
 from multisubs.ass import rgba_to_ass_color_override, write_ass
@@ -149,7 +150,7 @@ def test_preview_timestamp_rejects_out_of_range_values(timestamp):
 def test_preview_request_is_built_without_transcription_options(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -174,7 +175,7 @@ def test_animation_preview_request_uses_typed_mode_and_default_duration(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -197,7 +198,7 @@ def test_animation_preview_request_uses_typed_mode_and_default_duration(
 def test_preview_duration_requires_animation_mode(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -214,10 +215,21 @@ def test_preview_duration_requires_animation_mode(tmp_path: Path):
     assert error.value.code == 2
 
 
+def test_preview_modes_are_mutually_exclusive(tmp_path: Path, capsys):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(["-i", str(input_path), "--preview-layout", "--preview-animation"])
+
+    assert error.value.code == 2
+    assert "cannot be combined" in capsys.readouterr().err
+
+
 def test_preview_rejects_retained_transcriptions_and_orphan_options(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     for arguments, message in (
         (

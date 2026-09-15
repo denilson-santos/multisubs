@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from test_cli_helpers import TestParser
 
 from multisubs import cli
 from multisubs.ass import write_ass
@@ -144,7 +145,7 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
         ],
         check=True,
     )
-    parser = cli.build_parser()
+    parser = TestParser()
     arguments = [
         "-i",
         str(input_path),
@@ -332,7 +333,7 @@ def test_fragmented_words_preserve_unfragmented_libass_spacing(tmp_path: Path):
         ],
         check=True,
     )
-    parser = cli.build_parser()
+    parser = TestParser()
     common = [
         "-i",
         str(input_path),
@@ -450,7 +451,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
             "--template",
             template_name,
         ]
-        parser = cli.build_parser()
+        parser = TestParser()
         request = cli._build_request(parser.parse_args(arguments), parser)
         progress: list[str] = []
 
@@ -486,7 +487,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
         "--animation-word-text-mode",
         "active-word",
     ]
-    parser = cli.build_parser()
+    parser = TestParser()
     active_request = cli._build_request(parser.parse_args(active_arguments), parser)
 
     active_preview = cli._run_request(active_request, lambda _message: None)

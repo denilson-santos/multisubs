@@ -7,6 +7,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from test_cli_helpers import TestParser
 
 from multisubs import cli, transcriber
 from multisubs.animation import (
@@ -468,7 +469,7 @@ def test_slide_names_describe_visible_travel_direction(
 def test_animation_cli_replaces_removed_karaoke_flags(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     request = cli._build_request(
         parser.parse_args(
             [
@@ -598,7 +599,7 @@ def test_cue_animation_remains_available_for_translation(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     request = cli._build_request(
         parser.parse_args(
@@ -634,7 +635,7 @@ def test_every_word_animation_phase_rejects_translation(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit):
         cli._build_request(
@@ -2004,7 +2005,7 @@ def test_word_animation_validation_rejects_meaningless_or_invalid_colors(animati
 def test_word_animation_cli_request_is_typed(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     args = parser.parse_args(
         [
             "-i",
@@ -2040,7 +2041,7 @@ def test_cli_rejects_highlight_color_without_highlight(
 ):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     with pytest.raises(SystemExit) as error:
         cli._build_request(
@@ -2054,7 +2055,7 @@ def test_cli_rejects_highlight_color_without_highlight(
 def test_word_animation_cli_accepts_transcription_free_preview(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
 
     request = cli._build_request(
         parser.parse_args(
