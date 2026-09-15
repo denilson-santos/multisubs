@@ -1,6 +1,6 @@
 """Unicode boundaries and lossless source/alignment mapping.
 
-This module deliberately has no WhisperX, PyTorch, font, or FFmpeg imports. It
+This module deliberately has no ASR, PyTorch, font, or FFmpeg imports. It
 owns only bounded text normalization, Unicode boundary data, and the mapping
 between source text and alignment records.
 """
@@ -162,7 +162,7 @@ def simulated_effect_units(
 ) -> tuple[str, ...]:
     """Return deterministic preview effect units without real alignments.
 
-    Production effects follow validated WhisperX records. A preview has no such
+    Production effects follow validated ASR records. A preview has no such
     records, so CJK chunks use grapheme-like units to model the common
     character-aligned case while whitespace-delimited Latin and other-script
     chunks remain intact. Separators stay untimed and are reconstructed by the

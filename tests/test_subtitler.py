@@ -15,6 +15,7 @@ from multisubs.subtitler import (
     _parse_probe_payload,
     _short_output,
     embed_subtitles,
+    extract_audio_track,
     probe_video_geometry,
     render_subtitle_animation_preview,
     render_subtitle_preview,
@@ -482,6 +483,42 @@ def test_ffmpeg_validation_requires_ffprobe(monkeypatch):
 
     with pytest.raises(DependencyError, match="ffprobe"):
         validate_ffmpeg_support()
+
+
+def test_extract_audio_track_uses_private_pcm_contract(tmp_path: Path, monkeypatch):
+    source = tmp_path / "video.mp4"
+    output = tmp_path / "audio.wav"
+    source.write_bytes(b"video")
+    commands = []
+    monkeypatch.setattr("multisubs.subtitler.shutil.which", lambda name: name)
+
+    def run(command, **kwargs):
+        commands.append(command)
+        Path(command[-1]).write_bytes(b"wav")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("multisubs.subtitler.subprocess.run", run)
+
+    assert extract_audio_track(source, output) == output
+    assert commands[0][commands[0].index("-map") + 1] == "0:a:0"
+    assert commands[0][commands[0].index("-ac") + 1] == "1"
+    assert commands[0][commands[0].index("-ar") + 1] == "16000"
+    assert commands[0][commands[0].index("-c:a") + 1] == "pcm_s16le"
+
+
+def test_extract_audio_track_reports_ffmpeg_failure(tmp_path: Path, monkeypatch):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"video")
+    monkeypatch.setattr("multisubs.subtitler.shutil.which", lambda name: name)
+    monkeypatch.setattr(
+        "multisubs.subtitler.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1, stdout="", stderr="no audio stream"
+        ),
+    )
+
+    with pytest.raises(RenderingError, match="no audio stream"):
+        extract_audio_track(source, tmp_path / "audio.wav")
 
 
 def test_render_failure_removes_temporary_media(tmp_path: Path, monkeypatch):

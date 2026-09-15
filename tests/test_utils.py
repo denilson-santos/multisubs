@@ -9,7 +9,13 @@ from multisubs.utils import (
     find_unique_stem,
     get_unique_path,
     publish_files,
+    with_language_suffix,
 )
+
+
+def test_language_suffix_is_added_only_when_known():
+    assert with_language_suffix("video", "pt") == "video-pt"
+    assert with_language_suffix("video", None) == "video"
 
 
 def test_unique_path_and_stem_consider_all_related_artifacts(tmp_path: Path):

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from multisubs import cli, transcriber
+from multisubs.asr import whisperx as whisperx_adapter
 from multisubs.errors import TranscriptionError, ValidationError
 from multisubs.models import VideoGeometry
 
@@ -46,9 +47,8 @@ def speech_runtime(tmp_path, monkeypatch):
         align=lambda segments, *args, **kwargs: {"segments": segments},
     )
     torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
-    monkeypatch.setattr(
-        transcriber, "_load_runtime_dependencies", lambda: (torch, whisper)
-    )
+    monkeypatch.setattr(whisperx_adapter, "load_torch", lambda: torch)
+    monkeypatch.setattr(whisperx_adapter, "_load_whisperx", lambda: whisper)
     geometry = VideoGeometry(
         0, 1920, 1080, 1920, 1080, 0, Fraction(1), Fraction(16, 9), 1.0
     )

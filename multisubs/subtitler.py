@@ -15,7 +15,7 @@ from typing import Any
 
 from .errors import ArtifactError, DependencyError, RenderingError, ValidationError
 from .models import VideoGeometry
-from .utils import get_unique_path
+from .utils import get_unique_path, with_language_suffix
 
 ProgressReporter = Callable[[str], None] | None
 MAX_VIDEO_DIMENSION = 32_768
@@ -24,6 +24,52 @@ FFPROBE_TIMEOUT_SECONDS = 30
 MAX_PREVIEW_TIMESTAMP_SECONDS = 86_400.0
 MIN_ANIMATION_PREVIEW_DURATION_MS = 1_000
 MAX_ANIMATION_PREVIEW_DURATION_MS = 15_000
+
+
+def extract_audio_track(input_path: str | Path, output_path: str | Path) -> Path:
+    """Extract the first audio stream as private 16 kHz mono PCM WAV."""
+    source = _require_file(input_path, "Input video")
+    destination = Path(output_path)
+    executable = shutil.which("ffmpeg")
+    if executable is None:
+        raise DependencyError(
+            "FFmpeg is required to prepare audio for the selected ASR backend."
+        )
+    command = [
+        executable,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(source),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        "-y",
+        str(destination),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise DependencyError(f"Could not run FFmpeg at '{executable}': {exc}") from exc
+    if completed.returncode != 0 or not destination.is_file():
+        details = _short_output(completed.stderr or completed.stdout)
+        raise RenderingError(
+            f"FFmpeg could not extract an audio stream from '{source}': {details}"
+        )
+    return destination
 
 
 def validate_ffmpeg_support() -> None:
@@ -316,7 +362,7 @@ def embed_subtitles(
     input_path: str | Path,
     ass_path: str | Path,
     output_dir: str | Path,
-    lang: str = "en",
+    lang: str | None = "en",
     *,
     output_path: str | Path | None = None,
     geometry: VideoGeometry | None = None,
@@ -640,7 +686,7 @@ def _normalise_output_dir(output_dir: str | Path) -> Path:
 def _choose_output_path(
     source_path: Path,
     output_dir: Path,
-    lang: str,
+    lang: str | None,
     output_path: str | Path | None,
 ) -> Path:
     if output_path is not None:
@@ -648,9 +694,8 @@ def _choose_output_path(
         if candidate.parent != output_dir:
             raise ValidationError("Explicit output_path must be inside output_dir")
         return candidate
-    return Path(
-        get_unique_path(output_dir / f"{source_path.stem}-{lang}{source_path.suffix}")
-    )
+    stem = with_language_suffix(source_path.stem, lang)
+    return Path(get_unique_path(output_dir / f"{stem}{source_path.suffix}"))
 
 
 def _temporary_media_path(final_path: Path) -> Path:
