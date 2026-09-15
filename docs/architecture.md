@@ -60,7 +60,7 @@ flowchart LR
 
 | Component | Responsibility | Main interfaces |
 | --- | --- | --- |
-| multisubs/cli.py | Defines the console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | main() |
+| multisubs/cli.py | Defines the Typer console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | app, main() |
 | multisubs/asr/ | Defines backend capabilities and normalizes WhisperX, Faster-Whisper, Parakeet/NeMo, and Qwen3-ASR results into one language/text/segments contract without importing unselected runtimes. | ASRBackend, ASRRequest, ASRResult, create_adapter() |
 | multisubs/transcriber.py | Selects an ASR adapter, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, generates deterministic simulated word timing for animated previews, and generates optional native or explicit ASS guide events. | build_preview_ass(), build_animation_preview_ass(), build_simulated_karaoke_cue(), resolve_preview_timestamp() |
@@ -83,7 +83,7 @@ flowchart LR
 
 ## Execution flow
 
-1. The console script calls `cli.main()`. Before probing, the CLI resolves built-in or custom template defaults plus explicit overrides into one validated configuration. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
+1. The console script calls `cli.main()`. Typer parses options and their custom values; the CLI validates combinations, paths, and built-in or custom template defaults plus explicit overrides before probing. During a default processing run, the CLI routes its own progress to standard output and discards external runtimes' Python and native stdout/stderr writes through the platform's null device. Exceptions still become multisubs errors after normal streams are restored. `--verbose` leaves runtime output visible and includes detailed progress. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
 2. Both paths validate FFmpeg/ffprobe and probe the lowest-index usable stream, checking coded dimensions, rotation, sample/display aspect ratios, and container duration in one `VideoGeometry`. Autorotation keeps coded axes at 0°/180° and swaps render and sample-aspect-ratio axes at 90°/270°; legacy rotate-tag signs are normalized, and contradictory metadata fails. This precedes normal work-directory creation and model loading. The normal path resolves layout and wrapping and validates a decorated line can fit before model loading. See [FFmpeg](#ffmpeg), [design constraints](#design-constraints), and [FR-15](prd.md#functional-requirements).
 3. The normal path resolves `--asr` and a backend-specific default model before
    loading any runtime. The selected adapter owns device selection, inference,
@@ -660,7 +660,8 @@ no adapter imports another backend.
   native segment/word timestamps, and recognizes supported languages without a
   prompt. Its normal result does not expose that internal language decision, so
   an omitted `--lang` leaves language metadata null; an explicit code labels
-  artifacts without conditioning inference.
+  artifacts without conditioning inference. NeMo's transcription progress bar
+  follows the CLI verbosity setting and is hidden by default.
 - Qwen3-ASR is selected as `qwen`, uses only `Qwen/Qwen3-ASR-1.7B`, and
   receives the same private WAV. It exposes detected language. An explicit
   aligner-supported source code loads

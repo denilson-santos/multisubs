@@ -225,6 +225,7 @@ def transcribe_video(
     *,
     asr_backend: str | ASRBackend = ASRBackend.WHISPERX,
     progress: ProgressReporter = None,
+    verbose: bool = False,
 ) -> TranscriptDocument:
     """Transcribe one video through the selected local ASR adapter."""
     source_path = _normalise_input_path(input_path)
@@ -233,7 +234,7 @@ def transcribe_video(
     lang = validate_request(backend, lang, task, resolved_model)
     _report(progress, f"Generating transcripts for '{source_path.name}'...")
     result = create_adapter(backend).transcribe(
-        ASRRequest(source_path, lang, task, resolved_model, progress)
+        ASRRequest(source_path, lang, task, resolved_model, progress, verbose)
     )
     if lang is None and result.language is not None:
         _report(progress, f"Detected source language: {result.language}.")

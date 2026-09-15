@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
+import os
 import shutil
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from types import SimpleNamespace
+from typing import Annotated, Protocol, TextIO, cast
+
+import typer
+from typer import _click as typer_click
+from typer.main import get_command
 
 from . import __version__
 from .asr import (
@@ -24,36 +30,7 @@ from .config import (
     CUE_EMPHASIS_ANIMATION_CHOICES,
     CUE_ENTRANCE_ANIMATION_CHOICES,
     CUE_EXIT_ANIMATION_CHOICES,
-    DEFAULT_BACKDROP,
-    DEFAULT_BACKDROP_COLOR,
-    DEFAULT_BACKDROP_SIZE,
-    DEFAULT_FONT,
-    DEFAULT_FONT_SIZE,
-    DEFAULT_FONT_WEIGHT,
-    DEFAULT_ITALIC,
-    DEFAULT_LETTER_SPACING,
-    DEFAULT_LINE_HEIGHT,
-    DEFAULT_MARGIN_BOTTOM,
-    DEFAULT_MARGIN_LEFT,
-    DEFAULT_MARGIN_RIGHT,
-    DEFAULT_MARGIN_TOP,
-    DEFAULT_MAX_HEIGHT,
-    DEFAULT_MAX_WIDTH,
-    DEFAULT_OPACITY,
-    DEFAULT_POSITION,
-    DEFAULT_SHADOW_SIZE,
-    DEFAULT_TEXT_CASE,
-    DEFAULT_TEXT_COLOR,
-    DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR,
-    DEFAULT_WORD_ANIMATION_MODE,
-    DEFAULT_WORD_BACKDROP,
-    DEFAULT_WORD_BACKDROP_COLOR,
-    DEFAULT_WORD_BACKDROP_SIZE,
-    FONT_WEIGHT_ALIASES,
-    FONT_WEIGHT_NAMES,
-    FONT_WEIGHT_RANKS,
     POSITION_CHOICES,
-    TEXT_CASE_CHOICES,
     WORD_ANIMATION_MODE_CHOICES,
     WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
     WORD_ENTRANCE_ANIMATION_CHOICES,
@@ -107,504 +84,1076 @@ LOGGER = logging.getLogger(__name__)
 ProgressReporter = Callable[[str], None]
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Build the public CLI parser without importing model runtime dependencies."""
-    require_template_catalog()
-    parser = argparse.ArgumentParser(
-        description="Generate and embed subtitles into a local video.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="ASR language and model support depends on the selected backend.",
-        allow_abbrev=False,
-    )
-    _add_processing_arguments(parser)
-    _add_template_arguments(parser)
-    _add_preview_arguments(parser)
-    _add_appearance_arguments(parser)
-    _add_animation_arguments(parser)
-    _add_relative_layout_arguments(parser)
-    _add_coordinate_arguments(parser)
-    return parser
+class _ValidationContext(Protocol):
+    """Minimal context contract needed while validating a request."""
+
+    def fail(self, message: str) -> None:
+        """Abort request validation with a user-facing error."""
 
 
-def _add_processing_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add input, speech-processing, and artifact-lifecycle options."""
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__}",
-        help="Print the package version and exit.",
-    )
-    parser.add_argument(
-        "-i",
-        "--input-path",
-        required=True,
-        metavar="PATH",
-        help="Path to one input video file.",
-    )
-    parser.add_argument(
-        "-o",
-        "--output-dir",
-        default=".",
-        metavar="DIR",
-        help="Directory for generated files (default: current directory).",
-    )
-    parser.add_argument(
-        "--asr",
-        default="whisperx",
-        choices=ASR_CHOICES,
-        metavar="BACKEND",
-        help="Speech-recognition backend (default: whisperx).",
-    )
-    parser.add_argument(
-        "-l",
-        "--lang",
-        default=None,
-        type=_language_argument_type,
-        metavar="CODE",
-        help=(
-            "Source language code (default: automatic detection where the "
-            "selected ASR exposes it)."
-        ),
-    )
-    parser.add_argument(
-        "-t",
-        "--task",
-        default="transcribe",
-        choices=("transcribe", "translate"),
-        metavar="TASK",
-        help="Transcribe or translate speech to English (default: transcribe).",
-    )
-    parser.add_argument(
-        "-m",
-        "--model",
-        default=None,
-        metavar="MODEL",
-        help="Model for the selected ASR backend (default: backend-specific).",
-    )
-    parser.add_argument(
-        "-k",
-        "--keep-transcriptions",
-        action="store_true",
-        help="Retain JSON, SRT, and ASS files in a subtitles directory.",
-    )
+_DETAIL_PROGRESS_PREFIXES = (
+    "Resolved subtitle animations:",
+    "Preparing 16 kHz mono audio",
+    "Completed JSON transcript.",
+    "Completed SRT transcript.",
+    "Completed ASS transcript.",
+)
 
 
-def _add_template_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add built-in and custom subtitle-template options."""
-    parser.add_argument(
-        "--template",
-        default=None,
-        metavar="NAME",
-        help=(
-            "Subtitle presentation selected by template name; built-ins are "
-            "available by default and --template-dir adds custom JSON templates "
-            f"(default: {DEFAULT_SUBTITLE_TEMPLATE}). Built-ins: "
-            + ", ".join(TEMPLATE_CHOICES)
-            + "."
-        ),
-    )
-    parser.add_argument(
-        "--template-dir",
-        default=None,
-        metavar="DIR",
-        help=(
-            "Directory of custom subtitle template JSON files. The selected "
-            "template name is resolved from this directory before built-ins."
-        ),
-    )
-
-
-def _add_preview_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add transcription-free preview options."""
-    preview_group = parser.add_argument_group(
-        "Subtitle preview",
-        "Render a transcription-free static frame or animated clip.",
-    )
-    preview_mode_group = preview_group.add_mutually_exclusive_group()
-    preview_mode_group.add_argument(
-        "--preview-layout",
-        action="store_true",
-        help="Render a transcription-free subtitle layout preview PNG.",
-    )
-    preview_mode_group.add_argument(
-        "--preview-animation",
-        action="store_true",
-        help="Render a silent MP4 with deterministic simulated word timing.",
-    )
-    preview_group.add_argument(
-        "--preview-at",
-        type=_preview_timestamp_argument_type,
-        default=None,
-        metavar="HH:MM:SS.mmm",
-        help=(
-            "Frame timestamp for the preview (default: video midpoint; "
-            "format HH:MM:SS.mmm)."
-        ),
-    )
-    preview_group.add_argument(
-        "--preview-text",
-        default=None,
-        metavar="TEXT",
-        help=(f"Sample subtitle text (default: {DEFAULT_PREVIEW_TEXT!r})."),
-    )
-    preview_group.add_argument(
-        "--preview-guides",
-        action="store_true",
-        help="Draw non-production placement, envelope, and canvas guides.",
-    )
-    preview_group.add_argument(
-        "--preview-duration",
-        type=_preview_duration_argument_type,
-        default=None,
-        metavar="DURATION",
-        help=(
-            "Animated preview cue duration in ms or s, from 1s through 15s "
-            f"(default: {DEFAULT_PREVIEW_DURATION_MS / 1000:g}s)."
-        ),
-    )
-
-
-def _add_appearance_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add position and semantic subtitle-appearance options."""
-    parser.add_argument(
-        "--position",
-        choices=POSITION_CHOICES,
-        default=None,
-        help=(
-            "Use native ASS alignment and margins at the selected screen "
-            "position; left and right are physical screen directions "
-            f"(default: {DEFAULT_POSITION.value})."
-        ),
-    )
-
-    appearance_group = parser.add_argument_group(
-        "Subtitle appearance",
-        "Semantic appearance controls; colors use #RRGGBB or #RRGGBBAA.",
-    )
-    appearance_group.add_argument(
-        "--font",
-        default=None,
-        metavar="NAME",
-        help=f"Font family (default: {DEFAULT_FONT}).",
-    )
-    appearance_group.add_argument(
-        "--text-color",
-        default=None,
-        metavar="COLOR",
-        help=f"Subtitle text color (default: {DEFAULT_TEXT_COLOR}).",
-    )
-    appearance_group.add_argument(
-        "--font-weight",
-        default=None,
-        metavar="WEIGHT",
-        help=(
-            "Font weight name or numeric rank. Names: "
-            + ", ".join(FONT_WEIGHT_NAMES)
-            + ". Numeric ranks: "
-            + ", ".join(str(rank) for rank in FONT_WEIGHT_RANKS)
-            + ". Aliases: "
-            + ", ".join(FONT_WEIGHT_ALIASES)
-            + ". Names are case-insensitive; spaces and underscores normalize "
-            "to hyphens" + f" (default: {DEFAULT_FONT_WEIGHT.canonical_name})."
-        ),
-    )
-    appearance_group.add_argument(
-        "--bold",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help=(
-            "Compatibility shorthand: --bold selects bold (700); --no-bold "
-            "selects regular (400) (default: regular)."
-        ),
-    )
-    appearance_group.add_argument(
-        "--italic",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help=f"Enable or disable italic text (default: {DEFAULT_ITALIC}).",
-    )
-    appearance_group.add_argument(
-        "--backdrop",
-        choices=BACKDROP_CHOICES,
-        default=None,
-        help=(
-            "Subtitle backdrop: none, outline, or box "
-            f"(default: {DEFAULT_BACKDROP.value})."
-        ),
-    )
-    appearance_group.add_argument(
-        "--backdrop-color",
-        default=None,
-        metavar="COLOR",
-        help=f"Outline, box, and shadow color (default: {DEFAULT_BACKDROP_COLOR}).",
-    )
-    appearance_group.add_argument(
-        "--word-backdrop",
-        choices=BACKDROP_CHOICES,
-        default=None,
-        help=(
-            "Timed word decoration: none, outline, or box "
-            f"(default: {DEFAULT_WORD_BACKDROP.value})."
-        ),
-    )
-    appearance_group.add_argument(
-        "--word-backdrop-color",
-        default=None,
-        metavar="COLOR",
-        help=(
-            "Timed word-box color using #RRGGBB or #RRGGBBAA "
-            f"(default: {DEFAULT_WORD_BACKDROP_COLOR})."
-        ),
-    )
-    appearance_group.add_argument(
-        "--opacity",
-        type=_opacity_argument_type,
-        default=None,
-        metavar="PERCENT",
-        help=(
-            "Global subtitle opacity from 0%% through 100%%, multiplied with each "
-            f"component color alpha (default: {DEFAULT_OPACITY.replace('%', '%%')})."
-        ),
-    )
-    appearance_group.add_argument(
-        "--text-case",
-        type=_text_case_argument_type,
-        default=None,
-        metavar="{" + ",".join(TEXT_CASE_CHOICES) + "}",
-        help=(
-            "Subtitle display casing: original, uppercase, or lowercase "
-            f"(default: {DEFAULT_TEXT_CASE.value})."
-        ),
-    )
-    appearance_group.add_argument(
-        "--fonts-dir",
-        default=None,
-        metavar="DIR",
-        help="Directory containing additional fonts for FFmpeg/libass.",
-    )
-
-
-def _add_animation_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add cue- and word-relative animation options."""
-
-    animation_group = parser.add_argument_group(
-        "Subtitle animations",
-        "Semantic cue and aligned-word animations.",
-    )
-    for scope, element, phase_choices in (
-        (
-            "cue",
-            "text",
-            (
-                CUE_ENTRANCE_ANIMATION_CHOICES,
-                CUE_EMPHASIS_ANIMATION_CHOICES,
-                CUE_EXIT_ANIMATION_CHOICES,
-            ),
-        ),
-        (
-            "cue",
-            "backdrop",
-            (
-                CUE_ENTRANCE_ANIMATION_CHOICES,
-                CUE_EMPHASIS_ANIMATION_CHOICES,
-                CUE_EXIT_ANIMATION_CHOICES,
-            ),
-        ),
-        (
-            "word",
-            "text",
-            (
-                WORD_ENTRANCE_ANIMATION_CHOICES,
-                WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
-                WORD_EXIT_ANIMATION_CHOICES,
-            ),
-        ),
-        (
-            "word",
-            "backdrop",
-            (
-                WORD_ENTRANCE_ANIMATION_CHOICES,
-                WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
-                WORD_EXIT_ANIMATION_CHOICES,
-            ),
-        ),
-    ):
-        for phase, choices in zip(
-            ("entrance", "emphasis", "exit"), phase_choices, strict=True
-        ):
-            option = f"--animation-{scope}-{element}-{phase}"
-            animation_group.add_argument(
-                option,
-                choices=choices,
-                default=None,
-                help=(
-                    f"{scope.title()} {element} {phase} animation; omission "
-                    "inherits the selected template."
-                ),
-            )
-            animation_group.add_argument(
-                f"{option}-duration",
-                default=None,
-                metavar="DURATION",
-                help=(
-                    "Override this effect duration with a value such as 150ms or 0.15s."
-                ),
-            )
-    for element in ("text", "backdrop"):
-        animation_group.add_argument(
-            f"--animation-word-{element}-mode",
-            choices=WORD_ANIMATION_MODE_CHOICES,
-            default=None,
-            help=(
-                f"Timed word {element} behavior: progressive or active-word "
-                f"(default: {DEFAULT_WORD_ANIMATION_MODE.value})."
-            ),
+@contextmanager
+def _cli_logging(verbose: bool):
+    """Scope CLI logging changes to one processing invocation."""
+    root_logger = logging.getLogger()
+    previous_root_level = root_logger.level
+    previous_disabled_level = root_logger.manager.disable
+    debug_handler: logging.Handler | None = None
+    if verbose:
+        logging.disable(logging.NOTSET)
+        debug_handler = logging.StreamHandler(sys.stderr)
+        debug_handler.setFormatter(
+            logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
         )
-    animation_group.add_argument(
-        "--animation-word-text-highlight-color",
-        default=None,
-        metavar="COLOR",
-        help=(
-            "Word highlight color using #RRGGBB or #RRGGBBAA "
-            f"(default when enabled: {DEFAULT_WORD_ANIMATION_HIGHLIGHT_COLOR})."
-        ),
-    )
-
-
-def _add_relative_layout_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add relative style and layout dimensions."""
-
-    relative_group = parser.add_argument_group(
-        "Relative layout units",
-        "Use percentages or pixels; bare numbers are not accepted.",
-    )
-    for option, help_text in (
-        (
-            "--font-size",
-            "Font size as a percentage of the render height or pixels "
-            f"(default: {DEFAULT_FONT_SIZE.replace('%', '%%')}).",
-        ),
-        (
-            "--letter-spacing",
-            "Additional space between rendered grapheme clusters as a percentage "
-            "of the resolved font size or in PlayRes pixels "
-            f"(default: {DEFAULT_LETTER_SPACING.replace('%', '%%')}).",
-        ),
-        (
-            "--line-height",
-            "Vertical baseline distance: auto uses measured font metrics; explicit "
-            "percentages use natural line height and pixels use PlayRes space "
-            f"(default: {DEFAULT_LINE_HEIGHT}).",
-        ),
-        (
-            "--backdrop-size",
-            "Backdrop/outline size as a percentage of the resolved font size "
-            f"or pixels (default: {DEFAULT_BACKDROP_SIZE.replace('%', '%%')}).",
-        ),
-        (
-            "--word-backdrop-size",
-            "Timed word-box padding as a percentage of the resolved font size "
-            f"or pixels (default: {DEFAULT_WORD_BACKDROP_SIZE.replace('%', '%%')}).",
-        ),
-        (
-            "--shadow-size",
-            "Shadow size as a percentage of the resolved font size or pixels "
-            f"(default: {DEFAULT_SHADOW_SIZE.replace('%', '%%')}).",
-        ),
-        (
-            "--margin-left",
-            "Left margin as a percentage of render width or pixels "
-            f"(default: {DEFAULT_MARGIN_LEFT.replace('%', '%%')}).",
-        ),
-        (
-            "--margin-right",
-            "Right margin as a percentage of render width or pixels "
-            f"(default: {DEFAULT_MARGIN_RIGHT.replace('%', '%%')}).",
-        ),
-        (
-            "--margin-top",
-            "Top-position margin as a percentage of render height or pixels; "
-            "an explicit value is rejected for middle and bottom positions "
-            f"(default: {DEFAULT_MARGIN_TOP.replace('%', '%%')}).",
-        ),
-        (
-            "--margin-bottom",
-            "Bottom-position margin as a percentage of render height or pixels; "
-            "an explicit value is rejected for top and middle positions "
-            f"(default: {DEFAULT_MARGIN_BOTTOM.replace('%', '%%')}).",
-        ),
-        (
-            "--max-width",
-            "Maximum subtitle line width. Native percentages use the width "
-            "after horizontal margins; explicit percentages use render width "
-            f"(native default: {DEFAULT_MAX_WIDTH.replace('%', '%%')}).",
-        ),
-        (
-            "--max-height",
-            "Maximum subtitle box height. Native percentages use the height "
-            "after the active vertical margin; explicit percentages use the "
-            f"render height (native default: {DEFAULT_MAX_HEIGHT.replace('%', '%%')}).",
-        ),
-    ):
-        relative_group.add_argument(
-            option,
-            type=(
-                _line_height_argument_type
-                if option == "--line-height"
-                else _relative_length_argument_type
-            ),
-            default=None,
-            metavar="auto|LENGTH" if option == "--line-height" else "LENGTH",
-            help=help_text,
-        )
-
-
-def _add_coordinate_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add explicit PlayRes coordinate options."""
-
-    coordinate_group = parser.add_argument_group(
-        "Custom subtitle coordinates",
-        "Attach an explicit anchor to global PlayRes X/Y coordinates. Explicit "
-        "margins are rejected; max-width and max-height are required.",
-    )
-    coordinate_group.add_argument(
-        "--position-x",
-        type=_relative_length_argument_type,
-        default=None,
-        metavar="LENGTH",
-        help="Horizontal anchor coordinate measured from the PlayRes left edge.",
-    )
-    coordinate_group.add_argument(
-        "--position-y",
-        type=_relative_length_argument_type,
-        default=None,
-        metavar="LENGTH",
-        help="Vertical anchor coordinate measured from the PlayRes top edge.",
-    )
-    coordinate_group.add_argument(
-        "--anchor",
-        choices=POSITION_CHOICES,
-        default=None,
-        help="Required subtitle-box anchor for custom coordinates.",
-    )
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the CLI and return a process-appropriate exit status."""
+        root_logger.addHandler(debug_handler)
+        root_logger.setLevel(logging.DEBUG)
+    else:
+        logging.disable(logging.INFO)
+        root_logger.setLevel(logging.WARNING)
     try:
-        parser = build_parser()
-        args = parser.parse_args(argv)
-        request = _build_request(args, parser)
-        result_path = _run_request(request, print)
-    except MultisubsError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:  # Keep the CLI terse while retaining a log traceback.
-        LOGGER.exception("Unexpected multisubs failure")
-        print(f"Error: Unexpected failure: {exc}", file=sys.stderr)
-        return 1
+        yield
+    finally:
+        root_logger.setLevel(previous_root_level)
+        logging.disable(previous_disabled_level)
+        if debug_handler is not None:
+            root_logger.removeHandler(debug_handler)
+            debug_handler.close()
 
+
+class _MutedPythonOutput:
+    """Keep streams captured by new backend loggers usable after this run."""
+
+    def __init__(self, stream: TextIO) -> None:
+        self._stream = stream
+        self._muted = True
+
+    def write(self, text: str) -> int:
+        return len(text) if self._muted else self._stream.write(text)
+
+    def flush(self) -> None:
+        if not self._muted:
+            self._stream.flush()
+
+    def restore(self) -> None:
+        self._muted = False
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._stream, name)
+
+
+@contextmanager
+def _quiet_external_output() -> Iterator[TextIO]:
+    """Discard Python and native runtime output for a routine CLI run."""
+    original_python_stdout = sys.stdout
+    python_stdout = _MutedPythonOutput(original_python_stdout)
+    python_stderr = _MutedPythonOutput(sys.stderr)
+    with open(os.devnull, "wb") as sink:
+        original_stdout_fd = os.dup(1)
+        original_stderr_fd = os.dup(2)
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(sink.fileno(), 1)
+            os.dup2(sink.fileno(), 2)
+            try:
+                python_stdout_fd = original_python_stdout.fileno()
+            except (AttributeError, OSError, ValueError):
+                python_stdout_fd = None
+            if python_stdout_fd == 1:
+                progress_context = os.fdopen(
+                    os.dup(original_stdout_fd),
+                    "w",
+                    encoding=original_python_stdout.encoding or "utf-8",
+                    buffering=1,
+                )
+            else:
+                progress_context = nullcontext(original_python_stdout)
+            with progress_context as progress_output:
+                with redirect_stdout(python_stdout), redirect_stderr(python_stderr):
+                    yield progress_output
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(original_stdout_fd, 1)
+            os.dup2(original_stderr_fd, 2)
+            os.close(original_stdout_fd)
+            os.close(original_stderr_fd)
+            python_stdout.restore()
+            python_stderr.restore()
+
+
+def _cli_progress(message: str, *, verbose: bool, output: TextIO | None = None) -> None:
+    """Show processing stages by default and details on request."""
+    if not verbose and message.startswith(_DETAIL_PROGRESS_PREFIXES):
+        return
+    if not verbose and message.startswith("Detected video layout:"):
+        print(message.split(" (", 1)[0].rstrip() + ".", file=output)
+        return
+    print(message, file=output)
+
+
+app = typer.Typer(
+    help="Generate and embed subtitles into a local video.",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    add_completion=False,
+)
+
+
+def _choice_parser(choices: Sequence[str]) -> Callable[[str], str]:
+    """Validate a CLI choice before resolving the request."""
+
+    def parse(value: str) -> str:
+        if value not in choices:
+            raise typer.BadParameter(
+                f"invalid choice: {value!r} (choose from {', '.join(choices)})"
+            )
+        return value
+
+    return parse
+
+
+def _version_callback(value: bool) -> None:
+    """Print the version before required option validation."""
+    if value:
+        typer.echo(f"multisubs {__version__}")
+        raise typer.Exit()
+
+
+def _relative_length_argument_type(raw_value: str) -> RelativeLength:
+    try:
+        return parse_relative_length(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _language_argument_type(raw_value: str) -> str:
+    try:
+        return normalise_language_code(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _line_height_argument_type(raw_value: str) -> str | RelativeLength:
+    try:
+        return parse_line_height(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _opacity_argument_type(raw_value: str) -> SubtitleOpacity:
+    try:
+        return parse_opacity(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _text_case_argument_type(raw_value: str) -> TextCase:
+    try:
+        return parse_text_case(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _preview_timestamp_argument_type(raw_value: str) -> float:
+    try:
+        return parse_preview_timestamp(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _preview_duration_argument_type(raw_value: str) -> int:
+    try:
+        return parse_preview_duration(raw_value)
+    except ValidationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command(epilog="ASR language and model support depends on the selected backend.")
+def _cli_command(
+    ctx: typer.Context,
+    # options
+    input_path: Annotated[
+        str,
+        typer.Option(
+            "-i",
+            "--input-path",
+            metavar="PATH",
+            help="Path to one input video file.",
+            show_default=False,
+        ),
+    ],
+    version: Annotated[
+        bool,
+        typer.Option(
+            "-v",
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Print the package version and exit.",
+            show_default=False,
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Show detailed processing progress and backend logs.",
+            show_default=False,
+        ),
+    ] = False,
+    output_dir: Annotated[
+        str,
+        typer.Option(
+            "-o",
+            "--output-dir",
+            metavar="DIR",
+            help="Directory for generated files (default: current directory).",
+            show_default=False,
+        ),
+    ] = ".",
+    asr: Annotated[
+        str,
+        typer.Option(
+            "--asr",
+            metavar="BACKEND",
+            parser=_choice_parser(ASR_CHOICES),
+            help="Speech-recognition backend (default: whisperx).",
+            show_default=False,
+        ),
+    ] = "whisperx",
+    lang: Annotated[
+        str | None,
+        typer.Option(
+            "-l",
+            "--lang",
+            metavar="CODE",
+            parser=_language_argument_type,
+            help=(
+                "Source language code (default: automatic detection where the selected "
+                "ASR exposes it)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    task: Annotated[
+        str,
+        typer.Option(
+            "-t",
+            "--task",
+            metavar="TASK",
+            parser=_choice_parser(("transcribe", "translate")),
+            help="Transcribe or translate speech to English (default: transcribe).",
+            show_default=False,
+        ),
+    ] = "transcribe",
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "-m",
+            "--model",
+            metavar="MODEL",
+            help="Model for the selected ASR backend (default: backend-specific).",
+            show_default=False,
+        ),
+    ] = None,
+    keep_transcriptions: Annotated[
+        bool,
+        typer.Option(
+            "-k",
+            "--keep-transcriptions",
+            help="Retain JSON, SRT, and ASS files in a subtitles directory.",
+            show_default=False,
+        ),
+    ] = False,
+    template: Annotated[
+        str | None,
+        typer.Option(
+            "--template",
+            metavar="NAME",
+            help=(
+                "Subtitle presentation selected by template name; built-ins are "
+                "available by default and --template-dir adds custom JSON templates "
+                f"(default: {DEFAULT_SUBTITLE_TEMPLATE}). Built-ins: "
+                + ", ".join(TEMPLATE_CHOICES)
+                + "."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    template_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--template-dir",
+            metavar="DIR",
+            help=(
+                "Directory of custom subtitle template JSON files. The selected "
+                "template name is resolved from this directory before built-ins."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    position: Annotated[
+        str | None,
+        typer.Option(
+            "--position",
+            metavar="POSITION",
+            parser=_choice_parser(POSITION_CHOICES),
+            help=(
+                "Use native ASS alignment and margins at the selected screen position; "
+                "left and right are physical screen directions (default: "
+                "bottom-center)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    # Subtitle preview
+    preview_layout: Annotated[
+        bool,
+        typer.Option(
+            "--preview-layout",
+            rich_help_panel="Subtitle preview",
+            help="Render a transcription-free subtitle layout preview PNG.",
+            show_default=False,
+        ),
+    ] = False,
+    preview_animation: Annotated[
+        bool,
+        typer.Option(
+            "--preview-animation",
+            rich_help_panel="Subtitle preview",
+            help="Render a silent MP4 with deterministic simulated word timing.",
+            show_default=False,
+        ),
+    ] = False,
+    preview_at: Annotated[
+        float | None,
+        typer.Option(
+            "--preview-at",
+            metavar="HH:MM:SS.mmm",
+            parser=_preview_timestamp_argument_type,
+            rich_help_panel="Subtitle preview",
+            help=(
+                "Frame timestamp for the preview (default: video midpoint; format "
+                "HH:MM:SS.mmm)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    preview_text: Annotated[
+        str | None,
+        typer.Option(
+            "--preview-text",
+            metavar="TEXT",
+            rich_help_panel="Subtitle preview",
+            help=f"Sample subtitle text (default: {DEFAULT_PREVIEW_TEXT!r}).",
+            show_default=False,
+        ),
+    ] = None,
+    preview_guides: Annotated[
+        bool,
+        typer.Option(
+            "--preview-guides",
+            rich_help_panel="Subtitle preview",
+            help="Draw non-production placement, envelope, and canvas guides.",
+            show_default=False,
+        ),
+    ] = False,
+    preview_duration: Annotated[
+        int | None,
+        typer.Option(
+            "--preview-duration",
+            metavar="DURATION",
+            parser=_preview_duration_argument_type,
+            rich_help_panel="Subtitle preview",
+            help=(
+                "Animated preview cue duration in ms or s, from 1s through 15s "
+                "(default: 4s)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    # Subtitle appearance
+    font: Annotated[
+        str | None,
+        typer.Option(
+            "--font",
+            metavar="NAME",
+            rich_help_panel="Subtitle appearance",
+            help="Font family (default: Roboto).",
+            show_default=False,
+        ),
+    ] = None,
+    text_color: Annotated[
+        str | None,
+        typer.Option(
+            "--text-color",
+            metavar="COLOR",
+            rich_help_panel="Subtitle appearance",
+            help="Subtitle text color (default: #FFFFFF).",
+            show_default=False,
+        ),
+    ] = None,
+    font_weight: Annotated[
+        str | None,
+        typer.Option(
+            "--font-weight",
+            metavar="WEIGHT",
+            rich_help_panel="Subtitle appearance",
+            help=(
+                "Font weight name or numeric rank. Names: thin, extra-light, light, "
+                "regular, medium, semi-bold, bold, extra-bold, black. Numeric ranks: "
+                "100, 200, 300, 400, 500, 600, 700, 800, 900. Aliases: hairline, "
+                "ultra-light, normal, book, demi-bold, ultra-bold, heavy. Names are "
+                "case-insensitive; spaces and underscores normalize to hyphens "
+                "(default: regular)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    bold: Annotated[
+        bool | None,
+        typer.Option(
+            "--bold/--no-bold",
+            rich_help_panel="Subtitle appearance",
+            help=(
+                "Compatibility shorthand: --bold selects bold (700); --no-bold selects "
+                "regular (400) (default: regular)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    italic: Annotated[
+        bool | None,
+        typer.Option(
+            "--italic/--no-italic",
+            rich_help_panel="Subtitle appearance",
+            help="Enable or disable italic text (default: False).",
+            show_default=False,
+        ),
+    ] = None,
+    backdrop: Annotated[
+        str | None,
+        typer.Option(
+            "--backdrop",
+            metavar="{none,outline,box}",
+            parser=_choice_parser(BACKDROP_CHOICES),
+            rich_help_panel="Subtitle appearance",
+            help="Subtitle backdrop: none, outline, or box (default: box).",
+            show_default=False,
+        ),
+    ] = None,
+    backdrop_color: Annotated[
+        str | None,
+        typer.Option(
+            "--backdrop-color",
+            metavar="COLOR",
+            rich_help_panel="Subtitle appearance",
+            help="Outline, box, and shadow color (default: #00000099).",
+            show_default=False,
+        ),
+    ] = None,
+    word_backdrop: Annotated[
+        str | None,
+        typer.Option(
+            "--word-backdrop",
+            metavar="{none,outline,box}",
+            parser=_choice_parser(BACKDROP_CHOICES),
+            rich_help_panel="Subtitle appearance",
+            help="Timed word decoration: none, outline, or box (default: none).",
+            show_default=False,
+        ),
+    ] = None,
+    word_backdrop_color: Annotated[
+        str | None,
+        typer.Option(
+            "--word-backdrop-color",
+            metavar="COLOR",
+            rich_help_panel="Subtitle appearance",
+            help="Word-box color using #RRGGBB or #RRGGBBAA (default: #111827E6).",
+            show_default=False,
+        ),
+    ] = None,
+    opacity: Annotated[
+        SubtitleOpacity | None,
+        typer.Option(
+            "--opacity",
+            metavar="PERCENT",
+            parser=_opacity_argument_type,
+            rich_help_panel="Subtitle appearance",
+            help=(
+                "Global subtitle opacity from 0% through 100%, multiplied with each "
+                "component color alpha (default: 100%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    text_case: Annotated[
+        TextCase | None,
+        typer.Option(
+            "--text-case",
+            metavar="{original,uppercase,lowercase}",
+            parser=_text_case_argument_type,
+            rich_help_panel="Subtitle appearance",
+            help=(
+                "Subtitle display casing: original, uppercase, or lowercase (default: "
+                "original)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    fonts_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--fonts-dir",
+            metavar="DIR",
+            rich_help_panel="Subtitle appearance",
+            help="Directory containing additional fonts for FFmpeg/libass.",
+            show_default=False,
+        ),
+    ] = None,
+    # Subtitle animations
+    animation_cue_text_entrance: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-text-entrance",
+            metavar="{" + ",".join(CUE_ENTRANCE_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(CUE_ENTRANCE_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Cue text entrance animation; omission inherits the template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_text_entrance_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-text-entrance-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_text_emphasis: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-text-emphasis",
+            metavar="{" + ",".join(CUE_EMPHASIS_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(CUE_EMPHASIS_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Cue text emphasis animation; omission inherits the template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_text_emphasis_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-text-emphasis-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_text_exit: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-text-exit",
+            metavar="{" + ",".join(CUE_EXIT_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(CUE_EXIT_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Cue text exit animation; omission inherits the selected template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_text_exit_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-text-exit-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_backdrop_entrance: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-backdrop-entrance",
+            metavar="{" + ",".join(CUE_ENTRANCE_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(CUE_ENTRANCE_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Cue backdrop entrance animation; omission inherits the selected "
+                "template."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_backdrop_entrance_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-backdrop-entrance-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_backdrop_emphasis: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-backdrop-emphasis",
+            metavar="{" + ",".join(CUE_EMPHASIS_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(CUE_EMPHASIS_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Cue backdrop emphasis animation; omission inherits the selected "
+                "template."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_backdrop_emphasis_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-backdrop-emphasis-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_backdrop_exit: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-backdrop-exit",
+            metavar="{" + ",".join(CUE_EXIT_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(CUE_EXIT_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Cue backdrop exit animation; omission inherits the template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_cue_backdrop_exit_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-cue-backdrop-exit-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_entrance: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-entrance",
+            metavar="{" + ",".join(WORD_ENTRANCE_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(WORD_ENTRANCE_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Word text entrance animation; omission inherits the template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_entrance_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-entrance-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_emphasis: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-emphasis",
+            metavar="{" + ",".join(WORD_TEXT_EMPHASIS_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(WORD_TEXT_EMPHASIS_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Word text emphasis animation; omission inherits the template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_emphasis_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-emphasis-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_exit: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-exit",
+            metavar="{" + ",".join(WORD_EXIT_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(WORD_EXIT_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Word text exit animation; omission inherits the selected template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_exit_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-exit-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_entrance: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-entrance",
+            metavar="{" + ",".join(WORD_ENTRANCE_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(WORD_ENTRANCE_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Word backdrop entrance animation; omission inherits the selected "
+                "template."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_entrance_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-entrance-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_emphasis: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-emphasis",
+            metavar="{" + ",".join(WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Word backdrop emphasis animation; omission inherits the selected "
+                "template."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_emphasis_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-emphasis-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_exit: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-exit",
+            metavar="{" + ",".join(WORD_EXIT_ANIMATION_CHOICES) + "}",
+            parser=_choice_parser(WORD_EXIT_ANIMATION_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help="Word backdrop exit animation; omission inherits the template.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_exit_duration: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-exit-duration",
+            metavar="DURATION",
+            rich_help_panel="Subtitle animations",
+            help="Override this effect duration with a value such as 150ms or 0.15s.",
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_mode: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-mode",
+            metavar="{progressive,active-word}",
+            parser=_choice_parser(WORD_ANIMATION_MODE_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Timed word text behavior: progressive or active-word (default: "
+                "active-word)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_backdrop_mode: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-backdrop-mode",
+            metavar="{progressive,active-word}",
+            parser=_choice_parser(WORD_ANIMATION_MODE_CHOICES),
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Timed word backdrop behavior: progressive or active-word (default: "
+                "active-word)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    animation_word_text_highlight_color: Annotated[
+        str | None,
+        typer.Option(
+            "--animation-word-text-highlight-color",
+            metavar="COLOR",
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Highlight color using #RRGGBB or #RRGGBBAA (default when enabled: "
+                "#FFD54F)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    # Relative layout units
+    font_size: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--font-size",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Font size as a percentage of the render height or pixels (default: "
+                "4%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    letter_spacing: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--letter-spacing",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Space between grapheme clusters as a percentage of "
+                "the resolved font size or in PlayRes pixels (default: 0px)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    line_height: Annotated[
+        str | None,
+        typer.Option(
+            "--line-height",
+            metavar="auto|LENGTH",
+            parser=_line_height_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Vertical baseline distance: auto uses measured font metrics; explicit "
+                "percentages use natural line height and pixels use PlayRes space "
+                "(default: auto)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    backdrop_size: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--backdrop-size",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Backdrop/outline size as a percentage of the resolved font size or "
+                "pixels (default: 25%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    word_backdrop_size: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--word-backdrop-size",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Timed word-box padding as a percentage of the resolved font size or "
+                "pixels (default: 25%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    shadow_size: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--shadow-size",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Shadow size as a percentage of the resolved font size or pixels "
+                "(default: 0px)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    margin_left: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--margin-left",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help="Left margin as a percentage of width or pixels (default: 18%).",
+            show_default=False,
+        ),
+    ] = None,
+    margin_right: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--margin-right",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help="Right margin as a percentage of width or pixels (default: 18%).",
+            show_default=False,
+        ),
+    ] = None,
+    margin_top: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--margin-top",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Top-position margin as a percentage of render height or pixels; an "
+                "explicit value is rejected for middle and bottom positions (default: "
+                "0%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    margin_bottom: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--margin-bottom",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Bottom-position margin as a percentage of render height or pixels; an "
+                "explicit value is rejected for top and middle positions (default: 3%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    max_width: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--max-width",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Maximum subtitle line width. Native percentages use the width after "
+                "horizontal margins; explicit percentages use render width (native "
+                "default: 100%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    max_height: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--max-height",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Relative layout units",
+            help=(
+                "Maximum subtitle box height. Native percentages use the height after "
+                "the active margin; explicit percentages use the render height "
+                "(native default: 12%)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    # Custom subtitle coordinates
+    position_x: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--position-x",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Custom subtitle coordinates",
+            help="Horizontal anchor coordinate measured from the PlayRes left edge.",
+            show_default=False,
+        ),
+    ] = None,
+    position_y: Annotated[
+        RelativeLength | None,
+        typer.Option(
+            "--position-y",
+            metavar="LENGTH",
+            parser=_relative_length_argument_type,
+            rich_help_panel="Custom subtitle coordinates",
+            help="Vertical anchor coordinate measured from the PlayRes top edge.",
+            show_default=False,
+        ),
+    ] = None,
+    anchor: Annotated[
+        str | None,
+        typer.Option(
+            "--anchor",
+            metavar="POSITION",
+            parser=_choice_parser(POSITION_CHOICES),
+            rich_help_panel="Custom subtitle coordinates",
+            help="Required subtitle-box anchor for custom coordinates.",
+            show_default=False,
+        ),
+    ] = None,
+) -> int:
+    """Generate and embed subtitles into a local video."""
+    with _cli_logging(verbose):
+        try:
+            require_template_catalog()
+            args = SimpleNamespace(
+                **{name: value for name, value in locals().items() if name != "ctx"}
+            )
+            request = _build_request(args, ctx)
+            if verbose:
+                result_path = _run_request(
+                    request,
+                    lambda message: _cli_progress(message, verbose=True),
+                    verbose=True,
+                )
+            else:
+                with _quiet_external_output() as progress_output:
+                    result_path = _run_request(
+                        request,
+                        lambda message: _cli_progress(
+                            message, verbose=False, output=progress_output
+                        ),
+                        verbose=False,
+                    )
+        except Exception:
+            if verbose:
+                LOGGER.exception("multisubs command failed")
+            raise
     if isinstance(request, PreviewRequest):
         label = (
             "Animated preview saved to"
@@ -619,57 +1168,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def _relative_length_argument_type(raw_value: str) -> RelativeLength:
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the CLI and return a process-appropriate exit status."""
     try:
-        return parse_relative_length(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
-def _language_argument_type(raw_value: str) -> str:
-    try:
-        return normalise_language_code(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
-def _line_height_argument_type(raw_value: str) -> str | RelativeLength:
-    try:
-        return parse_line_height(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
-def _opacity_argument_type(raw_value: str) -> SubtitleOpacity:
-    try:
-        return parse_opacity(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
-def _text_case_argument_type(raw_value: str) -> TextCase:
-    try:
-        return parse_text_case(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
-def _preview_timestamp_argument_type(raw_value: str) -> float:
-    try:
-        return parse_preview_timestamp(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
-def _preview_duration_argument_type(raw_value: str) -> int:
-    try:
-        return parse_preview_duration(raw_value)
-    except ValidationError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
+        require_template_catalog()
+        result = get_command(app).main(
+            args=list(argv) if argv is not None else None,
+            prog_name="multisubs",
+            standalone_mode=False,
+        )
+        return 0 if result is None else result
+    except typer_click.ClickException as exc:
+        exc.show(file=sys.stderr)
+        raise SystemExit(exc.exit_code) from exc
+    except MultisubsError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # Keep routine CLI diagnostics terse.
+        print(f"Error: Unexpected failure: {exc}", file=sys.stderr)
+        return 1
 
 
 def _build_request(
-    args: argparse.Namespace, parser: argparse.ArgumentParser
+    args: SimpleNamespace, parser: _ValidationContext
 ) -> RunRequest | PreviewRequest:
     preview_mode_requested = args.preview_layout or args.preview_animation
     _validate_preview_options(args, parser, preview_mode_requested)
@@ -709,11 +1230,13 @@ def _build_request(
 
 
 def _validate_preview_options(
-    args: argparse.Namespace,
-    parser: argparse.ArgumentParser,
+    args: SimpleNamespace,
+    parser: _ValidationContext,
     preview_mode_requested: bool,
 ) -> None:
     """Reject preview-only options and artifact conflicts before file access."""
+    if args.preview_layout and args.preview_animation:
+        parser.fail("--preview-layout and --preview-animation cannot be combined")
     preview_options_used = (
         args.preview_at is not None
         or args.preview_text is not None
@@ -721,22 +1244,22 @@ def _validate_preview_options(
         or args.preview_duration is not None
     )
     if preview_options_used and not preview_mode_requested:
-        parser.error(
+        parser.fail(
             "--preview-at, --preview-text, --preview-guides, and "
             "--preview-duration require --preview-layout or --preview-animation"
         )
     if args.preview_duration is not None and not args.preview_animation:
-        parser.error("--preview-duration can only be used with --preview-animation")
+        parser.fail("--preview-duration can only be used with --preview-animation")
     if preview_mode_requested and args.keep_transcriptions:
-        parser.error(
+        parser.fail(
             "--keep-transcriptions cannot be used with --preview-layout or "
             "--preview-animation"
         )
 
 
 def _resolve_request_config(
-    args: argparse.Namespace,
-    parser: argparse.ArgumentParser,
+    args: SimpleNamespace,
+    parser: _ValidationContext,
 ) -> tuple[ResolvedSubtitleTemplate, SubtitleConfig]:
     """Resolve template and explicit overrides into one typed configuration."""
     appearance_values = _defined_values(
@@ -789,7 +1312,7 @@ def _resolve_request_config(
             anchor=args.anchor,
         )
     except (TemplateError, ValidationError) as exc:
-        parser.error(str(exc))
+        parser.fail(str(exc))
     return selection, subtitle_config
 
 
@@ -798,7 +1321,7 @@ def _defined_values(values: dict[str, object | None]) -> dict[str, object]:
     return {key: value for key, value in values.items() if value is not None}
 
 
-def _animation_values(args: argparse.Namespace) -> dict[str, object]:
+def _animation_values(args: SimpleNamespace) -> dict[str, object]:
     values: dict[str, object | None] = {}
     for scope in ("cue", "word"):
         for element in ("text", "backdrop"):
@@ -815,9 +1338,9 @@ def _animation_values(args: argparse.Namespace) -> dict[str, object]:
 
 
 def _validate_normal_request(
-    args: argparse.Namespace,
+    args: SimpleNamespace,
     subtitle_config: SubtitleConfig,
-    parser: argparse.ArgumentParser,
+    parser: _ValidationContext,
 ) -> tuple[str | None, str, str]:
     """Validate and resolve the selected ASR, model, task, and language."""
     _validate_animation_request(
@@ -830,29 +1353,29 @@ def _validate_normal_request(
         model_name = resolve_model(backend, args.model)
         language = validate_request(backend, args.lang, args.task, model_name)
     except ValidationError as exc:
-        parser.error(str(exc))
+        parser.fail(str(exc))
     return language, backend.value, model_name
 
 
 def _resolve_request_paths(
-    args: argparse.Namespace,
-    parser: argparse.ArgumentParser,
+    args: SimpleNamespace,
+    parser: _ValidationContext,
 ) -> tuple[Path, Path]:
     """Resolve and validate user paths without creating output directories."""
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
     if not input_path.exists() or not input_path.is_file():
-        parser.error(f"Video file not found at '{args.input_path}'")
+        parser.fail(f"Video file not found at '{args.input_path}'")
 
     output_dir = Path(args.output_dir).expanduser().resolve(strict=False)
     if output_dir.exists() and not output_dir.is_dir():
-        parser.error(
+        parser.fail(
             f"Output path '{args.output_dir}' is a file; provide a directory instead"
         )
     return input_path, output_dir
 
 
 def _build_preview_request(
-    args: argparse.Namespace,
+    args: SimpleNamespace,
     input_path: Path,
     output_dir: Path,
     subtitle_config: SubtitleConfig,
@@ -887,21 +1410,24 @@ def _validate_animation_request(
     subtitle_config: SubtitleConfig,
     *,
     task: str,
-    parser: argparse.ArgumentParser,
+    parser: _ValidationContext,
 ) -> None:
     needs_word_timing = (
         subtitle_config.animation.word.text.enabled
         or subtitle_config.style.word_backdrop.kind.value != "none"
     )
     if needs_word_timing and task == "translate":
-        parser.error(
+        parser.fail(
             "word animation cannot be combined with --task translate because "
             "source-language word timings do not map losslessly to translated text"
         )
 
 
 def _run_request(
-    request: RunRequest | PreviewRequest, progress: ProgressReporter
+    request: RunRequest | PreviewRequest,
+    progress: ProgressReporter,
+    *,
+    verbose: bool = False,
 ) -> Path:
     """Keep a selected bundled family alive through measurement and rendering."""
     from .font_catalog import bundled_font_directory
@@ -913,6 +1439,7 @@ def _run_request(
             request,
             progress,
             bundled_fonts_dir=directory,
+            verbose=verbose,
         )
 
 
@@ -928,6 +1455,7 @@ def _run_request_with_fonts(
     progress: ProgressReporter,
     *,
     bundled_fonts_dir: Path | None,
+    verbose: bool = False,
 ) -> Path:
     """Run in a private directory and publish only completed user artifacts."""
     if request.subtitle_template_source == "custom":
@@ -1007,6 +1535,7 @@ def _run_request_with_fonts(
             request.model_name,
             asr_backend=request.asr_backend,
             progress=progress,
+            verbose=verbose,
         )
         request = replace(request, language=document.language)
         wrapping_metrics = resolve_wrapping_metrics(

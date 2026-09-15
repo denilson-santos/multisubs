@@ -128,7 +128,8 @@ def test_cli_language_selection(speech_runtime, monkeypatch, options, expected):
     source, state = speech_runtime
     requests = []
 
-    def run(request, progress):
+    def run(request, progress, *, verbose):
+        assert verbose is False
         requests.append(request)
         return source
 

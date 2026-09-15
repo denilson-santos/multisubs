@@ -177,7 +177,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should add new options in a backward-compatible way and prefer an opt-in flag over changing existing default behavior.
 - Must use kebab-case long flags and a concise, non-conflicting short flag only when it materially improves common usage.
 - Must keep argument help text accurate, include units and defaults where useful, and avoid jargon that users cannot act on.
-- Should use argparse validation for invalid choices and missing required values. Perform validation that depends on the filesystem or a combination of options before model loading.
+- Should use Typer parameter validation for invalid choices and missing required values. Perform validation that depends on the filesystem or a combination of options before model loading.
 - Must reject unsupported translation/model combinations before expensive
   work starts; see [translation requirements](prd.md#functional-requirements).
 - Should offer a dry-run or validation-only mode before adding an operation with expensive processing or destructive potential.
@@ -201,6 +201,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should use stable, human-readable messages that identify the failed operation and relevant path or dependency without dumping an opaque traceback by default.
 - Must preserve a traceback or exception chain for a debug mode, test failure, or structured logging path.
 - Should introduce standard logging with named loggers and a verbose or log-level option before the CLI grows beyond simple progress messages. Library modules should not depend on CLI-only logging configuration.
+- Must scope routine suppression of third-party runtime output to the CLI invocation, route multisubs progress to normal stdout, restore Python streams and native file descriptors on every exit path, and discard suppressed output without retaining a log file.
 - Must not print access tokens, environment secrets, full private transcript contents, or sensitive media metadata in routine logs.
 
 ## ASR, PyTorch, and model conventions

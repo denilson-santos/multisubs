@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_cli_helpers import TestParser
 
 from multisubs import cli, transcriber
 from multisubs.asr import (
@@ -103,7 +104,7 @@ def test_missing_faster_whisper_has_actionable_install_hint(monkeypatch):
 def test_cli_resolves_backend_specific_default_model(tmp_path, options, backend, model):
     source = tmp_path / "video.mp4"
     source.write_bytes(b"input")
-    parser = cli.build_parser()
+    parser = TestParser()
     request = cli._build_request(
         parser.parse_args(["-i", str(source), *options]), parser
     )
@@ -317,9 +318,26 @@ def test_parakeet_normalises_nemo_segments_and_words(tmp_path, monkeypatch):
 
     assert state["device"] == "cpu"
     assert state["eval"] is True
-    assert state["transcribe"] == ([str(audio)], {"timestamps": True})
+    assert state["transcribe"] == (
+        [str(audio)],
+        {"timestamps": True, "verbose": False},
+    )
     assert result.language is None
     assert result.segments[0]["words"][1]["word"] == "mundo."
+
+    parakeet.ParakeetAdapter().transcribe(
+        ASRRequest(
+            tmp_path / "video.mp4",
+            None,
+            "transcribe",
+            "nvidia/parakeet-tdt-0.6b-v3",
+            verbose=True,
+        )
+    )
+    assert state["transcribe"] == (
+        [str(audio)],
+        {"timestamps": True, "verbose": True},
+    )
 
 
 def test_parakeet_assigns_boundary_words_to_one_segment():

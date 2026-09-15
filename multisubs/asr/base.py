@@ -59,6 +59,7 @@ class ASRRequest:
     task: str
     model_name: str
     progress: ProgressReporter = None
+    verbose: bool = False
 
 
 @dataclass(frozen=True)

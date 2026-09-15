@@ -1,6 +1,6 @@
 # Add selectable ASR adapters
 
-Status: In review
+Status: Done
 
 Depends on: the current transcription, cue-layout, artifact, and CLI contracts.
 
@@ -105,11 +105,9 @@ Suggested commits:
 2. `feat: add selectable local ASR backends`
 3. `docs: document selectable ASR runtimes`
 
-Draft pull request title: `feat: add selectable ASR backends` against `main`.
-Before opening it, run the complete gate and mark this plan, package, and
-catalog `In review` while retaining the task branch as the delivery reference.
-After an authoritative merge signal, mark them `Done` and replace the branch
-with the merged pull-request link.
+The implementation was delivered as `feat: add selectable ASR backends` in
+[PR #88](https://github.com/denilson-santos/multisubs/pull/88), merged into
+`main` after the complete gate passed.
 
 ## Acceptance criteria
 
