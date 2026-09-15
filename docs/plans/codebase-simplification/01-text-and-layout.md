@@ -1,6 +1,6 @@
 # Simplify text, measurement, wrapping, and layout
 
-Status: In review
+Status: Done
 
 Depends on: [Plan 0](00-configuration-and-requests.md).
 
@@ -52,7 +52,7 @@ Run:
 
 ## Delivery
 
-Included on the shared branch: `refactor/simplify-codebase`.
+Merged in [PR #85](https://github.com/denilson-santos/multisubs/pull/85).
 Suggested commits: `test: characterize text and layout boundaries`, then
 `refactor: simplify text and layout stages`; these are commits within the shared
 refactor, not a separate pull request.

@@ -1,6 +1,6 @@
 # Codebase simplification roadmap
 
-Status: In review
+Status: Done
 
 ## Objective and scope
 
@@ -19,14 +19,13 @@ not reasons to compress readable code or delete coverage mechanically.
 
 | Order | Plan | Status | Depends on | Delivery |
 | --- | --- | --- | --- | --- |
-| 0 | [Configuration and request assembly](00-configuration-and-requests.md) | In review | Current public contracts | `refactor/simplify-codebase` |
-| 1 | [Text, measurement, and layout](01-text-and-layout.md) | In review | Plan 0 | `refactor/simplify-codebase` |
-| 2 | [ASS and animation rendering](02-ass-and-animation-rendering.md) | In review | Plan 1 | `refactor/simplify-codebase` |
-| 3 | [Transcription, preview, and media orchestration](03-pipeline-orchestration.md) | In review | Plans 0–2 | `refactor/simplify-codebase` |
-| 4 | [Test and documentation consolidation](04-tests-and-documentation.md) | In review | Plans 0–3 | `refactor/simplify-codebase` |
+| 0 | [Configuration and request assembly](00-configuration-and-requests.md) | Done | Current public contracts | [PR #85](https://github.com/denilson-santos/multisubs/pull/85) |
+| 1 | [Text, measurement, and layout](01-text-and-layout.md) | Done | Plan 0 | [PR #85](https://github.com/denilson-santos/multisubs/pull/85) |
+| 2 | [ASS and animation rendering](02-ass-and-animation-rendering.md) | Done | Plan 1 | [PR #85](https://github.com/denilson-santos/multisubs/pull/85) |
+| 3 | [Transcription, preview, and media orchestration](03-pipeline-orchestration.md) | Done | Plans 0–2 | [PR #85](https://github.com/denilson-santos/multisubs/pull/85) |
+| 4 | [Test and documentation consolidation](04-tests-and-documentation.md) | Done | Plans 0–3 | [PR #85](https://github.com/denilson-santos/multisubs/pull/85) |
 
-Progress: 0/5 plans complete. Plans 0–4 are implemented and verified locally;
-the complete branch is ready for pull-request review.
+Progress: 5/5 plans complete. Plans 0–4 were merged in [PR #85](https://github.com/denilson-santos/multisubs/pull/85).
 
 ## Accepted constraints
 
@@ -47,14 +46,8 @@ the complete branch is ready for pull-request review.
 
 ## Delivery order and strategy
 
-Plans `0 -> 1 -> 2 -> 3 -> 4` were implemented as focused slices on
-`refactor/simplify-codebase`. The branch is prepared for one draft pull request
-against `main`. Keep behavior and focused tests together; structural commits
-remain importable and testable.
-
-The first suggested branch is `refactor/simplify-codebase`; later branch names
-are specified in their plans. Git staging, commits, pushes, and pull-request
-changes still require the explicit delivery confirmation in `AGENTS.md`.
+Plans `0 -> 1 -> 2 -> 3 -> 4` were implemented as focused slices and merged
+together in one pull request, as recorded in the plan table.
 
 ## Shared definition of done
 

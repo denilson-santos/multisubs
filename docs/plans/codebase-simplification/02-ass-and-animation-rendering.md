@@ -1,6 +1,6 @@
 # Simplify ASS and animation rendering
 
-Status: In review
+Status: Done
 
 Depends on: [Plan 1](01-text-and-layout.md).
 
@@ -53,7 +53,7 @@ Run:
 
 ## Delivery
 
-Included on the shared branch: `refactor/simplify-codebase`.
+Merged in [PR #85](https://github.com/denilson-santos/multisubs/pull/85).
 Suggested commits: `test: characterize ASS rendering modes`, then
 `refactor: separate ASS compilation from serialization`; these are commits
 within the shared refactor, not a separate pull request.

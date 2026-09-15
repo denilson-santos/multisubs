@@ -1,6 +1,6 @@
 # Simplify configuration and request assembly
 
-Status: In review
+Status: Done
 
 Depends on: the current CLI, template, and configuration contracts in
 `origin/main` at `6b64077`.
@@ -67,19 +67,14 @@ Run:
 
 ## Commit and pull-request plan
 
-Suggested branch: `refactor/simplify-codebase`.
+Merged in [PR #85](https://github.com/denilson-santos/multisubs/pull/85):
+`refactor: simplify codebase, tests, and documentation`.
 
 Suggested commits:
 
 1. `test: characterize configuration and request contracts`
 2. `refactor: simplify request and configuration assembly`
 3. `refactor: clarify template loading boundaries`
-
-Draft PR title: `refactor: simplify codebase, tests, and documentation`.
-This plan, package, and catalog are `In review`, with the task branch retained
-as the delivery reference. Run the repository gate and push the complete branch
-before opening the PR.
-After confirmed merge, mark Plan 0 `Done` and point delivery to the merged PR.
 
 ## Acceptance criteria
 
