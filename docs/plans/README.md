@@ -17,7 +17,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Subtitle preview | Done | 2/2 | Complete | [Open dashboard](subtitle-preview/README.md) |
 | Multilingual subtitle correctness | Done | 6/6 | Complete | [Open dashboard](multilingual-subtitles/README.md) |
 | Codebase simplification | Done | 5/5 | Complete | [Open dashboard](codebase-simplification/README.md) |
-| Selectable ASR backends | In review | 0/1 | Plan 0 — ASR adapter layer | [Open dashboard](asr-backends/README.md) |
+| Selectable ASR backends | Done | 1/1 | Complete | [Open dashboard](asr-backends/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 
