@@ -1231,7 +1231,7 @@ def _build_request(
 
 def _validate_preview_options(
     args: SimpleNamespace,
-    parser: typer.Context,
+    parser: _ValidationContext,
     preview_mode_requested: bool,
 ) -> None:
     """Reject preview-only options and artifact conflicts before file access."""
@@ -1259,7 +1259,7 @@ def _validate_preview_options(
 
 def _resolve_request_config(
     args: SimpleNamespace,
-    parser: typer.Context,
+    parser: _ValidationContext,
 ) -> tuple[ResolvedSubtitleTemplate, SubtitleConfig]:
     """Resolve template and explicit overrides into one typed configuration."""
     appearance_values = _defined_values(
@@ -1340,7 +1340,7 @@ def _animation_values(args: SimpleNamespace) -> dict[str, object]:
 def _validate_normal_request(
     args: SimpleNamespace,
     subtitle_config: SubtitleConfig,
-    parser: typer.Context,
+    parser: _ValidationContext,
 ) -> tuple[str | None, str, str]:
     """Validate and resolve the selected ASR, model, task, and language."""
     _validate_animation_request(
@@ -1359,7 +1359,7 @@ def _validate_normal_request(
 
 def _resolve_request_paths(
     args: SimpleNamespace,
-    parser: typer.Context,
+    parser: _ValidationContext,
 ) -> tuple[Path, Path]:
     """Resolve and validate user paths without creating output directories."""
     input_path = Path(args.input_path).expanduser().resolve(strict=False)
@@ -1410,7 +1410,7 @@ def _validate_animation_request(
     subtitle_config: SubtitleConfig,
     *,
     task: str,
-    parser: typer.Context,
+    parser: _ValidationContext,
 ) -> None:
     needs_word_timing = (
         subtitle_config.animation.word.text.enabled
