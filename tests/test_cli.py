@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -35,6 +36,10 @@ GEOMETRY = VideoGeometry(
     display_aspect_ratio=Fraction(16, 9),
     duration_seconds=10.0,
 )
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
 
 
 def _request(
@@ -78,7 +83,7 @@ def test_missing_input_is_typer_error(tmp_path: Path):
 
 def test_help_and_version_exit_without_input(capsys):
     assert cli.main(["--help"]) == 0
-    assert "--input-path" in capsys.readouterr().out
+    assert "--input-path" in _strip_ansi(capsys.readouterr().out)
 
     assert cli.main(["--version"]) == 0
     assert "multisubs " in capsys.readouterr().out
@@ -88,7 +93,7 @@ def test_help_uses_rich_rendering():
     result = CliRunner().invoke(cli.app, ["--help"], color=True)
 
     assert result.exit_code == 0
-    assert "╭─ Options" in result.output
+    assert "╭─ Options" in _strip_ansi(result.output)
 
 
 def test_verbose_controls_progress_and_backend_logs(tmp_path, monkeypatch, capfd):

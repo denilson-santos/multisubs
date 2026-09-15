@@ -11,9 +11,10 @@ from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_st
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Annotated, TextIO, cast
+from typing import Annotated, Protocol, TextIO, cast
 
 import typer
+from typer import _click as typer_click
 from typer.main import get_command
 
 from . import __version__
@@ -81,6 +82,14 @@ from .utils import (
 
 LOGGER = logging.getLogger(__name__)
 ProgressReporter = Callable[[str], None]
+
+
+class _ValidationContext(Protocol):
+    """Minimal context contract needed while validating a request."""
+
+    def fail(self, message: str) -> None:
+        """Abort request validation with a user-facing error."""
+
 
 _DETAIL_PROGRESS_PREFIXES = (
     "Resolved subtitle animations:",
@@ -1169,7 +1178,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             standalone_mode=False,
         )
         return 0 if result is None else result
-    except typer._click.ClickException as exc:
+    except typer_click.ClickException as exc:
         exc.show(file=sys.stderr)
         raise SystemExit(exc.exit_code) from exc
     except MultisubsError as exc:
@@ -1181,7 +1190,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _build_request(
-    args: SimpleNamespace, parser: typer.Context
+    args: SimpleNamespace, parser: _ValidationContext
 ) -> RunRequest | PreviewRequest:
     preview_mode_requested = args.preview_layout or args.preview_animation
     _validate_preview_options(args, parser, preview_mode_requested)

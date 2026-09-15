@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from typer import _click as typer_click
 from typer.main import get_command
 from typer.testing import CliRunner
 
@@ -14,14 +15,14 @@ class TestParser:
     def parse_args(self, argv: list[str]) -> SimpleNamespace:
         try:
             self.context = get_command(cli.app).make_context("multisubs", argv)
-        except cli.typer._click.ClickException as exc:
+        except typer_click.ClickException as exc:
             raise SystemExit(exc.exit_code) from exc
         return SimpleNamespace(**self.context.params)
 
     def fail(self, message: str) -> None:
         try:
             self.context.fail(message)
-        except cli.typer._click.ClickException as exc:
+        except typer_click.ClickException as exc:
             exc.show()
             raise SystemExit(exc.exit_code) from exc
 
