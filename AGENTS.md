@@ -2,7 +2,10 @@
 
 ## Project purpose
 
-multisubs is a Python 3.10–3.13 CLI for transcribing a local video with WhisperX, producing JSON/SRT/ASS subtitle assets, and rendering hard subtitles into a copied video with FFmpeg.
+multisubs is a Python 3.10–3.13 CLI for transcribing a local video with a
+selectable local ASR backend, producing JSON/SRT/ASS subtitle assets, and
+rendering hard subtitles into a copied video with FFmpeg. WhisperX is the
+default; Faster-Whisper, Parakeet, and Qwen3-ASR are optional.
 
 Read the relevant project documentation before changing behavior:
 
@@ -17,7 +20,8 @@ Read the relevant project documentation before changing behavior:
 | Path | Responsibility |
 | --- | --- |
 | multisubs/cli.py | Argument parsing, user-facing validation, output-directory selection, and artifact cleanup. |
-| multisubs/transcriber.py | WhisperX loading, transcription, word alignment, subtitle-cue construction, and JSON/SRT/ASS generation. |
+| multisubs/asr/ | ASR capability catalog, lazy backend adapters, and normalized language/text/segment/timestamp results. |
+| multisubs/transcriber.py | ASR selection, subtitle-cue construction, and JSON/SRT/ASS generation. |
 | multisubs/ass.py | ASS header, style, timestamp, dialogue escaping, and serialization. |
 | multisubs/animation.py | Cue- and word-relative phase normalization and animation-state sampling. |
 | multisubs/render_capabilities.py | Content-aware shaping and bidirectional safety decisions for production and preview word effects. |
@@ -43,12 +47,12 @@ Read the relevant project documentation before changing behavior:
 
 ## Setup and verification
 
-Install in an isolated environment:
+Install the default WhisperX runtime in an isolated environment:
 
 ~~~
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install -e '.[whisperx]'
 ~~~
 
 Install development checks with `python -m pip install -e '.[dev]'`.
@@ -66,7 +70,10 @@ Run the hermetic suite with `python -m pytest`. Do not run a full transcription 
 
 - Follow [docs/conventions.md](docs/conventions.md) for Python style, dependency changes, external-tool boundaries, error handling, test design, privacy, and release work.
 - Preserve the public CLI flags and their defaults unless a breaking change is explicitly intended. Check the [README command reference](README.md#command-reference) and the functional requirements in [docs/prd.md](docs/prd.md#functional-requirements) first.
-- Keep translation restrictions aligned with Whisper capabilities: turbo and models ending in .en cannot translate, and translation output is English. This is a product constraint in [docs/prd.md](docs/prd.md#functional-requirements) and a pipeline constraint in [docs/architecture.md](docs/architecture.md#design-constraints).
+- Keep translation restrictions aligned with backend capabilities: only
+  WhisperX and Faster-Whisper translate, Turbo and `.en` models cannot, and
+  output is English. See [docs/prd.md](docs/prd.md#functional-requirements) and
+  [docs/architecture.md](docs/architecture.md#design-constraints).
 - Preserve collision-safe output behavior through get_unique_path and get_unique_dir_path. Do not silently overwrite user media or subtitle files. See [output layouts](docs/architecture.md#output-layouts) and FR-12 in [docs/prd.md](docs/prd.md#functional-requirements).
 - Keep the --keep-transcriptions lifecycle consistent: retained runs keep JSON/SRT/ASS under a subtitles directory; non-retained successful runs remove the transient JSON, SRT, and ASS files. Consult [generated files](README.md#generated-files) and [output layouts](docs/architecture.md#output-layouts).
 - When adding or changing an appearance or layout value, update its semantic
@@ -163,4 +170,11 @@ Documentation is part of the definition of done for behavior changes. Use this m
 
 ## External dependencies
 
-WhisperX depends on PyTorch and can use CUDA when available. FFmpeg and ffprobe must be installed as system executables, and FFmpeg's subtitles filter needs appropriate ASS/libass support. Treat these integrations as runtime dependencies even though only their Python packages appear in pyproject.toml. See [external boundaries](docs/architecture.md#external-boundaries) for ownership and behavior, [README requirements](README.md#requirements) for the user-facing prerequisites, and [the dependency conventions](docs/conventions.md#supported-environment-and-dependencies) before changing them.
+ASR backends depend on PyTorch or CTranslate2 and may use CUDA when available;
+all backends are optional extras while WhisperX remains the default selection.
+FFmpeg and ffprobe must be installed
+as system executables, and FFmpeg's subtitles filter needs ASS/libass support.
+See [external boundaries](docs/architecture.md#external-boundaries),
+[README requirements](README.md#requirements), and
+[dependency conventions](docs/conventions.md#supported-environment-and-dependencies)
+before changing them.

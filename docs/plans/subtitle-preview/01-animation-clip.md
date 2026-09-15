@@ -1,6 +1,6 @@
 # Animated preview clip with simulated word timing
 
-Status: In review
+Status: Done
 
 Depends on:
 
@@ -8,8 +8,8 @@ Depends on:
 - [Independent animations](../subtitle-templates/03-cue-animations-and-animated-templates.md).
 - [Unified vector box](../subtitle-backdrops/00-unified-vector-box.md).
 
-Active branch: `feat/animation-preview-clip`, based on updated `origin/main`
-after PR 68.
+Merged in [PR #69](https://github.com/denilson-santos/multisubs/pull/69), based
+on `main` after PR #68.
 
 ## Objective and scope
 
@@ -175,14 +175,13 @@ exception. Update architecture request flow, timeline ownership, output lifecycl
 and FFmpeg boundary; conventions must distinguish simulated demonstrations from
 real alignment without weakening normal fallback rules.
 
-Branch: `feat/animation-preview-clip`, from updated main after Plan 0 merges.
 Suggested commits: `feat: add deterministic animation preview timelines`,
 `feat: render silent animation preview clips`, and
 `docs: document animated subtitle previews` (each behavior commit includes tests).
-Draft PR title: `feat: add animation preview clips with simulated word timing`.
+Merged PR title: `feat: add animation preview clips with simulated word timing`.
 Link this plan and report interfaces, exclusions, evidence, actual checks,
 encoder compatibility and simulation limitations. Follow the
-[dashboard delivery lifecycle](README.md); no merge/release is implied.
+[dashboard delivery lifecycle](README.md); no release is implied.
 
 Main risks are confusing simulated timing with speech sync, differing Unicode
 unit mapping, heavy effect expansion, and encoder/player compatibility for odd

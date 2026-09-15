@@ -32,11 +32,16 @@ GEOMETRY = VideoGeometry(
 )
 
 
-def _request(input_path: Path, output_dir: Path, keep: bool = False) -> RunRequest:
+def _request(
+    input_path: Path,
+    output_dir: Path,
+    keep: bool = False,
+    language: str | None = "pt",
+) -> RunRequest:
     return RunRequest(
         input_path=input_path,
         output_dir=output_dir,
-        language="pt",
+        language=language,
         task="transcribe",
         model_name="turbo",
         subtitle_config=validate_subtitle_config(None),
@@ -535,6 +540,21 @@ def test_default_publication_keeps_video_only(tmp_path: Path):
     assert not (output_dir / "video-pt.ass").exists()
 
 
+def test_default_publication_omits_unknown_language_suffix(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    output_dir = tmp_path / "output"
+    artifacts = _artifacts(tmp_path, input_path)
+
+    result = cli._publish_default_artifacts(
+        artifacts,
+        _request(input_path, output_dir, language=None),
+    )
+
+    assert result == output_dir / "video.mp4"
+    assert result.read_bytes() == b"video"
+
+
 def test_default_publication_suffixes_dangling_video_links(
     tmp_path: Path,
 ):
@@ -581,7 +601,10 @@ def test_run_request_cleans_private_work_dir_after_default_success(
     output_dir = tmp_path / "output"
     request = _request(input_path, output_dir)
 
-    def fake_transcription(source, language, task, model_name, *, progress):
+    def fake_transcription(
+        source, language, task, model_name, *, asr_backend, progress
+    ):
+        assert asr_backend == "whisperx"
         return TranscriptDocument(
             source_path=Path(source),
             language=language,

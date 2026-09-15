@@ -1,6 +1,6 @@
 # Consolidate tests and documentation
 
-Status: In review
+Status: Done
 
 Depends on: [Plans 0–3](README.md#plans-and-progress).
 
@@ -90,7 +90,7 @@ git diff --check
 
 ## Delivery
 
-Included on the shared branch: `refactor/simplify-codebase`.
+Merged in [PR #85](https://github.com/denilson-santos/multisubs/pull/85).
 Suggested commits: `test: consolidate behavior-focused coverage` and
 `docs: remove duplicated project guidance`; these are commits within the
 shared refactor, not a separate pull request.

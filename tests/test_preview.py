@@ -904,9 +904,7 @@ def test_preview_one_line_box_uses_one_shared_surface(tmp_path: Path):
     assert sum(line.startswith("Dialogue: 2,") for line in dialogue) == 1
 
 
-def test_preview_run_branches_before_whisper_runtime_import(
-    tmp_path: Path, monkeypatch
-):
+def test_preview_run_branches_before_asr_runtime_import(tmp_path: Path, monkeypatch):
     input_path = tmp_path / "video.mp4"
     output_dir = tmp_path / "output"
     input_path.write_bytes(b"input")
@@ -935,7 +933,15 @@ def test_preview_run_branches_before_whisper_runtime_import(
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ):
-        if name.split(".", 1)[0] in {"torch", "whisperx", "torchaudio", "torchvision"}:
+        if name.split(".", 1)[0] in {
+            "torch",
+            "whisperx",
+            "faster_whisper",
+            "nemo",
+            "qwen_asr",
+            "torchaudio",
+            "torchvision",
+        }:
             raise AssertionError(f"preview imported runtime dependency {name}")
         return original_import(name, globals, locals, fromlist, level)
 
@@ -946,7 +952,7 @@ def test_preview_run_branches_before_whisper_runtime_import(
     assert not list(output_dir.glob(".multisubs-*"))
 
 
-def test_animation_preview_branches_before_whisper_runtime_import(
+def test_animation_preview_branches_before_asr_runtime_import(
     tmp_path: Path, monkeypatch
 ):
     input_path = tmp_path / "video.mp4"
@@ -988,7 +994,15 @@ def test_animation_preview_branches_before_whisper_runtime_import(
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ):
-        if name.split(".", 1)[0] in {"torch", "whisperx", "torchaudio", "torchvision"}:
+        if name.split(".", 1)[0] in {
+            "torch",
+            "whisperx",
+            "faster_whisper",
+            "nemo",
+            "qwen_asr",
+            "torchaudio",
+            "torchvision",
+        }:
             raise AssertionError(f"preview imported runtime dependency {name}")
         return original_import(name, globals, locals, fromlist, level)
 

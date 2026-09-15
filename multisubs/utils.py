@@ -12,6 +12,11 @@ from pathlib import Path
 from .errors import ArtifactError
 
 
+def with_language_suffix(stem: str, language: str | None) -> str:
+    """Append a known source-language code to an artifact stem."""
+    return f"{stem}-{language}" if language else stem
+
+
 def get_unique_path(path: str | os.PathLike[str]) -> str:
     """Return a non-existing filename by appending `` (n)`` when needed."""
     candidate = Path(path)

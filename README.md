@@ -10,61 +10,136 @@
 
 </div>
 
-multisubs turns a local video into a new video with hard subtitles. It uses
-[WhisperX](https://github.com/m-bain/whisperX) for transcription and word-level
-alignment, creates JSON, SRT, and ASS assets, and renders the final result with
-FFmpeg.
+multisubs turns a local video into a new video with hard subtitles. It supports
+WhisperX, Faster-Whisper, NVIDIA Parakeet, and Qwen3-ASR, creates JSON, SRT, and
+ASS assets, and renders the final result with FFmpeg. WhisperX is the default.
 
 Your media stays on your machine. A network connection is needed only when
-WhisperX must download model assets that are not already cached.
+the selected ASR must download model assets that are not already cached.
 
 ## ✨ Highlights
 
 | Feature | What it gives you |
 | --- | --- |
-| 🗣️ Transcription and translation | Word-aligned transcription in supported languages, or translation to English. |
+| 🗣️ Selectable local ASR | Choose WhisperX, Faster-Whisper, Parakeet, or Qwen3-ASR; Whisper backends can also translate to English. |
 | 🧩 Ready-made templates | Sixteen built-in presentations for Reels, TikTok, Shorts, podcasts, tutorials, and editorial clips. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
 | 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
 | 🎯 Precise placement | Nine semantic positions, relative units, margins, safe envelopes, and exact PlayRes coordinates. |
-| 👀 Fast previews | Render one subtitle preview frame without loading WhisperX or transcribing the video. |
+| 👀 Fast previews | Render one subtitle preview frame without loading an ASR runtime or transcribing the video. |
 | ✨ Subtitle animation | Independent entrance, emphasis, and exit phases for complete cues and aligned words. |
 | 🧠 Adaptive wrapping | Coverage-aware font metrics keep measured advances aligned with the rendered subtitle face. |
 | 🛡️ Safe outputs | Collision-safe names and temporary rendering prevent existing or partial files from being overwritten. |
 
 ## 📋 Requirements
 
-- Python 3.10 through 3.13. WhisperX 3.8.6 does not support Python 3.14.
+- Python 3.10 through 3.13. The optional WhisperX 3.8.6 runtime does not
+  support Python 3.14.
 - FFmpeg and ffprobe available on `PATH`.
 - An FFmpeg build with the `subtitles` filter and libass support; animated
   previews additionally require the `libx264` H.264 encoder.
-- Enough CPU or GPU memory for the selected Whisper model.
+- Enough CPU or GPU memory for the selected ASR model. Parakeet is optimized
+  for NVIDIA GPUs; Qwen3-ASR also loads a separate 0.6B forced aligner when the
+  source language supports word timestamps.
 - The Python package installs `fontTools` for bounded Unicode cmap checks,
   `uniseg` 0.10.1 for pinned Unicode boundary data, SudachiPy/SudachiDict-small
   for Japanese grouping, and jieba for Chinese grouping. Their dictionaries
   are installed with the package dependencies; no font or dictionary is
   downloaded while multisubs runs.
 
-CUDA with float16 is selected automatically when PyTorch reports an available
-GPU. CPU runs use int8 inference and can take substantially longer.
+CUDA is selected automatically when the chosen runtime reports an available
+GPU. WhisperX and Faster-Whisper use float16 on CUDA and int8 on CPU; Parakeet
+and Qwen3-ASR move their models to CUDA or CPU through PyTorch.
 
 ## 📦 Installation
 
-Create an isolated environment and install the project:
+Create an isolated environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
+```
+
+Then choose one of the installation paths below. WhisperX is selected when
+`--asr` is omitted, but its runtime is optional. For the CLI and previews
+without transcription dependencies, install only the core package:
+
+```bash
 python -m pip install -e .
 ```
 
-Install development tools with:
+For development, add `dev` to the selected installation extra. For example,
+use `.[dev,whisperx]` instead of `.[whisperx]`. Use `.[dev]` when no ASR is
+needed.
+
+### CPU-only ASR installation
+
+Faster-Whisper runs on CPU without PyTorch:
 
 ```bash
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[faster-whisper]'
 ```
+
+For Parakeet or Qwen, select the CPU PyTorch wheel before installing the ASR:
+
+```bash
+python -m pip install \
+  --index-url https://download.pytorch.org/whl/cpu \
+  --extra-index-url https://pypi.org/simple \
+  torch==2.8.0
+python -m pip install -e '.[parakeet]'  # or .[qwen]
+```
+
+WhisperX additionally requires the matching CPU audio and vision wheels:
+
+```bash
+python -m pip install \
+  --index-url https://download.pytorch.org/whl/cpu \
+  --extra-index-url https://pypi.org/simple \
+  torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+python -m pip install -e '.[whisperx]'
+```
+
+To install every ASR for CPU use, install the complete CPU PyTorch set above,
+then run `python -m pip install -e '.[asr-all]'`.
+
+### NVIDIA CUDA ASR installation
+
+An NVIDIA driver compatible with the selected CUDA runtime must already be
+installed. For WhisperX, Parakeet, or Qwen3-ASR, install the PyTorch 2.8 CUDA
+12.8 wheel before the corresponding multisubs extra:
+
+```bash
+# Parakeet or Qwen3-ASR
+python -m pip install \
+  --index-url https://download.pytorch.org/whl/cu128 \
+  torch==2.8.0
+python -m pip install -e '.[parakeet]'  # or .[qwen]
+
+# WhisperX needs the complete matching PyTorch set
+python -m pip install \
+  --index-url https://download.pytorch.org/whl/cu128 \
+  torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+python -m pip install -e '.[whisperx]'
+```
+
+Faster-Whisper uses CTranslate2 rather than PyTorch. GPU execution requires an
+NVIDIA driver plus the CUDA 12 cuBLAS (`libcublas.so.12`) and cuDNN 9
+(`libcudnn.so.9`) system libraries. Install them with your operating system's
+package manager by following the official [CUDA installation
+guide](https://developer.nvidia.com/cuda-downloads) and [cuDNN installation
+guide](https://docs.nvidia.com/deeplearning/cudnn/installation/latest/linux.html),
+then install the backend:
+
+```bash
+python -m pip install -e '.[faster-whisper]'
+```
+
+Libraries installed in standard system locations do not require
+`LD_LIBRARY_PATH`. multisubs selects CUDA automatically when the selected
+runtime reports an available GPU.
 
 Confirm that the required commands are available:
 
@@ -74,9 +149,9 @@ ffprobe -version
 multisubs --help
 ```
 
-The first run may download Whisper, voice-activity detection, and alignment
-models. Temporary connection failures during those downloads are retried up to
-three times.
+The first run may download the selected ASR, voice-activity detection, or
+alignment models. Temporary connection failures during those downloads are
+retried up to three times. Model caches remain managed by the selected runtime.
 
 ## 🚀 Quick start
 
@@ -101,6 +176,27 @@ cannot be disabled in a player. Available audio streams are copied to the new
 video.
 
 ## 🧰 Common recipes
+
+### Choose an ASR backend
+
+Omitting `--asr` keeps the established WhisperX `turbo` behavior. Each backend
+has its own default model:
+
+```bash
+multisubs -i ./video.mp4 -l pt --asr faster-whisper
+multisubs -i ./video.mp4 --asr parakeet
+multisubs -i ./video.mp4 -l pt --asr qwen
+```
+
+| ASR | Default model | Task and timing notes |
+| --- | --- | --- |
+| `whisperx` | `turbo` | Transcription with WhisperX alignment; English translation requires a multilingual non-Turbo model. |
+| `faster-whisper` | `turbo` | Native word timestamps; the same translation restriction as WhisperX. |
+| `parakeet` | `nvidia/parakeet-tdt-0.6b-v3` | Automatic multilingual transcription and native timestamps; optional `--lang` labels artifact metadata because NeMo does not expose the detected code. |
+| `qwen` | `Qwen/Qwen3-ASR-1.7B` | Multilingual transcription; an explicit aligner-supported `--lang` enables word timestamps, otherwise timing is coarse. |
+
+Use `--model` to select another model listed in the command reference. The
+backend runtime is imported only after validation and only when selected.
 
 ### Choose a built-in subtitle template
 
@@ -195,12 +291,14 @@ complete data contract.
 
 ### Translate speech to English
 
-Translation requires a multilingual, non-Turbo Whisper model:
+Translation requires WhisperX or Faster-Whisper with a multilingual, non-Turbo
+Whisper model:
 
 ```bash
 multisubs \
   -i ./interview.mp4 \
   -l pt \
+  --asr whisperx \
   --task translate \
   --model medium \
   -o ./output
@@ -211,7 +309,7 @@ cannot be used with `--task translate`.
 
 ### Preview a layout before transcribing
 
-Generate one PNG from a real video frame without loading WhisperX:
+Generate one PNG from a real video frame without loading an ASR runtime:
 
 ```bash
 multisubs -i ./video.mp4 -o ./previews \
@@ -229,7 +327,7 @@ If the sample does not fit, the preview shows only its first fitting cue.
 
 ### Preview subtitle animation
 
-Generate a silent MP4 without loading WhisperX or transcribing speech:
+Generate a silent MP4 without loading an ASR runtime or transcribing speech:
 
 ```bash
 multisubs -i ./video.mp4 -o ./previews \
@@ -396,15 +494,19 @@ Run `multisubs --help` for the parser's complete, authoritative help text.
 | --- | --- | --- |
 | `-i`, `--input-path PATH` | required | Path to one local input video. |
 | `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
-| `-l`, `--lang CODE` | automatic detection | Source-language code with a WhisperX alignment model; an explicit code overrides detection. English-only `.en` models use `en`. |
+| `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
+| `-l`, `--lang CODE` | automatic when exposed | Source-language code supported by the selected ASR. For Parakeet it labels metadata but does not condition transcription; English-only Whisper models use `en`. |
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
-| `-m`, `--model MODEL` | `turbo` | Whisper model used for processing. |
+| `-m`, `--model MODEL` | backend default | Model used by the selected ASR. |
 | `-k`, `--keep-transcriptions` | off | Keep JSON, SRT, and ASS in a `subtitles` directory. |
 | `-v`, `--version` | — | Print the package version. |
-| `-h`, `--help` | — | Show CLI help and supported language codes. |
+| `-h`, `--help` | — | Show CLI help and backend-dependent support guidance. |
 
-Supported models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
-`medium.en`, `medium`, `large`, and `turbo`.
+WhisperX models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
+`medium.en`, `medium`, `large`, and `turbo`. Faster-Whisper accepts the same
+small models plus `large-v1`, `large-v2`, `large-v3`, and `large-v3-turbo`.
+Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
+`Qwen/Qwen3-ASR-1.7B`.
 
 ### Preview and animation
 
@@ -547,27 +649,36 @@ beside rendered `display_text`.
 
 ## 🌍 Supported languages
 
-Omit `--lang` to let WhisperX detect the source language from the beginning of
-the audio. Use an explicit code such as `--lang pt`, `--lang ja`, or `--lang zh`
-to fix the source language, including when automatic detection is incorrect.
-Detection selects one language for the run; it does not switch languages within
-a multilingual video. Short or ambiguous audio can produce an incorrect result.
-The detected code is reported during processing.
+Omit `--lang` to use automatic multilingual transcription. WhisperX,
+Faster-Whisper, and Qwen3-ASR expose the detected source-language code.
+Parakeet recognizes the language internally but its normal NeMo result does not
+expose that code, so `metadata.language` is `null` and artifact names omit the
+language suffix. An explicit Parakeet `--lang` labels the artifacts; it does not
+condition the model.
 
 Models ending in `.en` always use English and reject an explicit non-English
 `--lang`. Translation still produces English, regardless of the selected or
 detected source language, and requires a multilingual non-Turbo model.
-If detection returns an unsupported language or no language, processing stops
-with guidance before loading the alignment model.
+If a backend expected to expose detection returns an unsupported language or no
+language, processing stops with guidance before unavailable alignment or
+artifact generation.
 
-Source languages are limited to those with a default word-alignment model in
-the installed WhisperX release:
+WhisperX source languages are limited to those with a default alignment model:
 
 ```text
 ar, ca, cs, da, de, el, en, es, eu, fa, fi, fr, gl, he, hi, hr, hu, id,
 it, ja, ka, ko, lv, ml, nl, nn, no, pl, pt, ro, ru, sk, sl, sv, te, tl,
 tr, uk, ur, vi, zh
 ```
+
+Faster-Whisper supports its published Whisper language catalog. Parakeet v3
+supports 25 European languages, including `en`, `es`, and `pt`. Qwen3-ASR
+supports its published 30-language catalog; its forced aligner currently adds
+word timestamps for `zh`, `en`, `yue`, `fr`, `de`, `it`, `ja`, `ko`, `pt`,
+`ru`, and `es` when that code is supplied through `--lang`. Automatic Qwen
+language detection uses coarse timing because a detected language may be
+outside the aligner's smaller catalog. Unsupported explicit combinations fail
+before model loading.
 
 ## 📁 Generated files
 
@@ -596,15 +707,19 @@ Existing paths are never overwritten. multisubs adds suffixes such as `(1)` to
 new files or directories when a name already exists.
 
 Artifact names and JSON `metadata.language` use the resolved source-language
-code, including for translation runs whose subtitle text is English.
+code when available, including for translation runs whose subtitle text is
+English. When no code is available, `metadata.language` is `null` and names use
+the source stem without a language suffix: `video.mp4`, `video.json`,
+`video.srt`, and `video.ass`.
 
 Work happens in a private temporary directory inside the requested output
 directory. Completed artifacts are published only after FFmpeg succeeds. If
 processing fails, transcription artifacts are retained there for diagnosis;
 partial final media is not published.
 
-When `--keep-transcriptions` is enabled, the schema-3 JSON preserves source text
-and WhisperX word records beside display text, geometry, resolved styling,
+When `--keep-transcriptions` is enabled, the schema-3 JSON records the selected
+ASR and model and preserves normalized source word records beside display text,
+geometry, resolved styling,
 animation, template identity, and bounded text-mapping, segmentation, and
 word-effect diagnostics. Word records are not replaced by derived linguistic
 groups; internal paths, font objects, ASS tags, and custom template JSON are

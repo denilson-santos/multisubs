@@ -1,10 +1,9 @@
-"""WhisperX transcription, cue construction, and artifact coordination."""
+"""ASR orchestration, cue construction, and artifact coordination."""
 
 from __future__ import annotations
 
 import json
 import math
-import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -15,6 +14,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from .animation import normalize_cue_animation, normalize_word_animation
+from .asr import (
+    ASRBackend,
+    ASRRequest,
+    create_adapter,
+    parse_backend,
+    resolve_model,
+    validate_request,
+)
 from .ass import (
     _render_strategy_for_segments,
     allocate_active_word_intervals,
@@ -23,11 +30,8 @@ from .ass import (
     resolve_subtitle_palettes,
     write_ass,
 )
-from .config import (
-    MODELS as _MODELS,
-)
-from .config import SUPPORTED_LANGUAGES, validate_subtitle_config
-from .errors import ArtifactError, DependencyError, TranscriptionError, ValidationError
+from .config import validate_subtitle_config
+from .errors import ArtifactError, TranscriptionError, ValidationError
 from .layout import (
     NativeLayoutRegion,
     WrappingMetrics,
@@ -62,7 +66,7 @@ from .text_segmentation import (
     display_units_for_records,
     source_text_for_records,
 )
-from .utils import atomic_write_text, find_unique_stem
+from .utils import atomic_write_text, find_unique_stem, with_language_suffix
 from .wrapping import (
     PAUSE_BREAK_THRESHOLD as _WRAPPING_PAUSE_BREAK_THRESHOLD,
 )
@@ -115,29 +119,6 @@ from .wrapping import (
 
 MAX_CUE_DURATION = 6.0
 PAUSE_BREAK_THRESHOLD = 0.45
-MODEL_LOAD_ATTEMPTS = 3
-MODEL_RETRY_BASE_DELAY_SECONDS = 1.0
-
-_RETRYABLE_MODEL_ERROR_MARKERS = (
-    "connection",
-    "connection reset",
-    "remote end closed",
-    "remote protocol",
-    "server disconnected",
-    "server error",
-    "temporarily unavailable",
-    "timed out",
-    "timeout",
-    "too many requests",
-    "service unavailable",
-    "bad gateway",
-    "gateway timeout",
-    "http 429",
-    "http 500",
-    "http 502",
-    "http 503",
-    "http 504",
-)
 
 ProgressReporter = Callable[[str], None] | None
 _SKIP_JSON_VALUE = object()
@@ -164,17 +145,15 @@ class _MappedWord:
         return self.display_group.record_indexes
 
 
-MODELS = _MODELS
-
-
 def generate_transcriptions(
     input_path: str | Path,
     output_dir: str | Path,
     style_options: SubtitleConfig | None = None,
     lang: str | None = None,
     task: str = "transcribe",
-    model_name: str = "turbo",
+    model_name: str | None = None,
     *,
+    asr_backend: str | ASRBackend = ASRBackend.WHISPERX,
     position: SubtitlePosition | str | None = None,
     position_x: RelativeLength | str | None = None,
     position_y: RelativeLength | str | None = None,
@@ -188,6 +167,9 @@ def generate_transcriptions(
     been validated.
     """
     source_path = _normalise_input_path(input_path)
+    backend = parse_backend(asr_backend)
+    resolved_model = resolve_model(backend, model_name)
+    lang = validate_request(backend, lang, task, resolved_model)
     subtitle_config = validate_subtitle_config(
         style_options,
         position=position,
@@ -207,7 +189,8 @@ def generate_transcriptions(
         source_path,
         lang=lang,
         task=task,
-        model_name=model_name,
+        model_name=resolved_model,
+        asr_backend=backend,
         progress=progress,
     )
     wrapping_metrics = resolve_wrapping_metrics(
@@ -238,122 +221,41 @@ def transcribe_video(
     input_path: str | Path,
     lang: str | None = None,
     task: str = "transcribe",
-    model_name: str = "turbo",
+    model_name: str | None = None,
     *,
+    asr_backend: str | ASRBackend = ASRBackend.WHISPERX,
     progress: ProgressReporter = None,
 ) -> TranscriptDocument:
-    """Transcribe one video and align source-language words when supported."""
+    """Transcribe one video through the selected local ASR adapter."""
     source_path = _normalise_input_path(input_path)
-    if model_name.endswith(".en"):
-        if lang not in (None, "en"):
-            raise ValidationError(
-                f'Model "{model_name}" is English-only; use --lang en or '
-                "choose a multilingual model for another source language."
-            )
-        lang = "en"
-    if lang is not None and lang not in SUPPORTED_LANGUAGES:
-        raise ValidationError(
-            f"Source language '{lang}' has no supported default alignment model. "
-            "Use --help to list supported language codes."
-        )
-
+    backend = parse_backend(asr_backend)
+    resolved_model = resolve_model(backend, model_name)
+    lang = validate_request(backend, lang, task, resolved_model)
     _report(progress, f"Generating transcripts for '{source_path.name}'...")
-    torch, whisperx = _load_runtime_dependencies()
-    device, compute_type = _select_compute_configuration(torch)
-
-    _report(
-        progress,
-        f"Loading WhisperX model '{model_name}' on {device} ({compute_type})...",
+    result = create_adapter(backend).transcribe(
+        ASRRequest(source_path, lang, task, resolved_model, progress)
     )
-    try:
-        model = _load_model_with_retries(
-            lambda: whisperx.load_model(
-                model_name,
-                device,
-                compute_type=compute_type,
-                language=lang or None,
-                task=task,
-            ),
-            operation=f"Loading WhisperX model '{model_name}'",
-            progress=progress,
-        )
-    except Exception as exc:  # WhisperX has no stable public error hierarchy.
-        raise TranscriptionError(
-            f"Could not load WhisperX model '{model_name}' on {device}: {exc}"
-        ) from exc
-
-    _report(progress, "Transcribing audio...")
-    try:
-        audio = whisperx.load_audio(str(source_path))
-        transcription_options: dict[str, object] = {
-            "language": lang,
-            "task": task,
-        }
-        if task == "translate":
-            transcription_options["chunk_size"] = int(MAX_CUE_DURATION)
-        result = model.transcribe(audio, **transcription_options)
-    except Exception as exc:  # Enrich the external boundary with source context.
-        raise TranscriptionError(
-            f"Could not transcribe '{source_path}': {exc}"
-        ) from exc
-
-    result_mapping = _require_mapping(result, "WhisperX transcription result")
-    raw_segments = _require_sequence(
-        result_mapping.get("segments"), "transcription segments"
-    )
-    source_language = _result_language(result_mapping, lang)
-    if source_language not in SUPPORTED_LANGUAGES:
-        raise TranscriptionError(
-            f"Detected source language '{source_language}' has no supported default "
-            "alignment model. Use --help to list supported languages; if detection "
-            "was incorrect, specify the source language with --lang CODE."
-        )
-    if lang is None:
-        _report(progress, f"Detected source language: {source_language}.")
-
-    aligned_segments = raw_segments
-    if task != "translate":
-        _report(progress, "Aligning words for subtitle timing...")
-        try:
-            align_model, align_metadata = _load_model_with_retries(
-                lambda: whisperx.load_align_model(
-                    language_code=source_language,
-                    device=device,
-                ),
-                operation=f"Loading alignment model for '{source_language}'",
-                progress=progress,
-            )
-            aligned_result = whisperx.align(
-                raw_segments,
-                align_model,
-                align_metadata,
-                audio,
-                device,
-                return_char_alignments=False,
-            )
-        except Exception as exc:  # WhisperX errors have no stable hierarchy.
-            raise TranscriptionError(
-                f"Could not align transcript words for '{source_path}': {exc}"
-            ) from exc
-
-        aligned_mapping = _require_mapping(aligned_result, "WhisperX alignment result")
-        aligned_segments = _require_sequence(
-            aligned_mapping.get("segments"), "aligned segments"
+    if lang is None and result.language is not None:
+        _report(progress, f"Detected source language: {result.language}.")
+    elif result.language is None:
+        _report(
+            progress,
+            "The selected ASR did not expose its detected source language; "
+            "language metadata and filename suffixes were omitted.",
         )
     segments = _build_subtitle_segments(
-        aligned_segments,
-        language="en" if task == "translate" else source_language,
+        result.segments,
+        language="en" if task == "translate" else result.language,
     )
     _validate_subtitle_segments(segments)
-
-    full_text = _result_full_text(result_mapping, segments)
     return TranscriptDocument(
         source_path=source_path,
-        language=source_language,
+        language=result.language,
         task=task,
-        model_name=model_name,
-        full_text=full_text,
+        model_name=resolved_model,
+        full_text=result.text,
         segments=tuple(segments),
+        asr_backend=backend.value,
     )
 
 
@@ -423,6 +325,7 @@ def write_transcription_artifacts(
         input_path=document.source_path,
         task=document.task,
         model_name=document.model_name,
+        asr_backend=document.asr_backend,
         subtitle_config=config,
         resolved_subtitle_config=resolved_config,
         geometry=geometry,
@@ -479,162 +382,19 @@ def _validate_effect_task(config: SubtitleConfig, task: str) -> None:
         )
 
 
-def _load_runtime_dependencies() -> tuple[Any, Any]:
-    try:
-        import torch
-    except ImportError as exc:
-        raise DependencyError("PyTorch is required to transcribe video") from exc
-
-    try:
-        import whisperx
-    except ImportError as exc:
-        raise DependencyError("WhisperX is required to transcribe video") from exc
-    return torch, whisperx
-
-
-def _load_model_with_retries(
-    loader: Callable[[], Any],
-    *,
-    operation: str,
-    progress: ProgressReporter,
-    attempts: int = MODEL_LOAD_ATTEMPTS,
-    base_delay_seconds: float = MODEL_RETRY_BASE_DELAY_SECONDS,
-) -> Any:
-    """Retry transient model-download failures before giving up.
-
-    WhisperX may load several assets through Hugging Face and Torch Hub. A
-    connection can close after an asset has been partially cached, so a short
-    exponential backoff often lets a subsequent attempt resume successfully.
-    Deterministic failures are raised immediately and are never retried.
-    """
-    last_error: Exception | None = None
-    for attempt in range(1, attempts + 1):
-        try:
-            return loader()
-        except Exception as exc:  # External model loaders have no shared error type.
-            last_error = exc
-            if attempt >= attempts or not _is_retryable_model_error(exc):
-                raise
-
-            delay = base_delay_seconds * (2 ** (attempt - 1))
-            _report(
-                progress,
-                f"{operation} encountered a temporary connection error; "
-                f"retrying ({attempt + 1}/{attempts}) in {delay:g}s...",
-            )
-            time.sleep(delay)
-
-    # The loop either returns or raises, but retaining this guard keeps the
-    # helper safe if its attempt count is changed to an invalid value later.
-    if last_error is not None:
-        raise last_error
-    raise ValueError("Model load attempts must be greater than zero")
-
-
-def _is_retryable_model_error(error: BaseException) -> bool:
-    """Identify connection-like errors without retrying local configuration errors."""
-    seen: set[int] = set()
-    current: BaseException | None = error
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if isinstance(current, (ConnectionError, TimeoutError)):
-            return True
-
-        exception_name = type(current).__name__.lower()
-        if any(marker in exception_name for marker in ("connection", "timeout")):
-            return True
-
-        message = str(current).lower()
-        if any(marker in message for marker in _RETRYABLE_MODEL_ERROR_MARKERS):
-            return True
-
-        current = current.__cause__ or current.__context__
-    return False
-
-
-def _select_compute_configuration(torch: Any) -> tuple[str, str]:
-    try:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    except Exception as exc:
-        raise DependencyError(
-            f"Could not determine the available compute device: {exc}"
-        ) from exc
-    return (device, "float16" if device == "cuda" else "int8")
-
-
 def _require_mapping(value: object, description: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise TranscriptionError(f"WhisperX returned an invalid {description}")
+        raise TranscriptionError(f"ASR backend returned an invalid {description}")
     return value
-
-
-def _require_sequence(value: object, description: str) -> Sequence[object]:
-    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise TranscriptionError(f"WhisperX returned invalid {description}")
-    return value
-
-
-def _result_language(result: Mapping[str, Any], requested_language: str | None) -> str:
-    if requested_language is not None:
-        return requested_language
-    language = result.get("language")
-    if isinstance(language, str) and language:
-        return language
-    raise TranscriptionError(
-        "WhisperX did not return a detected source language. "
-        "Specify the source language with --lang CODE and retry."
-    )
-
-
-def _result_full_text(
-    result: Mapping[str, Any], segments: Sequence[Mapping[str, Any]]
-) -> str:
-    text = result.get("text")
-    if isinstance(text, str) and text.strip():
-        return _normalise_display_text(text)
-    mapped_segments: list[str] = []
-    seen_maps: set[int] = set()
-    for segment in segments:
-        source_maps = segment.get("_source_maps")
-        if isinstance(source_maps, Sequence) and not isinstance(
-            source_maps, (str, bytes)
-        ):
-            for source_map in source_maps:
-                if not isinstance(source_map, SubtitleSourceMap):
-                    continue
-                map_identity = id(source_map)
-                if map_identity not in seen_maps:
-                    mapped_segments.append(source_map.normalized_text)
-                    seen_maps.add(map_identity)
-            continue
-        source_map = segment.get("_source_map")
-        if isinstance(source_map, SubtitleSourceMap):
-            map_identity = id(source_map)
-            if map_identity not in seen_maps:
-                mapped_segments.append(source_map.normalized_text)
-                seen_maps.add(map_identity)
-            continue
-        segment_text = segment.get("text", "")
-        if isinstance(segment_text, str):
-            mapped_segments.append(segment_text)
-    if mapped_segments:
-        return _normalise_display_text("".join(mapped_segments))
-    return _normalise_display_text(
-        " ".join(
-            str(segment.get("text", ""))
-            for segment in segments
-            if isinstance(segment.get("text", ""), str)
-        )
-    )
 
 
 def _choose_transcription_paths(
     output_dir: Path,
     file_name: str,
-    lang: str,
+    lang: str | None,
 ) -> TranscriptionPaths:
     stem = find_unique_stem(
-        output_dir, f"{file_name}-{lang}", (".json", ".srt", ".ass")
+        output_dir, with_language_suffix(file_name, lang), (".json", ".srt", ".ass")
     )
     return TranscriptionPaths(
         json_path=output_dir / f"{stem}.json",
@@ -765,10 +525,10 @@ def _validate_word_order(
         start = _word_start(word)
         end = _word_end(word)
         if end < start:
-            raise TranscriptionError("WhisperX returned invalid word timestamps")
+            raise TranscriptionError("ASR backend returned invalid word timestamps")
         if previous_start is not None and start < previous_start:
             raise TranscriptionError(
-                "WhisperX returned non-chronological word timestamps"
+                "ASR backend returned non-chronological word timestamps"
             )
         previous_start = start
 
@@ -777,7 +537,7 @@ def _segment_times(segment: Mapping[str, Any]) -> tuple[float, float]:
     start = _finite_time(segment.get("start"))
     end = _finite_time(segment.get("end"))
     if start is None or end is None or end < start:
-        raise TranscriptionError("WhisperX returned invalid segment timestamps")
+        raise TranscriptionError("ASR backend returned invalid segment timestamps")
     return start, end
 
 
@@ -981,14 +741,14 @@ def _word_start(word: Mapping[str, Any] | _MappedWord) -> float:
         word.start if isinstance(word, _MappedWord) else _finite_time(word.get("start"))
     )
     if value is None:
-        raise TranscriptionError("WhisperX returned invalid word timestamps")
+        raise TranscriptionError("ASR backend returned invalid word timestamps")
     return value
 
 
 def _word_end(word: Mapping[str, Any] | _MappedWord) -> float:
     value = word.end if isinstance(word, _MappedWord) else _finite_time(word.get("end"))
     if value is None:
-        raise TranscriptionError("WhisperX returned invalid word timestamps")
+        raise TranscriptionError("ASR backend returned invalid word timestamps")
     return value
 
 
@@ -1030,7 +790,7 @@ def _cue_boundary_priority(
 
 def _require_span_time(value: float | None) -> float:
     if value is None:
-        raise TranscriptionError("WhisperX returned invalid word timestamps")
+        raise TranscriptionError("ASR backend returned invalid word timestamps")
     return value
 
 
@@ -1584,10 +1344,11 @@ def _write_json(
     full_text: str,
     segments: Sequence[Mapping[str, Any]],
     file_name: str,
-    lang: str,
+    lang: str | None,
     input_path: Path,
     task: str,
     model_name: str,
+    asr_backend: str,
     subtitle_config: SubtitleConfig,
     resolved_subtitle_config: SubtitleConfig,
     geometry: VideoGeometry,
@@ -1614,6 +1375,7 @@ def _write_json(
             "original_path": str(input_path),
             "language": lang,
             "task": task,
+            "asr": asr_backend,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "model": model_name,
             "duration": segments[-1]["end"] if segments else 0.0,

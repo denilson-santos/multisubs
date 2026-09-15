@@ -20,7 +20,8 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from multisubs.config import SUPPORTED_LANGUAGES, validate_subtitle_config
+from multisubs.asr import ALL_LANGUAGE_CODES, ASR_CHOICES
+from multisubs.config import validate_subtitle_config
 from multisubs.errors import MultisubsError, ValidationError
 from multisubs.font_catalog import bundled_font_directory
 from multisubs.models import TranscriptDocument, VideoGeometry
@@ -73,11 +74,14 @@ def load_transcript(path: Path) -> tuple[TranscriptDocument, dict[str, Any], str
     metadata = _object(payload.get("metadata"), "metadata")
     transcription = _object(payload.get("transcription"), "transcription")
     language, task = metadata.get("language"), metadata.get("task")
+    asr_backend = metadata.get("asr", "whisperx")
     if (
         not isinstance(language, str)
-        or language not in SUPPORTED_LANGUAGES
+        or language not in ALL_LANGUAGE_CODES
         or not isinstance(task, str)
         or task not in {"transcribe", "translate"}
+        or not isinstance(asr_backend, str)
+        or asr_backend not in ASR_CHOICES
     ):
         raise ValidationError("Replay language or task is unsupported")
     full_text = transcription.get("text")
@@ -127,6 +131,7 @@ def load_transcript(path: Path) -> tuple[TranscriptDocument, dict[str, Any], str
         model_name=str(metadata.get("model", "unknown")),
         full_text=full_text,
         segments=tuple(clean_segments),
+        asr_backend=asr_backend,
     )
     return document, metadata, hashlib.sha256(raw).hexdigest()
 
@@ -236,7 +241,16 @@ def replay(
             "source_sha256": digest,
             "base_sha": _command_version(["git", "rev-parse", "HEAD"]),
             "python": platform.python_version(),
-            "packages": {p: _package_version(p) for p in ("Pillow", "whisperx")},
+            "packages": {
+                package: _package_version(package)
+                for package in (
+                    "Pillow",
+                    "whisperx",
+                    "faster-whisper",
+                    "nemo-toolkit",
+                    "qwen-asr",
+                )
+            },
             "ffmpeg": _command_version(["ffmpeg", "-version"]),
             "template": template,
             "font_override": font,

@@ -1,6 +1,6 @@
 # Simplify pipeline orchestration and artifact ownership
 
-Status: In review
+Status: Done
 
 Depends on: [Plan 0](00-configuration-and-requests.md),
 [Plan 1](01-text-and-layout.md), and
@@ -54,7 +54,7 @@ Run:
 
 ## Delivery
 
-Included on the shared branch: `refactor/simplify-codebase`.
+Merged in [PR #85](https://github.com/denilson-santos/multisubs/pull/85).
 Suggested commits: `test: characterize pipeline ownership`,
 `refactor: separate transcription and artifact stages`, and
 `refactor: simplify preview and media orchestration`; these are commits within

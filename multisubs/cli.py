@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import cast
 
 from . import __version__
+from .asr import (
+    ASR_CHOICES,
+    normalise_language_code,
+    parse_backend,
+    resolve_model,
+    validate_request,
+)
 from .config import (
     BACKDROP_CHOICES,
     CUE_EMPHASIS_ANIMATION_CHOICES,
@@ -45,9 +52,7 @@ from .config import (
     FONT_WEIGHT_ALIASES,
     FONT_WEIGHT_NAMES,
     FONT_WEIGHT_RANKS,
-    MODELS,
     POSITION_CHOICES,
-    SUPPORTED_LANGUAGES,
     TEXT_CASE_CHOICES,
     WORD_ANIMATION_MODE_CHOICES,
     WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
@@ -95,6 +100,7 @@ from .utils import (
     create_work_dir,
     find_unique_stem,
     publish_files,
+    with_language_suffix,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -107,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate and embed subtitles into a local video.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Supported language codes: " + ", ".join(SUPPORTED_LANGUAGES),
+        epilog="ASR language and model support depends on the selected backend.",
         allow_abbrev=False,
     )
     _add_processing_arguments(parser)
@@ -144,14 +150,21 @@ def _add_processing_arguments(parser: argparse.ArgumentParser) -> None:
         help="Directory for generated files (default: current directory).",
     )
     parser.add_argument(
+        "--asr",
+        default="whisperx",
+        choices=ASR_CHOICES,
+        metavar="BACKEND",
+        help="Speech-recognition backend (default: whisperx).",
+    )
+    parser.add_argument(
         "-l",
         "--lang",
         default=None,
-        choices=SUPPORTED_LANGUAGES,
+        type=_language_argument_type,
         metavar="CODE",
         help=(
-            "Source language code (default: automatic detection; .en models use "
-            "English). Translation output is always English."
+            "Source language code (default: automatic detection where the "
+            "selected ASR exposes it)."
         ),
     )
     parser.add_argument(
@@ -165,10 +178,9 @@ def _add_processing_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-m",
         "--model",
-        default="turbo",
-        choices=MODELS,
+        default=None,
         metavar="MODEL",
-        help="Whisper model; translation requires a multilingual non-Turbo model.",
+        help="Model for the selected ASR backend (default: backend-specific).",
     )
     parser.add_argument(
         "-k",
@@ -614,6 +626,13 @@ def _relative_length_argument_type(raw_value: str) -> RelativeLength:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _language_argument_type(raw_value: str) -> str:
+    try:
+        return normalise_language_code(raw_value)
+    except ValidationError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _line_height_argument_type(raw_value: str) -> str | RelativeLength:
     try:
         return parse_line_height(raw_value)
@@ -657,8 +676,12 @@ def _build_request(
     selection, subtitle_config = _resolve_request_config(args, parser)
 
     language = args.lang
+    backend = args.asr
+    model_name = args.model
     if not preview_mode_requested:
-        language = _validate_normal_request(args, subtitle_config, parser)
+        language, backend, model_name = _validate_normal_request(
+            args, subtitle_config, parser
+        )
 
     input_path, output_dir = _resolve_request_paths(args, parser)
     if preview_mode_requested:
@@ -674,9 +697,10 @@ def _build_request(
         output_dir=output_dir,
         language=language,
         task=args.task,
-        model_name=args.model,
+        model_name=model_name,
         subtitle_config=subtitle_config,
         keep_transcriptions=args.keep_transcriptions,
+        asr_backend=backend,
         subtitle_template_requested=args.template,
         subtitle_template_resolved=selection.template.name,
         subtitle_template_source=selection.source,
@@ -794,22 +818,20 @@ def _validate_normal_request(
     args: argparse.Namespace,
     subtitle_config: SubtitleConfig,
     parser: argparse.ArgumentParser,
-) -> str | None:
-    """Validate speech-only combinations and resolve English-only language."""
+) -> tuple[str | None, str, str]:
+    """Validate and resolve the selected ASR, model, task, and language."""
     _validate_animation_request(
         subtitle_config,
         task=args.task,
         parser=parser,
     )
-    _validate_translation_request(args.task, args.model, parser)
-    if not args.model.endswith(".en"):
-        return args.lang
-    if args.lang not in (None, "en"):
-        parser.error(
-            f'Model "{args.model}" is English-only; use --lang en or '
-            "choose a multilingual model for another source language."
-        )
-    return "en"
+    try:
+        backend = parse_backend(args.asr)
+        model_name = resolve_model(backend, args.model)
+        language = validate_request(backend, args.lang, args.task, model_name)
+    except ValidationError as exc:
+        parser.error(str(exc))
+    return language, backend.value, model_name
 
 
 def _resolve_request_paths(
@@ -859,25 +881,6 @@ def _build_preview_request(
             else args.preview_duration
         ),
     )
-
-
-def _validate_translation_request(
-    task: str, model_name: str, parser: argparse.ArgumentParser
-) -> None:
-    if task != "translate":
-        return
-    if model_name == "turbo":
-        parser.error(
-            f'Model "{model_name}" does not support translation. Use a multilingual '
-            'non-Turbo model, such as "medium" or "large". Whisper translations are '
-            "always generated in English."
-        )
-    if model_name.endswith(".en"):
-        parser.error(
-            f'Model "{model_name}" is English-only and cannot translate. Use a '
-            'multilingual non-Turbo model, such as "medium" or "large". Whisper '
-            "translations are always generated in English."
-        )
 
 
 def _validate_animation_request(
@@ -1002,6 +1005,7 @@ def _run_request_with_fonts(
             request.language,
             request.task,
             request.model_name,
+            asr_backend=request.asr_backend,
             progress=progress,
         )
         request = replace(request, language=document.language)
@@ -1042,9 +1046,9 @@ def _run_request_with_fonts(
         transcripts = TranscriptionPaths(
             json_path=Path(json_path), srt_path=Path(srt_path), ass_path=Path(ass_path)
         )
-        video_path = (
-            work_dir
-            / f"{request.input_path.stem}-{request.language}{request.input_path.suffix}"
+        video_path = work_dir / (
+            f"{with_language_suffix(request.input_path.stem, request.language)}"
+            f"{request.input_path.suffix}"
         )
         rendered_path = Path(
             embed_subtitles(
@@ -1219,7 +1223,7 @@ def _publish_run(artifacts: RunArtifacts, request: RunRequest) -> Path:
 
 
 def _publish_default_artifacts(artifacts: RunArtifacts, request: RunRequest) -> Path:
-    stem = f"{request.input_path.stem}-{request.language}"
+    stem = with_language_suffix(request.input_path.stem, request.language)
     suffixes = (request.input_path.suffix,)
     while True:
         candidate = find_unique_stem(request.output_dir, stem, suffixes)

@@ -471,11 +471,12 @@ class TranscriptDocument:
     """Semantic transcription result before artifact serialization."""
 
     source_path: Path
-    language: str
+    language: str | None
     task: str
     model_name: str
     full_text: str
     segments: tuple[Mapping[str, Any], ...]
+    asr_backend: str = "whisperx"
 
 
 @dataclass(frozen=True)
@@ -510,6 +511,7 @@ class RunRequest:
     model_name: str
     subtitle_config: SubtitleConfig
     keep_transcriptions: bool
+    asr_backend: str = "whisperx"
     subtitle_template_requested: str | None = None
     subtitle_template_resolved: str = "default"
     subtitle_template_source: str = "builtin"

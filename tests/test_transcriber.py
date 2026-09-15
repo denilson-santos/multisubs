@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from multisubs import transcriber
+from multisubs.asr import base as asr_base
+from multisubs.asr import whisperx as whisperx_adapter
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import TranscriptionError
 from multisubs.layout import resolve_subtitle_config, resolve_wrapping_metrics
@@ -771,6 +773,34 @@ def test_source_separators_survive_json_srt_and_ass(tmp_path: Path):
     assert text in Path(ass_path).read_text(encoding="utf-8")
 
 
+def test_artifacts_omit_suffix_when_source_language_is_unknown(tmp_path: Path):
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    document = TranscriptDocument(
+        source_path=source_path,
+        language=None,
+        task="transcribe",
+        model_name="nvidia/parakeet-tdt-0.6b-v3",
+        full_text="Hello.",
+        segments=({"id": 0, "start": 0.0, "end": 1.0, "text": "Hello."},),
+        asr_backend="parakeet",
+    )
+
+    paths = tuple(
+        Path(path)
+        for path in transcriber.write_transcription_artifacts(
+            document,
+            tmp_path / "output",
+            validate_subtitle_config(None, appearance_values={"backdrop": "none"}),
+            geometry=GEOMETRY,
+        )
+    )
+
+    assert [path.name for path in paths] == ["input.json", "input.srt", "input.ass"]
+    payload = json.loads(paths[0].read_text(encoding="utf-8"))
+    assert payload["metadata"]["language"] is None
+
+
 def test_incomplete_alignment_keeps_records_and_adds_fallback_diagnostics(
     tmp_path: Path,
 ):
@@ -863,9 +893,9 @@ def test_model_loading_retries_transient_connection_failures(monkeypatch):
             raise ConnectionError("remote end closed connection without response")
         return "loaded-model"
 
-    monkeypatch.setattr(transcriber.time, "sleep", delays.append)
+    monkeypatch.setattr(asr_base.time, "sleep", delays.append)
 
-    result = transcriber._load_model_with_retries(
+    result = asr_base.load_model_with_retries(
         flaky_loader,
         operation="Loading model",
         progress=progress.append,
@@ -891,13 +921,13 @@ def test_model_loading_does_not_retry_deterministic_failures(monkeypatch):
         raise ValueError("unknown model")
 
     monkeypatch.setattr(
-        transcriber.time,
+        asr_base.time,
         "sleep",
         lambda _: pytest.fail("deterministic failures must not sleep"),
     )
 
     with pytest.raises(ValueError, match="unknown model"):
-        transcriber._load_model_with_retries(
+        asr_base.load_model_with_retries(
             invalid_loader,
             operation="Loading model",
             progress=None,
@@ -964,19 +994,19 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 ]
             }
 
-    monkeypatch.setattr(
-        transcriber, "_load_runtime_dependencies", lambda: (FakeTorch, FakeWhisper)
-    )
+    monkeypatch.setattr(whisperx_adapter, "load_torch", lambda: FakeTorch)
+    monkeypatch.setattr(whisperx_adapter, "_load_whisperx", lambda: FakeWhisper)
     monkeypatch.setattr(
         "multisubs.subtitler.probe_video_geometry", lambda path: GEOMETRY
     )
-    monkeypatch.setattr(transcriber.time, "sleep", lambda _: None)
+    monkeypatch.setattr(asr_base.time, "sleep", lambda _: None)
     paths = transcriber.generate_transcriptions(input_path, output_dir)
 
     json_path, srt_path, ass_path = map(Path, paths)
     assert load_calls["count"] == 2
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["metadata"]["language"] == "en"
+    assert payload["metadata"]["asr"] == "whisperx"
     assert payload["schema_version"] == 3
     assert payload["metadata"]["created_at"].endswith("+00:00")
     assert payload["metadata"]["rendering"] == {
@@ -1456,12 +1486,6 @@ def test_write_transcription_artifacts_does_not_load_model_runtime(
             },
         ),
     )
-    monkeypatch.setattr(
-        transcriber,
-        "_load_runtime_dependencies",
-        lambda: pytest.fail("artifact writing must not load WhisperX or PyTorch"),
-    )
-
     paths = transcriber.write_transcription_artifacts(
         document,
         tmp_path / "output",

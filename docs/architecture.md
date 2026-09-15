@@ -2,12 +2,14 @@
 
 ## Overview
 
-multisubs is a small Python package with one CLI entry point. It orchestrates two external capabilities:
+multisubs is a small Python package with one CLI entry point. It orchestrates
+two external capabilities:
 
-- WhisperX and PyTorch for transcription and word-level timing alignment.
+- A lazy local-ASR adapter layer for WhisperX, Faster-Whisper, NVIDIA Parakeet,
+  and Qwen3-ASR. WhisperX is the default.
 - FFmpeg and ffprobe for normalized media geometry and ASS subtitle rendering.
 - A transcription-free preview path that reuses the same ASS and FFmpeg
-  subtitle filter without importing WhisperX or PyTorch. It supports both a
+  subtitle filter without importing an ASR runtime. It supports both a
   static PNG layout frame and a silent frozen-background MP4 whose word times
   are explicitly simulated.
 
@@ -22,8 +24,12 @@ flowchart LR
     custom[custom_templates.py<br/>local JSON directory] --> cli
     cli --> preview[preview.py<br/>sample cue + guides]
     cli --> transcriber[transcriber.py]
-    transcriber --> whisper[WhisperX + PyTorch]
-    whisper --> segmentation[text_segmentation.py<br/>Unicode boundaries + source map]
+    transcriber --> adapter[asr/<br/>selected adapter]
+    adapter --> whisper[WhisperX]
+    adapter --> faster[Faster-Whisper]
+    adapter --> parakeet[Parakeet + NeMo]
+    adapter --> qwen[Qwen3-ASR + forced aligner]
+    adapter --> segmentation[text_segmentation.py<br/>Unicode boundaries + source map]
     segmentation --> cues[Timed subtitle cues]
     cues --> json[JSON]
     cues --> srt[SRT]
@@ -55,12 +61,13 @@ flowchart LR
 | Component | Responsibility | Main interfaces |
 | --- | --- | --- |
 | multisubs/cli.py | Defines the console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | main() |
-| multisubs/transcriber.py | Loads WhisperX, transcribes audio, aligns words, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
+| multisubs/asr/ | Defines backend capabilities and normalizes WhisperX, Faster-Whisper, Parakeet/NeMo, and Qwen3-ASR results into one language/text/segments contract without importing unselected runtimes. | ASRBackend, ASRRequest, ASRResult, create_adapter() |
+| multisubs/transcriber.py | Selects an ASR adapter, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, generates deterministic simulated word timing for animated previews, and generates optional native or explicit ASS guide events. | build_preview_ass(), build_animation_preview_ass(), build_simulated_karaoke_cue(), resolve_preview_timestamp() |
 | multisubs/animation.py | Normalizes cue and aligned-word phases with configured durations inside quantized bounds and samples relative opacity, movement, and scale state without I/O. | normalize_cue_animation(), normalize_word_animation(), animation_boundaries(), word_animation_boundaries(), sample_cue_animation(), sample_word_animation() |
 | multisubs/render_capabilities.py | Classifies actual display text for bidirectional/contextual shaping and selects positioned word fragments or complete logical-line fallback without using a language allowlist. | assess_renderer_capability(), RendererCapability |
 | multisubs/ass.py | Compiles semantic appearance and cue/word animation into trusted private ASS fields and overrides around safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
-| multisubs/subtitler.py | Probes normalized video geometry and invokes FFmpeg to burn ASS into the selected video stream, render one preview PNG, or encode a silent frozen-background animation preview. | probe_video_geometry(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
+| multisubs/subtitler.py | Probes normalized video geometry, extracts private 16 kHz mono audio for audio-only ASRs, and invokes FFmpeg to burn ASS into the selected video stream or render previews. | probe_video_geometry(), extract_audio_track(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
 | multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
 | multisubs/templates.py | Strictly loads the deterministic packaged JSON index and sparse built-in style/layout/animation definitions, expands them from semantic defaults, and compiles complete baselines through the normal validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
 | multisubs/custom_templates.py | Reads the bounded public schema-1 template directory, validates every discovered file, resolves custom names with built-in-only inheritance, and returns immutable source metadata for one request. | load_custom_template_directory(), resolve_subtitle_template(), ResolvedSubtitleTemplate |
@@ -78,16 +85,26 @@ flowchart LR
 
 1. The console script calls `cli.main()`. Before probing, the CLI resolves built-in or custom template defaults plus explicit overrides into one validated configuration. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
 2. Both paths validate FFmpeg/ffprobe and probe the lowest-index usable stream, checking coded dimensions, rotation, sample/display aspect ratios, and container duration in one `VideoGeometry`. Autorotation keeps coded axes at 0°/180° and swaps render and sample-aspect-ratio axes at 90°/270°; legacy rotate-tag signs are normalized, and contradictory metadata fails. This precedes normal work-directory creation and model loading. The normal path resolves layout and wrapping and validates a decorated line can fit before model loading. See [FFmpeg](#ffmpeg), [design constraints](#design-constraints), and [FR-15](prd.md#functional-requirements).
-3. The normal path imports WhisperX only at the transcription boundary, selects CUDA/float16 or CPU/int8, and transcribes with the selected task and default VAD. Omitted `--lang` is passed as `None` for one-language-per-run detection; an explicit code takes precedence. Source-language transcription receives word alignment. Translation uses VAD chunks bounded by the six-second cue limit and retains their segment timing because translated words cannot be aligned losslessly to source-language audio; the resolved source language remains in artifact names and metadata. Transient model, VAD, or alignment-asset connection failures are retried up to three times with short exponential backoff; deterministic failures surface immediately. See [WhisperX and PyTorch](#whisperx-and-pytorch) and [FR-3–FR-5, FR-14](prd.md#functional-requirements).
+3. The normal path resolves `--asr` and a backend-specific default model before
+   loading any runtime. The selected adapter owns device selection, inference,
+   language resolution, and available word alignment, then returns normalized
+   text and timed segments. WhisperX and Faster-Whisper support English
+   translation with non-Turbo multilingual models; translated words are not
+   aligned. Parakeet and Qwen3-ASR accept a private 16 kHz mono WAV extracted by
+   FFmpeg and removed after inference. Model and aligner downloads retry
+   transient connection failures up to three times. See [local ASR adapters](#local-asr-adapters)
+   and [FR-3–FR-5, FR-14, FR-19](prd.md#functional-requirements).
 4. `transcriber.py` maps aligned records to source text, constructs timed cues, and rebuilds wrapping metrics for the subtitle language and display-cased sample. Incomplete mappings retain complete source text at coarse segment timing instead of fabricated word times. See [subtitle-cue construction](#subtitle-cue-construction) and [Unicode segmentation and source mapping](#unicode-segmentation-and-source-mapping) for the detailed rules.
 5. The artifact writer validates timestamps and atomically writes JSON/SRT; `ass.py` compiles the same resolved configuration and cues. Both preview modes bypass transcription and reuse layout, ASS, and FFmpeg without publishing subtitle artifacts. See [JSON](#json), [SRT and ASS](#srt-and-ass), and [FR-16–FR-18](prd.md#functional-requirements) for their contracts.
 6. Normal rendering burns ASS into the selected stream with autorotation and copies available audio; preview rendering produces its still or clip without transcription artifacts. After a successful normal render, the CLI publishes collision-safe outputs and removes its private work directory; failed normal runs retain that directory for diagnosis. Preview runs remove temporary ASS/frame files and partial media. See [FFmpeg](#ffmpeg), [output layouts](#output-layouts), and [design constraints](#design-constraints).
 
 ## Subtitle-cue construction
 
-The subtitle builder is intentionally separate from raw WhisperX segmentation:
+The subtitle builder is intentionally separate from backend-specific ASR
+segmentation:
 
-- It joins adjacent WhisperX word streams so an ASR segment boundary does not force a poor subtitle break.
+- It joins adjacent aligned word streams so an ASR segment boundary does not
+  force a poor subtitle break.
 - It keeps alignment records, derived linguistic display groups, and legal
   visual line-break opportunities as separate units. Japanese uses Sudachi
   mode B with predicate-tail presentation joining; Chinese uses jieba with its
@@ -159,7 +176,9 @@ The subtitle builder is intentionally separate from raw WhisperX segmentation:
   boundary backed by an exact source-record timing boundary, and that emergency
   path is diagnosed rather than labeled as a lexical word. Original transcript
   content is never removed or replaced by its display transformation.
-- If word timestamps are unavailable for a WhisperX segment, it flushes pending aligned words and uses that segment's coarse start and end times as a safe fallback.
+- If word timestamps are unavailable for an ASR segment, it flushes pending
+  aligned words and uses that segment's coarse start and end times as a safe
+  fallback.
 - Karaoke never retokenizes the final display string. It animates original
   alignment records while preserving linguistic groups for boundary guidance.
   If a display cue cannot be mapped to every record in order, it remains plain
@@ -193,6 +212,7 @@ The JSON artifact has this high-level shape:
     "original_path": "/path/to/video.mp4",
     "language": "pt",
     "task": "transcribe",
+    "asr": "whisperx",
     "created_at": "ISO-8601 timestamp",
     "model": "turbo",
     "duration": 123.45,
@@ -368,7 +388,15 @@ The JSON artifact has this high-level shape:
 }
 ~~~
 
-`schema_version` identifies the top-level JSON contract; version 3 records the concrete requested and resolved layout plus the unified animation contract. The words array preserves the usable JSON-compatible aligned-word records supplied by WhisperX; its exact optional fields are owned by that dependency. Each serialized cue keeps its original normalized semantic text in `text`, retains original aligned words and timestamps, and adds the wrapped/case-transformed `display_text` used by SRT and ASS. The top-level transcription text remains the original WhisperX output. `created_at` is a timezone-aware UTC ISO-8601 timestamp. The rendering object records normalized geometry, placement mode, whether margins apply, requested/resolved appearance and layout values, percentage bases, the render strategy, and the reproducibility inputs used by adaptive wrapping. The `wrapping` and `text_measurement` objects record the geometry and font diagnostics used by layout. `opacity` records canonical base and composed colors, including `word_highlight`. `animation.cue` and `animation.word` each contain independent `text` and `backdrop` tracks; every track records whether it is active plus its resolved entrance, emphasis, and exit, applicable duration, and—for word tracks—timing mode. Shortening is counted per element and the word section records exact plain-fallback cue count and text colors. Type `none` omits duration. Unresolved values are null, font-family and font-weight substitutions remain visible, and absolute local font paths are never serialized. Native mode adds `native_region`; explicit mode instead adds requested/resolved X/Y coordinates with `coordinate_space: playres`. The metadata does not store generated ASS strings or raw command lines. `container_duration` is null when ffprobe cannot report it.
+`schema_version` identifies the top-level JSON contract. Version 3 records the
+selected `asr` and model, concrete requested/resolved layout, and unified
+animation contract. The words array preserves usable JSON-compatible records
+normalized from the selected backend; backend-only optional fields are not a
+stable project contract. Each cue keeps source text, real available timestamps,
+and wrapped/case-transformed `display_text`. The top-level text remains the ASR
+output. Rendering metadata records geometry, placement, appearance, wrapping,
+measurement, opacity, animation, template, and fallback diagnostics. Local
+model paths, generated ASS, and raw command lines are not serialized.
 
 The `template` object records requested and resolved template identity. Omitted
 selection is stored as requested `null` and resolved `default`; only names are
@@ -606,15 +634,58 @@ For video.mp4, language pt, and an output directory named output:
 
 get_unique_path() and get_unique_dir_path() append (1), (2), and so on when a target already exists. Retained JSON/SRT/ASS/video outputs reserve one shared stem so a collision cannot split a run across different suffixes; the default mode reserves only the published video name.
 
+When neither the user nor the selected ASR provides a source-language code,
+`metadata.language` is null and the same layouts use `video.mp4`, `video.json`,
+`video.srt`, and `video.ass` without a language suffix.
+
 ## External boundaries
 
-### WhisperX and PyTorch
+### Local ASR adapters
 
-The transcriber owns all model interaction. It chooses the compute device and calls the transcription API without overriding `vad_method`, then requests an alignment model for the resolved source language for transcription or English for translation. The public CLI limits explicit and detected source languages to supported codes with a default alignment model in the installed WhisperX release. Automatic detection selects one language per run, rather than tracking language changes across segments. Leaving VAD selection to WhisperX keeps multisubs aligned with the installed release's default pipeline and dependency behavior.
+`multisubs/asr` owns model interaction and exposes one normalized result to the
+transcriber. Static capability validation happens before runtime import. Each
+adapter validates external fields and timestamps before subtitle construction;
+no adapter imports another backend.
+
+- WhisperX is the default adapter but an optional installation extra. It uses
+  CUDA/float16 or CPU/int8, leaves VAD selection to WhisperX, and loads its
+  source-language alignment model for transcription. Translation keeps coarse
+  segments bounded to six seconds.
+- Faster-Whisper is optional, detects visible CUDA devices through CTranslate2,
+  uses CUDA/float16 or CPU/int8 without importing PyTorch, requests native word
+  timestamps for transcription, and bounds translation VAD chunks to six
+  seconds.
+- Parakeet is optional and uses NeMo with
+  `nvidia/parakeet-tdt-0.6b-v3`. It receives a private 16 kHz mono WAV, returns
+  native segment/word timestamps, and recognizes supported languages without a
+  prompt. Its normal result does not expose that internal language decision, so
+  an omitted `--lang` leaves language metadata null; an explicit code labels
+  artifacts without conditioning inference.
+- Qwen3-ASR is selected as `qwen`, uses only `Qwen/Qwen3-ASR-1.7B`, and
+  receives the same private WAV. It exposes detected language. An explicit
+  aligner-supported source code loads
+  `Qwen/Qwen3-ForcedAligner-0.6B` through Qwen's integrated long-audio path.
+  Automatic detection and other supported languages retain one coarse timed
+  segment and therefore use the existing no-word-effects fallback.
+
+All model and aligner loaders retry transient network failures. Every ASR
+runtime is an installation extra; a core installation therefore does not
+resolve PyTorch or CUDA packages. Model caches stay under runtime defaults,
+outside project outputs.
+
+PyTorch-backed ASRs use separately installed CPU or CUDA wheels. The documented
+CUDA baseline is the PyTorch 2.8 CUDA 12.8 index matching the package pins.
+Faster-Whisper instead requires the CUDA 12 cuBLAS and cuDNN 9 libraries
+supported by its CTranslate2 runtime. Its NVIDIA driver and GPU libraries are
+conditional system dependencies, installed through the operating system rather
+than a Python extra. Standard system library locations require no per-shell
+loader configuration. Runtime device visibility controls automatic CPU/GPU
+selection; multisubs does not install GPU drivers.
 
 ### FFmpeg
 
-subtitler.py owns ffprobe inspection and video rendering. It checks that both
+subtitler.py owns ffprobe inspection, ASR audio extraction, and video rendering.
+It checks that both
 executables and the subtitles filter are available, bounds probe time and
 diagnostics, and parses only the geometry contract from JSON. The render graph
 selects the recorded stream index, explicitly enables FFmpeg autorotation, uses
@@ -691,10 +762,10 @@ the render authority and integration tests use an explicit tolerance.
 
 ### Unicode segmentation and source mapping
 
-`text_segmentation.py` is the pure text boundary between WhisperX data and
+`text_segmentation.py` is the pure text boundary between normalized ASR data and
 subtitle layout. It depends on `uniseg==0.10.1` (Unicode 16.0.0 data) for
 extended grapheme, word, line, and sentence boundaries; it does not import
-WhisperX, PyTorch, Pillow, or FFmpeg, so preview remains transcription-free.
+ASR runtimes, PyTorch, Pillow, or FFmpeg, so preview remains transcription-free.
 It lazily loads SudachiPy 0.6.11 with SudachiDict-small 20260723 for Japanese
 mode-B boundaries and jieba 0.42.1 with its packaged dictionary/HMM for Chinese.
 These resources install as Python dependencies and never download transcript
@@ -721,8 +792,10 @@ source string, but the production mapped path does not use that heuristic.
 
 - The pipeline is synchronous and processes one video at a time.
 - Subtitle rendering is a hard-subtitle operation, not muxing a selectable subtitle track.
-- Translation has an English-only target and requires a multilingual non-Turbo Whisper model.
-- Supported source languages must have a default word-alignment model in the installed WhisperX release.
+- Translation has an English-only target and requires WhisperX or
+  Faster-Whisper with a multilingual non-Turbo model.
+- Source languages and word-timestamp availability follow the selected ASR;
+  missing word timing uses the visible coarse-segment fallback.
 - Completed transcription artifacts are cleaned only after subtitle rendering returns successfully; partial renderer media is cleaned on both success and failure.
 - File collision avoidance is a required safety property, not merely a convenience.
 - Final media is published only after FFmpeg succeeds; temporary output is never presented as a completed video.

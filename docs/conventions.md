@@ -61,6 +61,18 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must justify every new runtime dependency: the capability it provides, why the standard library or an existing dependency is insufficient, its license, its maintenance status, and its installation-size impact.
 - Must treat torch, torchaudio, and torchvision as a compatible set. Update and test them together rather than changing one package in isolation.
 - Must validate a WhisperX upgrade against the selected PyTorch set, CPU inference, and CUDA inference when the project claims CUDA support.
+- Must keep every ASR runtime in a named optional extra, import only the
+  selected backend, and validate its supported Python/PyTorch range before
+  changing a pin. WhisperX remains the default CLI selection, not a mandatory
+  core dependency.
+- Must document CPU-only PyTorch installation separately because package
+  metadata cannot select the PyTorch CPU wheel index. Faster-Whisper must not
+  import or require PyTorch.
+- Must document the matching PyTorch CUDA wheel index for PyTorch-backed ASRs
+  and the current external CTranslate2 cuBLAS/cuDNN requirements for
+  Faster-Whisper. Prefer stable vendor installation guides over versioned
+  package-download URLs, and do not imply that multisubs installs an NVIDIA
+  driver or requires per-shell loader configuration for system packages.
 - Must document FFmpeg as a system dependency. Installing ffmpeg-python does not install the FFmpeg executable or its subtitle-rendering libraries.
 - Should use a lock file or platform-specific constraints files for reproducible development and CI environments. Torch wheels often differ by operating system, Python version, CUDA version, and CPU/GPU build, so one universal lock file may not be sufficient.
 - Should audit dependency updates for release notes, known vulnerabilities, wheel availability, and model/runtime compatibility before merging.
@@ -130,14 +142,16 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should order imports as standard library, third-party packages, then local packages, with a blank line between groups.
 - Must avoid wildcard imports.
 - Should import a dependency at module scope only if importing it is cheap and required for that module's normal use. Use a deliberate lazy import when it materially improves CLI startup, optional-dependency behavior, or test isolation.
-- Must not add an import whose sole effect is to alter global PyTorch, WhisperX, or FFmpeg behavior without documenting it.
+- Must not add an import whose sole effect is to alter global PyTorch, an ASR
+  runtime, or FFmpeg behavior without documenting it.
 
 ### Types, interfaces, and docstrings
 
 - Should add type annotations to new public functions, return values, data containers, and non-obvious internal boundaries.
 - Should use Path or str only at external boundaries when both are truly supported; normalize once inside the function. Avoid passing a mixture of path types throughout a call graph.
 - Should use TypedDict, dataclass, or a small dedicated model for structured data whose shape is controlled by this project.
-- Must treat data returned by WhisperX and FFmpeg wrappers as external input: access optional fields defensively and validate the subset relied on by the project.
+- Must treat data returned by ASR and FFmpeg wrappers as external input: access
+  optional fields defensively and validate the subset relied on by the project.
 - Should write docstrings for public functions and non-obvious algorithms. Explain assumptions, input/output contracts, failure behavior, and units where relevant.
 - Must keep docstrings and type hints aligned with actual behavior.
 
@@ -189,7 +203,7 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should introduce standard logging with named loggers and a verbose or log-level option before the CLI grows beyond simple progress messages. Library modules should not depend on CLI-only logging configuration.
 - Must not print access tokens, environment secrets, full private transcript contents, or sensitive media metadata in routine logs.
 
-## WhisperX, PyTorch, and model conventions
+## ASR, PyTorch, and model conventions
 
 ### Hardware and model lifecycle
 
@@ -207,8 +221,11 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Keep language, task, translation, and model behavior aligned with the
   [product requirements](prd.md#functional-requirements); reject unsupported
   combinations before expensive work and never silently change semantics.
-- Treat WhisperX results as external input: validate used fields and timestamps
-  and do not turn undocumented upstream metadata into a stable contract.
+- Keep backend-specific imports, result shapes, language names, and timestamp
+  conversion inside `multisubs/asr`. Validate used fields and do not turn
+  undocumented upstream metadata into a stable project contract.
+- Never fabricate word timestamps. A backend or language without reliable word
+  timing must enter the documented coarse-segment fallback.
 - Change language handling, VAD, alignment models, or model defaults only with
   targeted tests and a documentation update. Describe network-dependent setup
   so offline users know why an initial run may fail.
@@ -290,8 +307,11 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Must keep tests current with the implementation, CLI, output formats, and documented behavior. Do not merge a feature change that knowingly leaves obsolete, skipped, or contradictory tests behind.
 - Must keep default tests hermetic: no model download, GPU requirement, network call, long transcription, or installed system FFmpeg dependency.
 - Should unit-test pure functions first, especially cue boundaries, text wrapping, timestamp formatting, JSON construction, and collision-safe path generation.
-- Should mock WhisperX and FFmpeg wrapper calls in unit tests. Assert the project contract passed to those integrations rather than their internal behavior.
-- Should add opt-in integration tests for real FFmpeg/libass rendering and, separately, WhisperX transcription/alignment. Mark them clearly and skip them when dependencies, media fixtures, or hardware are unavailable.
+- Should mock ASR adapters and FFmpeg wrapper calls in unit tests. Assert the
+  project contract passed to those integrations rather than their internals.
+- Should add opt-in integration tests for real FFmpeg/libass rendering and,
+  separately, each ASR runtime. Mark them clearly and skip them when optional
+  dependencies, media fixtures, or hardware are unavailable.
 - Should use golden JSON/SRT/ASS fixtures for output contracts. Review golden-file changes as carefully as code changes.
 - Should add regression tests before fixing a reported subtitle segmentation or rendering defect.
 - May use property-based tests for timestamp ordering, unique-path generation, and word/cue boundary invariants.
@@ -376,8 +396,9 @@ Do not run a command from this list merely because it appears here if the corres
 
 - Must run compile checks, Ruff formatting and linting, Pyright, hermetic tests,
   a package build, and package-metadata checks on every pull request to `main`.
-- Must test Python 3.10 and 3.13. Use the pinned CPU PyTorch set in hosted CI so
-  validation does not depend on GPU runners or CUDA wheel downloads.
+- Must test Python 3.10 and 3.13. The hermetic hosted gate must install only the
+  core and development extras so validation does not download ASR or CUDA
+  runtimes.
 - Must keep GPU and real-model integration tests outside the default pull-request
   path unless GPU runners are intentionally funded and maintained.
 - Must run the opt-in FFmpeg/libass suite in the manually approved staging

@@ -12,10 +12,6 @@ license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "Pillow>=12,<13",
-    "torch~=2.8.0",
-    "torchaudio~=2.8.0",
-    "torchvision~=0.23.0",
-    "whisperx==3.8.6",
     "ffmpeg-python",
     "fonttools>=4.63,<5",
     "uniseg==0.10.1",
@@ -25,6 +21,32 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+whisperx = [
+    "torch~=2.8.0",
+    "torchaudio~=2.8.0",
+    "torchvision~=0.23.0",
+    "whisperx==3.8.6",
+]
+faster-whisper = [
+    "faster-whisper>=1.2,<2",
+]
+parakeet = [
+    "torch~=2.8.0",
+    "nemo-toolkit[asr]>=2.4,<3",
+]
+qwen = [
+    "torch~=2.8.0",
+    "qwen-asr>=0.0.6,<0.1",
+]
+asr-all = [
+    "torch~=2.8.0",
+    "torchaudio~=2.8.0",
+    "torchvision~=0.23.0",
+    "whisperx==3.8.6",
+    "faster-whisper>=1.2,<2",
+    "nemo-toolkit[asr]>=2.4,<3",
+    "qwen-asr>=0.0.6,<0.1",
+]
 dev = [
     "build>=1.2,<2",
     "pyright>=1.1,<2",
@@ -52,7 +74,7 @@ multisubs = [
 testpaths = ["tests"]
 addopts = "-ra -m 'not integration'"
 markers = [
-    "integration: test that requires a local external integration such as FFmpeg or WhisperX",
+    "integration: test that requires a local external integration such as FFmpeg or an ASR runtime",
 ]
 
 [tool.ruff]
