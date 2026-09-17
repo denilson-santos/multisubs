@@ -666,8 +666,13 @@ no adapter imports another backend.
   artifacts without conditioning inference. NeMo's transcription progress bar
   follows the CLI verbosity setting and is hidden by default.
 - Qwen3-ASR is selected as `qwen`, uses the native Transformers checkpoint
-  `Qwen/Qwen3-ASR-1.7B-hf`, and receives the same private WAV in chunks of at
-  most five minutes. It exposes the detected language when `--lang` is omitted.
+  `Qwen/Qwen3-ASR-1.7B-hf`, and receives the same private WAV in chunks capped
+  at 180 seconds. When more than one chunk is needed, the adapter searches for
+  a low-energy boundary within five seconds of each limit and preserves complete
+  source coverage and offsets. It exposes the detected language when `--lang`
+  is omitted. After transcription, the ASR model is released before the
+  independent forced aligner is loaded. CUDA uses BF16 when supported and
+  otherwise falls back to FP16; CPU uses float32.
   Each explicit or detected language supported by the aligner is passed to
   `Qwen/Qwen3-ForcedAligner-0.6B-hf`; its word timestamps are offset back onto
   the source timeline. Because the HF aligner may omit punctuation from its

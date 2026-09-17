@@ -13,18 +13,18 @@ their behavior.
 
 Progress: 1/1 plans in review. The original adapter layer was merged in
 [PR #88](https://github.com/denilson-santos/multisubs/pull/88); the current
-follow-up is on `feat/improve-asr-segmentation`.
+follow-up is on `fix/qwen-memory-safe-chunking`.
 
 | Plan | Status | Dependencies | Delivery |
 | --- | --- | --- | --- |
-| [0 — ASR adapter layer](00-selectable-asr-adapters.md) | In review | Current transcription and subtitle contracts | `feat/improve-asr-segmentation` |
+| [0 — ASR adapter layer](00-selectable-asr-adapters.md) | In review | Current transcription and subtitle contracts | `fix/qwen-memory-safe-chunking` |
 
 ## Delivery strategy
 
 The adapter contract, four implementations, CLI selection, optional
 dependencies, tests, and documentation were delivered in [PR #88](https://github.com/denilson-santos/multisubs/pull/88).
 The current follow-up improves Qwen HF alignment, Faster-Whisper VAD, and
-subtitle timing on `feat/improve-asr-segmentation`. Keep runtime packages lazy
+subtitle timing on `fix/qwen-memory-safe-chunking`. Keep runtime packages lazy
 so previews and unselected backends do not import or require them.
 
 ## Definition of done

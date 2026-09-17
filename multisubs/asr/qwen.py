@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+import sys
 import wave
+from array import array
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -30,8 +32,10 @@ from .catalog import (
 )
 
 FORCED_ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B-hf"
-MAX_ALIGNMENT_CHUNK_SECONDS = 300
+MAX_ALIGNMENT_CHUNK_SECONDS = 180
 MAX_NEW_TOKENS = 4096
+CHUNK_BOUNDARY_SEARCH_SECONDS = 5
+CHUNK_ENERGY_WINDOW_MILLISECONDS = 100
 
 
 @dataclass(frozen=True)
@@ -145,46 +149,164 @@ def _restore_alignment_punctuation(
 
 
 def _model_options(torch: Any, device: str) -> dict[str, Any]:
+    dtype = torch.float32
+    if device == "cuda":
+        dtype = torch.float16
+        is_bf16_supported = getattr(torch.cuda, "is_bf16_supported", None)
+        bfloat16 = getattr(torch, "bfloat16", None)
+        try:
+            if (
+                callable(is_bf16_supported)
+                and is_bf16_supported()
+                and bfloat16 is not None
+            ):
+                dtype = bfloat16
+        except Exception:
+            pass
     return {
-        "dtype": torch.float16 if device == "cuda" else torch.float32,
+        "dtype": dtype,
         "device_map": "cuda:0" if device == "cuda" else "cpu",
     }
 
 
+def _window_energy(
+    frames: object,
+    *,
+    frame_start: int,
+    frame_count: int,
+    channels: int,
+    sample_width: int,
+) -> int:
+    if sample_width != 2:
+        raise TranscriptionError(
+            "Qwen3-ASR chunking requires 16-bit PCM audio from FFmpeg."
+        )
+    if isinstance(frames, bytes):
+        byte_start = frame_start * channels * sample_width
+        byte_end = byte_start + frame_count * channels * sample_width
+        window = frames[byte_start:byte_end]
+    else:
+        setpos = getattr(frames, "setpos", None)
+        readframes = getattr(frames, "readframes", None)
+        if not callable(setpos) or not callable(readframes):
+            raise TranscriptionError("Qwen3-ASR received an invalid WAV reader.")
+        setpos(frame_start)
+        window = readframes(frame_count)
+        if not isinstance(window, bytes):
+            raise TranscriptionError("Qwen3-ASR received invalid WAV frames.")
+    samples = array("h")
+    samples.frombytes(window)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    return sum(abs(sample) for sample in samples)
+
+
+def _low_energy_boundary(
+    frames: object,
+    *,
+    start: int,
+    target: int,
+    total_frames: int,
+    frame_rate: int,
+    channels: int,
+    sample_width: int,
+) -> int:
+    """Find a quiet boundary near a target frame without changing coverage."""
+    search_frames = frame_rate * CHUNK_BOUNDARY_SEARCH_SECONDS
+    window_frames = max(1, frame_rate * CHUNK_ENERGY_WINDOW_MILLISECONDS // 1000)
+    left = max(start + 1, target - search_frames)
+    # Keep the hard chunk ceiling even when the quietest nearby window is
+    # just after the nominal target.
+    right = min(total_frames, target)
+    last_window_start = right - window_frames
+    if last_window_start < left:
+        return target
+
+    step = max(1, window_frames // 4)
+    best_boundary = target
+    best_energy: int | None = None
+    best_distance = total_frames
+    for window_start in range(left, last_window_start + 1, step):
+        energy = _window_energy(
+            frames,
+            frame_start=window_start,
+            frame_count=window_frames,
+            channels=channels,
+            sample_width=sample_width,
+        )
+        boundary = window_start + window_frames
+        distance = abs(boundary - target)
+        if best_energy is None or (energy, distance) < (best_energy, best_distance):
+            best_energy = energy
+            best_distance = distance
+            best_boundary = boundary
+
+    if last_window_start > left and (last_window_start - left) % step:
+        energy = _window_energy(
+            frames,
+            frame_start=last_window_start,
+            frame_count=window_frames,
+            channels=channels,
+            sample_width=sample_width,
+        )
+        boundary = last_window_start + window_frames
+        distance = abs(boundary - target)
+        if best_energy is None or (energy, distance) < (best_energy, best_distance):
+            best_boundary = boundary
+    return max(start + 1, min(total_frames, best_boundary))
+
+
 @contextmanager
 def _wav_chunks(path: Path) -> Iterator[tuple[_AudioChunk, ...]]:
-    """Yield bounded PCM WAV chunks while preserving exact source offsets."""
+    """Yield quiet-boundary PCM WAV chunks preserving exact source offsets."""
     with wave.open(str(path), "rb") as source:
         frame_rate = source.getframerate()
         total_frames = source.getnframes()
-        frames_per_chunk = frame_rate * MAX_ALIGNMENT_CHUNK_SECONDS
         duration = total_frames / frame_rate if frame_rate else 0.0
+        if frame_rate <= 0:
+            raise TranscriptionError("Qwen3-ASR audio has an invalid sample rate.")
 
-        if total_frames <= frames_per_chunk:
+        max_frames = frame_rate * MAX_ALIGNMENT_CHUNK_SECONDS
+        if total_frames <= max_frames:
             yield (_AudioChunk(path, 0.0, duration),)
             return
 
         params = source.getparams()
+        boundaries = [0]
+        start = 0
+        while total_frames - start > max_frames:
+            target = start + max_frames
+            boundary = _low_energy_boundary(
+                source,
+                start=start,
+                target=target,
+                total_frames=total_frames,
+                frame_rate=frame_rate,
+                channels=params.nchannels,
+                sample_width=params.sampwidth,
+            )
+            boundaries.append(boundary)
+            start = boundary
+        boundaries.append(total_frames)
+
         with TemporaryDirectory(prefix="multisubs-qwen-") as directory:
             chunks: list[_AudioChunk] = []
-            frame_offset = 0
-            index = 0
-            while frame_offset < total_frames:
-                frame_count = min(frames_per_chunk, total_frames - frame_offset)
-                frames = source.readframes(frame_count)
+            for index, (start, end) in enumerate(
+                zip(boundaries[:-1], boundaries[1:], strict=True)
+            ):
+                source.setpos(start)
+                chunk_frames = source.readframes(end - start)
                 chunk_path = Path(directory) / f"chunk-{index:04d}.wav"
                 with wave.open(str(chunk_path), "wb") as target:
                     target.setparams(params)
-                    target.writeframes(frames)
+                    target.writeframes(chunk_frames)
                 chunks.append(
                     _AudioChunk(
                         chunk_path,
-                        frame_offset / frame_rate,
-                        (frame_offset + frame_count) / frame_rate,
+                        start / frame_rate,
+                        end / frame_rate,
                     )
                 )
-                frame_offset += frame_count
-                index += 1
             yield tuple(chunks)
 
 
@@ -385,6 +507,15 @@ class QwenAdapter:
                                 request.language,
                             )
                         )
+
+                    # The autoregressive ASR model is no longer needed while
+                    # the independent forced aligner is loaded.
+                    model = None
+                    if device == "cuda":
+                        import gc
+
+                        gc.collect()
+                        torch.cuda.empty_cache()
 
                     alignable = [
                         chunk
