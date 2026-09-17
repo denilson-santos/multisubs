@@ -4,7 +4,7 @@ Status: In review
 
 Depends on: the current transcription, cue-layout, artifact, and CLI contracts.
 
-Delivery branch: `feat/improve-asr-segmentation`
+Delivery branch: `fix/qwen-memory-safe-chunking`
 
 ## Objective
 
@@ -39,7 +39,8 @@ Excluded:
   null language metadata and filenames without a language suffix; an explicit
   code labels artifacts without conditioning inference.
 - `qwen` uses only `Qwen/Qwen3-ASR-1.7B-hf`. It uses native Transformers
-  inference with `Qwen/Qwen3-ForcedAligner-0.6B-hf` when
+  inference with quiet-boundary chunks capped at 180 seconds and
+  `Qwen/Qwen3-ForcedAligner-0.6B-hf` when
   an explicit or automatically detected source code is supported by the
   aligner. Other supported languages enter the existing coarse-timing fallback.
 - Runtime packages stay optional and are imported only by the selected adapter.

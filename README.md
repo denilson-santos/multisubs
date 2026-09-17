@@ -41,7 +41,8 @@ the selected ASR must download model assets that are not already cached.
   previews additionally require the `libx264` H.264 encoder.
 - Enough CPU or GPU memory for the selected ASR model. Parakeet is optimized
   for NVIDIA GPUs; Qwen3-ASR also loads a separate 0.6B forced aligner when the
-  source language supports word timestamps.
+  source language supports word timestamps. On CUDA, Qwen selects BF16 when the
+  device supports it and otherwise uses FP16.
 - The Python package installs `fontTools` for bounded Unicode cmap checks,
   `uniseg` 0.10.1 for pinned Unicode boundary data, SudachiPy/SudachiDict-small
   for Japanese grouping, jieba for Chinese grouping, and Typer for the CLI.
@@ -193,7 +194,7 @@ multisubs -i ./video.mp4 -l pt --asr qwen
 | `whisperx` | `turbo` | Transcription with WhisperX alignment; English translation requires a multilingual non-Turbo model. |
 | `faster-whisper` | `turbo` | Silero VAD and native word timestamps; the same translation restriction as WhisperX. |
 | `parakeet` | `nvidia/parakeet-tdt-0.6b-v3` | Automatic multilingual transcription and native timestamps; optional `--lang` labels artifact metadata because NeMo does not expose the detected code. |
-| `qwen` | `Qwen/Qwen3-ASR-1.7B-hf` | Native Hugging Face multilingual transcription; explicit or automatically detected aligner-supported languages receive word timestamps. |
+| `qwen` | `Qwen/Qwen3-ASR-1.7B-hf` | Native Hugging Face multilingual transcription with quiet-boundary chunks up to three minutes; explicit or automatically detected aligner-supported languages receive word timestamps. |
 
 Use `--model` to select another model listed in the command reference. The
 backend runtime is imported only after validation and only when selected.
@@ -685,8 +686,9 @@ supports its published 30-language catalog; its forced aligner currently adds
 word timestamps for `zh`, `en`, `yue`, `fr`, `de`, `it`, `ja`, `ko`, `pt`,
 `ru`, and `es`. When `--lang` is omitted, Qwen detects the language first and
 passes that result to the forced aligner when supported. Other detected
-languages keep real five-minute chunk boundaries and use the documented coarse
-timing fallback. Unsupported explicit combinations fail before model loading.
+languages keep real low-energy-boundary chunks capped at three minutes and use
+the documented coarse timing fallback. Unsupported explicit combinations fail
+before model loading.
 
 ## 📁 Generated files
 
