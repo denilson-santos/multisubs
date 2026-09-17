@@ -1,9 +1,11 @@
 """Backend-neutral ASR selection and adapter normalization."""
 
 import sys
-from contextlib import contextmanager
+import wave
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from test_cli_helpers import TestParser
@@ -30,6 +32,7 @@ def _torch(cuda: bool = False):
         cuda=SimpleNamespace(is_available=lambda: cuda),
         float16="float16",
         float32="float32",
+        inference_mode=nullcontext,
     )
 
 
@@ -44,7 +47,7 @@ def _audio_file(path: Path):
         ("whisperx", "turbo"),
         ("faster-whisper", "turbo"),
         ("parakeet", "nvidia/parakeet-tdt-0.6b-v3"),
-        ("qwen", "Qwen/Qwen3-ASR-1.7B"),
+        ("qwen", "Qwen/Qwen3-ASR-1.7B-hf"),
     ],
 )
 def test_backend_defaults_are_resolved_without_runtime_imports(backend, expected):
@@ -57,7 +60,7 @@ def test_qwen_rejects_removed_selector_and_smaller_model():
         parse_backend("qwen3-asr")
 
     with pytest.raises(ValidationError, match="not supported by qwen"):
-        resolve_model(parse_backend("qwen"), "Qwen/Qwen3-ASR-0.6B")
+        resolve_model(parse_backend("qwen"), "Qwen/Qwen3-ASR-0.6B-hf")
 
 
 @pytest.mark.parametrize(
@@ -65,7 +68,7 @@ def test_qwen_rejects_removed_selector_and_smaller_model():
     [
         ("whisperx", whisperx._load_whisperx, "multisubs[whisperx]"),
         ("nemo", parakeet._load_nemo_asr, "multisubs[parakeet]"),
-        ("qwen_asr", qwen._load_qwen_asr, "multisubs[qwen]"),
+        ("transformers", qwen._load_transformers, "multisubs[qwen]"),
     ],
 )
 def test_missing_asr_runtime_has_actionable_install_hint(
@@ -98,7 +101,7 @@ def test_missing_faster_whisper_has_actionable_install_hint(monkeypatch):
             "parakeet",
             "nvidia/parakeet-tdt-0.6b-v3",
         ),
-        (["--asr", "qwen"], "qwen", "Qwen/Qwen3-ASR-1.7B"),
+        (["--asr", "qwen"], "qwen", "Qwen/Qwen3-ASR-1.7B-hf"),
     ],
 )
 def test_cli_resolves_backend_specific_default_model(tmp_path, options, backend, model):
@@ -150,13 +153,13 @@ def test_transcribe_video_routes_through_selected_adapter(tmp_path, monkeypatch)
     document = transcriber.transcribe_video(
         source,
         "pt",
-        model_name="Qwen/Qwen3-ASR-1.7B",
+        model_name="Qwen/Qwen3-ASR-1.7B-hf",
         asr_backend="qwen",
     )
 
-    assert calls[0].model_name == "Qwen/Qwen3-ASR-1.7B"
+    assert calls[0].model_name == "Qwen/Qwen3-ASR-1.7B-hf"
     assert document.asr_backend == "qwen"
-    assert document.model_name == "Qwen/Qwen3-ASR-1.7B"
+    assert document.model_name == "Qwen/Qwen3-ASR-1.7B-hf"
     assert document.full_text == "Olá."
 
 
@@ -212,6 +215,8 @@ def test_faster_whisper_normalises_native_word_timestamps(tmp_path, monkeypatch)
 
     assert state["load"] == ("turbo", {"device": "cpu", "compute_type": "int8"})
     assert state["transcribe"][1]["word_timestamps"] is True
+    assert state["transcribe"][1]["vad_filter"] is True
+    assert "vad_parameters" not in state["transcribe"][1]
     assert result.language == "pt"
     assert result.text == "Olá"
     assert result.segments[0]["words"] == [
@@ -244,7 +249,7 @@ def test_faster_whisper_selects_cuda_without_importing_torch(tmp_path, monkeypat
     assert state["load"] == ("turbo", {"device": "cuda", "compute_type": "float16"})
 
 
-def test_faster_whisper_bounds_translation_vad_chunks(tmp_path, monkeypatch):
+def test_faster_whisper_enables_translation_vad_filter(tmp_path, monkeypatch):
     source = tmp_path / "video.mp4"
     source.write_bytes(b"input")
     state = {}
@@ -268,7 +273,7 @@ def test_faster_whisper_bounds_translation_vad_chunks(tmp_path, monkeypatch):
 
     assert state["word_timestamps"] is False
     assert state["vad_filter"] is True
-    assert state["vad_parameters"] == {"max_speech_duration_s": 6}
+    assert "vad_parameters" not in state
 
 
 def test_parakeet_normalises_nemo_segments_and_words(tmp_path, monkeypatch):
@@ -361,95 +366,275 @@ def test_parakeet_assigns_boundary_words_to_one_segment():
     assert [word["word"] for word in segments[1]["words"]] == ["two"]
 
 
-def test_qwen_uses_integrated_forced_alignment_for_explicit_language(
-    tmp_path, monkeypatch
-):
+class _QwenInputs(dict):
+    def to(self, device, dtype):
+        return self
+
+
+class _QwenGeneratedIds:
+    def __getitem__(self, key):
+        return "generated-ids"
+
+
+@contextmanager
+def _qwen_chunks(path, *, start=0.0, end=1.0):
+    yield (qwen._AudioChunk(path, start, end),)
+
+
+def test_qwen_uses_hf_forced_alignment_for_explicit_language(tmp_path, monkeypatch):
     audio = tmp_path / "audio.wav"
-    state = {}
+    state: dict[str, Any] = {"processors": [], "models": []}
+
+    class ASRProcessor:
+        def apply_transcription_request(self, **options):
+            state["transcription_options"] = options
+            return _QwenInputs(input_ids=SimpleNamespace(shape=(1, 3)))
+
+        def decode(self, generated_ids, **options):
+            assert generated_ids == "generated-ids"
+            assert options == {"return_format": "transcription_only"}
+            return ["Olá mundo."]
+
+    class AlignerProcessor:
+        def prepare_forced_aligner_inputs(self, **options):
+            state["alignment_options"] = options
+            return _QwenInputs(input_ids="alignment-inputs"), [["Olá", "mundo."]]
+
+        def decode_forced_alignment(self, **options):
+            state["decode_options"] = options
+            return [
+                [
+                    {"text": "Olá", "start_time": 0.1, "end_time": 0.4},
+                    {"text": "mundo", "start_time": 0.5, "end_time": 1.0},
+                ]
+            ]
+
+    class ProcessorType:
+        @staticmethod
+        def from_pretrained(name, **kwargs):
+            state["processors"].append((name, kwargs))
+            return AlignerProcessor() if "ForcedAligner" in name else ASRProcessor()
+
+    class ASRModel:
+        device = "cpu"
+        dtype = "float32"
+
+        def generate(self, **options):
+            state["generate_options"] = options
+            return _QwenGeneratedIds()
 
     class ModelType:
         @staticmethod
         def from_pretrained(name, **kwargs):
-            state["model"] = (name, kwargs)
-            return SimpleNamespace(
-                transcribe=lambda **options: [
-                    SimpleNamespace(
-                        language="Portuguese",
-                        text="Olá mundo.",
-                        time_stamps=SimpleNamespace(
-                            items=[
-                                SimpleNamespace(
-                                    text="Olá", start_time=0.0, end_time=0.4
-                                ),
-                                SimpleNamespace(
-                                    text="mundo.", start_time=0.5, end_time=1.0
-                                ),
-                            ]
-                        ),
-                    )
-                ]
-            )
+            state["models"].append((name, kwargs))
+            return ASRModel()
+
+    class AlignerModel:
+        device = "cpu"
+        dtype = "float32"
+        config = SimpleNamespace(timestamp_token_id=42)
+
+        def __call__(self, **options):
+            state["aligner_inputs"] = options
+            return SimpleNamespace(logits="alignment-logits")
+
+    class AlignerType:
+        @staticmethod
+        def from_pretrained(name, **kwargs):
+            state["models"].append((name, kwargs))
+            return AlignerModel()
 
     monkeypatch.setattr(qwen, "load_torch", _torch)
-    monkeypatch.setattr(qwen, "_load_qwen_asr", lambda: ModelType)
+    monkeypatch.setattr(
+        qwen, "_load_transformers", lambda: (ProcessorType, ModelType, AlignerType)
+    )
     monkeypatch.setattr(qwen, "temporary_wav", lambda _: _audio_file(audio))
-    monkeypatch.setattr(qwen, "wav_duration", lambda _: 1.0)
+    monkeypatch.setattr(qwen, "_wav_chunks", lambda _: _qwen_chunks(audio))
 
     result = qwen.QwenAdapter().transcribe(
         ASRRequest(
             tmp_path / "video.mp4",
             "pt",
             "transcribe",
-            "Qwen/Qwen3-ASR-1.7B",
+            "Qwen/Qwen3-ASR-1.7B-hf",
         )
     )
 
     assert result.language == "pt"
     assert result.segments[0]["words"][0] == {
         "word": "Olá",
-        "start": 0.0,
+        "start": 0.1,
         "end": 0.4,
     }
-    assert state["model"][0] == "Qwen/Qwen3-ASR-1.7B"
-    assert state["model"][1]["device_map"] == "cpu"
-    assert state["model"][1]["forced_aligner"] == ("Qwen/Qwen3-ForcedAligner-0.6B")
-    assert state["model"][1]["forced_aligner_kwargs"] == {
-        "dtype": "float32",
-        "device_map": "cpu",
-    }
+    assert result.segments[0]["words"][1]["word"] == "mundo."
+    cues = transcriber._build_subtitle_segments(result.segments, language="pt")
+    assert [cue["text"] for cue in cues] == ["Olá mundo."]
+    assert all("_alignment_fallback_reason" not in cue for cue in cues)
+    assert state["transcription_options"]["language"] == "Portuguese"
+    assert state["alignment_options"]["language"] == "Portuguese"
+    assert state["models"] == [
+        (
+            "Qwen/Qwen3-ASR-1.7B-hf",
+            {"dtype": "float32", "device_map": "cpu"},
+        ),
+        (
+            "Qwen/Qwen3-ForcedAligner-0.6B-hf",
+            {"dtype": "float32", "device_map": "cpu"},
+        ),
+    ]
 
 
-def test_qwen_uses_coarse_timing_when_language_has_no_aligner(tmp_path, monkeypatch):
+def test_qwen_passes_automatically_detected_language_to_aligner(tmp_path, monkeypatch):
     audio = tmp_path / "audio.wav"
     state = {}
 
-    class ModelType:
+    class ASRProcessor:
+        def apply_transcription_request(self, **options):
+            state["transcription_options"] = options
+            return _QwenInputs(input_ids=SimpleNamespace(shape=(1, 2)))
+
+        def decode(self, *args, **kwargs):
+            assert kwargs == {"return_format": "parsed"}
+            return [{"language": "Portuguese", "transcription": "Olá."}]
+
+    class AlignerProcessor:
+        def prepare_forced_aligner_inputs(self, **options):
+            state["alignment_options"] = options
+            return _QwenInputs(input_ids="alignment-inputs"), [["Olá."]]
+
+        def decode_forced_alignment(self, **options):
+            return [[{"text": "Olá.", "start_time": 0.2, "end_time": 0.8}]]
+
+    class ProcessorType:
         @staticmethod
-        def from_pretrained(*args, **kwargs):
-            state.update(kwargs)
-            return SimpleNamespace(
-                transcribe=lambda **options: [
-                    SimpleNamespace(language="Hindi", text="नमस्ते")
-                ]
-            )
+        def from_pretrained(name, **kwargs):
+            return AlignerProcessor() if "ForcedAligner" in name else ASRProcessor()
+
+    class ASRModel:
+        device = "cpu"
+        dtype = "float32"
+
+        def generate(self, **options):
+            return _QwenGeneratedIds()
+
+    class ModelType:
+        from_pretrained = staticmethod(lambda *args, **kwargs: ASRModel())
+
+    class AlignerModel:
+        device = "cpu"
+        dtype = "float32"
+        config = SimpleNamespace(timestamp_token_id=42)
+
+        def __call__(self, **options):
+            return SimpleNamespace(logits="alignment-logits")
+
+    class AlignerType:
+        from_pretrained = staticmethod(lambda *args, **kwargs: AlignerModel())
 
     monkeypatch.setattr(qwen, "load_torch", _torch)
-    monkeypatch.setattr(qwen, "_load_qwen_asr", lambda: ModelType)
+    monkeypatch.setattr(
+        qwen, "_load_transformers", lambda: (ProcessorType, ModelType, AlignerType)
+    )
     monkeypatch.setattr(qwen, "temporary_wav", lambda _: _audio_file(audio))
-    monkeypatch.setattr(qwen, "wav_duration", lambda _: 2.5)
+    monkeypatch.setattr(
+        qwen,
+        "_wav_chunks",
+        lambda _: _qwen_chunks(audio, start=300.0, end=301.0),
+    )
 
     result = qwen.QwenAdapter().transcribe(
         ASRRequest(
             tmp_path / "video.mp4",
             None,
             "transcribe",
-            "Qwen/Qwen3-ASR-1.7B",
+            "Qwen/Qwen3-ASR-1.7B-hf",
+        )
+    )
+
+    assert result.language == "pt"
+    assert state["transcription_options"]["language"] is None
+    assert state["alignment_options"]["language"] == "Portuguese"
+    assert result.segments[0]["words"] == [
+        {"word": "Olá.", "start": 300.2, "end": 300.8}
+    ]
+
+
+def test_qwen_uses_coarse_timing_when_detected_language_has_no_aligner(
+    tmp_path, monkeypatch
+):
+    audio = tmp_path / "audio.wav"
+    state: dict[str, Any] = {"aligner_loaded": False}
+
+    class Processor:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            return Processor()
+
+        def apply_transcription_request(self, **options):
+            state["transcription_options"] = options
+            return _QwenInputs(input_ids=SimpleNamespace(shape=(1, 2)))
+
+        def decode(self, *args, **kwargs):
+            return [{"language": "Hindi", "transcription": "नमस्ते"}]
+
+    class ASRModel:
+        device = "cpu"
+        dtype = "float32"
+
+        def generate(self, **options):
+            return _QwenGeneratedIds()
+
+    class ModelType:
+        from_pretrained = staticmethod(lambda *args, **kwargs: ASRModel())
+
+    class AlignerType:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            state["aligner_loaded"] = True
+            raise AssertionError("unsupported languages must not load the aligner")
+
+    monkeypatch.setattr(qwen, "load_torch", _torch)
+    monkeypatch.setattr(
+        qwen, "_load_transformers", lambda: (Processor, ModelType, AlignerType)
+    )
+    monkeypatch.setattr(qwen, "temporary_wav", lambda _: _audio_file(audio))
+    monkeypatch.setattr(qwen, "_wav_chunks", lambda _: _qwen_chunks(audio, end=2.5))
+
+    result = qwen.QwenAdapter().transcribe(
+        ASRRequest(
+            tmp_path / "video.mp4",
+            None,
+            "transcribe",
+            "Qwen/Qwen3-ASR-1.7B-hf",
         )
     )
 
     assert result.language == "hi"
     assert result.segments == ({"start": 0.0, "end": 2.5, "text": "नमस्ते"},)
-    assert "forced_aligner" not in state
+    assert state["transcription_options"]["language"] is None
+    assert state["aligner_loaded"] is False
+
+
+def test_qwen_wav_chunks_preserve_source_offsets(tmp_path, monkeypatch):
+    audio = tmp_path / "audio.wav"
+    with wave.open(str(audio), "wb") as target:
+        target.setnchannels(1)
+        target.setsampwidth(2)
+        target.setframerate(10)
+        target.writeframes(b"\0\0" * 25)
+
+    monkeypatch.setattr(qwen, "MAX_ALIGNMENT_CHUNK_SECONDS", 1)
+    chunk_paths = []
+    with qwen._wav_chunks(audio) as chunks:
+        assert [(chunk.start, chunk.end) for chunk in chunks] == [
+            (0.0, 1.0),
+            (1.0, 2.0),
+            (2.0, 2.5),
+        ]
+        chunk_paths = [chunk.path for chunk in chunks]
+        assert all(path.exists() for path in chunk_paths)
+
+    assert all(not path.exists() for path in chunk_paths)
 
 
 def test_temporary_wav_is_removed_after_adapter_use(tmp_path, monkeypatch):

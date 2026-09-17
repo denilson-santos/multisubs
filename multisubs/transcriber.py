@@ -558,7 +558,12 @@ def _build_cues_from_words(
     current_words: list[dict[str, Any] | _MappedWord] = []
 
     for word in words:
-        if current_words and _words_have_significant_pause(current_words[-1], word):
+        if (
+            current_words
+            and _words_have_significant_pause(current_words[-1], word)
+            and _words_duration(current_words) > 0
+            and _word_end(word) > _word_start(word)
+        ):
             _append_words_cue(cues, current_words)
             current_words = []
 
@@ -575,7 +580,11 @@ def _build_cues_from_words(
             _append_words_cue(cues, current_words[:break_at])
             current_words = current_words[break_at:]
 
-        if current_words and _ends_sentence(_word_text(current_words[-1])):
+        if (
+            current_words
+            and _ends_sentence(_word_text(current_words[-1]))
+            and _words_duration(current_words) > 0
+        ):
             _append_words_cue(cues, current_words)
             current_words = []
 
