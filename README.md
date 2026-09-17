@@ -191,9 +191,9 @@ multisubs -i ./video.mp4 -l pt --asr qwen
 | ASR | Default model | Task and timing notes |
 | --- | --- | --- |
 | `whisperx` | `turbo` | Transcription with WhisperX alignment; English translation requires a multilingual non-Turbo model. |
-| `faster-whisper` | `turbo` | Native word timestamps; the same translation restriction as WhisperX. |
+| `faster-whisper` | `turbo` | Silero VAD and native word timestamps; the same translation restriction as WhisperX. |
 | `parakeet` | `nvidia/parakeet-tdt-0.6b-v3` | Automatic multilingual transcription and native timestamps; optional `--lang` labels artifact metadata because NeMo does not expose the detected code. |
-| `qwen` | `Qwen/Qwen3-ASR-1.7B` | Multilingual transcription; an explicit aligner-supported `--lang` enables word timestamps, otherwise timing is coarse. |
+| `qwen` | `Qwen/Qwen3-ASR-1.7B-hf` | Native Hugging Face multilingual transcription; explicit or automatically detected aligner-supported languages receive word timestamps. |
 
 Use `--model` to select another model listed in the command reference. The
 backend runtime is imported only after validation and only when selected.
@@ -514,7 +514,7 @@ WhisperX models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 `medium.en`, `medium`, `large`, and `turbo`. Faster-Whisper accepts the same
 small models plus `large-v1`, `large-v2`, `large-v3`, and `large-v3-turbo`.
 Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
-`Qwen/Qwen3-ASR-1.7B`.
+`Qwen/Qwen3-ASR-1.7B-hf`.
 
 ### Preview and animation
 
@@ -683,10 +683,10 @@ Faster-Whisper supports its published Whisper language catalog. Parakeet v3
 supports 25 European languages, including `en`, `es`, and `pt`. Qwen3-ASR
 supports its published 30-language catalog; its forced aligner currently adds
 word timestamps for `zh`, `en`, `yue`, `fr`, `de`, `it`, `ja`, `ko`, `pt`,
-`ru`, and `es` when that code is supplied through `--lang`. Automatic Qwen
-language detection uses coarse timing because a detected language may be
-outside the aligner's smaller catalog. Unsupported explicit combinations fail
-before model loading.
+`ru`, and `es`. When `--lang` is omitted, Qwen detects the language first and
+passes that result to the forced aligner when supported. Other detected
+languages keep real five-minute chunk boundaries and use the documented coarse
+timing fallback. Unsupported explicit combinations fail before model loading.
 
 ## 📁 Generated files
 

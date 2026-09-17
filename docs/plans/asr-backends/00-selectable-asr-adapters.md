@@ -1,8 +1,10 @@
 # Add selectable ASR adapters
 
-Status: Done
+Status: In review
 
 Depends on: the current transcription, cue-layout, artifact, and CLI contracts.
+
+Delivery branch: `feat/improve-asr-segmentation`
 
 ## Objective
 
@@ -36,10 +38,10 @@ Excluded:
   NeMo result does not expose the recognized code, omitted `--lang` produces
   null language metadata and filenames without a language suffix; an explicit
   code labels artifacts without conditioning inference.
-- `qwen` uses only `Qwen/Qwen3-ASR-1.7B`. It uses
-  Qwen's integrated long-audio path with `Qwen/Qwen3-ForcedAligner-0.6B` when
-  an aligner-supported source code is explicit. Automatic detection and other
-  supported languages enter the existing coarse-timing fallback.
+- `qwen` uses only `Qwen/Qwen3-ASR-1.7B-hf`. It uses native Transformers
+  inference with `Qwen/Qwen3-ForcedAligner-0.6B-hf` when
+  an explicit or automatically detected source code is supported by the
+  aligner. Other supported languages enter the existing coarse-timing fallback.
 - Runtime packages stay optional and are imported only by the selected adapter.
   The core package and Faster-Whisper CPU path do not require PyTorch; CPU-only
   PyTorch installation uses its dedicated wheel index. CUDA guidance covers
@@ -119,7 +121,7 @@ The implementation was delivered as `feat: add selectable ASR backends` in
   combinations produce actionable errors before avoidable processing.
 - Installing the core package or Faster-Whisper extra for CPU use does not
   resolve PyTorch or CUDA packages; PyTorch-backed ASRs remain separate extras.
-- `--asr qwen` accepts only the 1.7B model and resolves it when `--model` is
+- `--asr qwen` accepts only the 1.7B HF model and resolves it when `--model` is
   omitted; the global ASR default remains WhisperX.
 - Installation documentation provides separate actionable CPU and NVIDIA CUDA
   paths for PyTorch-backed ASRs and Faster-Whisper.
