@@ -1,5 +1,6 @@
 """Backend-neutral ASR selection and adapter normalization."""
 
+import struct
 import sys
 import wave
 from contextlib import contextmanager, nullcontext
@@ -274,6 +275,34 @@ def test_faster_whisper_enables_translation_vad_filter(tmp_path, monkeypatch):
     assert state["word_timestamps"] is False
     assert state["vad_filter"] is True
     assert "vad_parameters" not in state
+
+
+def test_qwen_uses_bfloat16_when_cuda_supports_it():
+    torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_bf16_supported=lambda: True),
+        bfloat16="bfloat16",
+        float16="float16",
+        float32="float32",
+    )
+
+    assert qwen._model_options(torch, "cuda") == {
+        "dtype": "bfloat16",
+        "device_map": "cuda:0",
+    }
+
+
+def test_qwen_falls_back_to_float16_without_bfloat16_support():
+    torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_bf16_supported=lambda: False),
+        bfloat16="bfloat16",
+        float16="float16",
+        float32="float32",
+    )
+
+    assert qwen._model_options(torch, "cuda") == {
+        "dtype": "float16",
+        "device_map": "cuda:0",
+    }
 
 
 def test_parakeet_normalises_nemo_segments_and_words(tmp_path, monkeypatch):
@@ -635,6 +664,24 @@ def test_qwen_wav_chunks_preserve_source_offsets(tmp_path, monkeypatch):
         assert all(path.exists() for path in chunk_paths)
 
     assert all(not path.exists() for path in chunk_paths)
+
+
+def test_qwen_chunk_boundary_prefers_low_energy_window():
+    frames = b"".join(
+        struct.pack("<h", 10_000 if frame == 9 else 0) for frame in range(25)
+    )
+
+    boundary = qwen._low_energy_boundary(
+        frames,
+        start=0,
+        target=10,
+        total_frames=25,
+        frame_rate=10,
+        channels=1,
+        sample_width=2,
+    )
+
+    assert boundary == 9
 
 
 def test_temporary_wav_is_removed_after_adapter_use(tmp_path, monkeypatch):
