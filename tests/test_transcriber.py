@@ -97,6 +97,34 @@ def test_build_subtitle_segments_prefers_sentence_and_pause_boundaries():
     assert [segment["id"] for segment in segments] == [0, 1]
 
 
+def test_build_subtitle_segments_does_not_isolate_zero_duration_words():
+    words = [
+        _word("Eu", 0.0, 0.3),
+        _word("venho", 0.4, 0.4),
+        _word("insolente.", 1.0, 1.0),
+        _word("Próxima", 2.0, 2.4),
+        _word("fala.", 2.5, 2.9),
+    ]
+
+    segments = transcriber._build_subtitle_segments(
+        [
+            {
+                "start": 0.0,
+                "end": 2.9,
+                "text": "Eu venho insolente. Próxima fala.",
+                "words": words,
+            }
+        ],
+        language="pt",
+    )
+
+    assert [(segment["start"], segment["end"]) for segment in segments] == [
+        (0.0, 1.0),
+        (2.0, 2.9),
+    ]
+    assert all(segment["end"] > segment["start"] for segment in segments)
+
+
 def test_adjoining_source_segments_do_not_invent_a_separator():
     segments = transcriber._build_subtitle_segments(
         [

@@ -229,8 +229,8 @@ ASR_SPECS = MappingProxyType(
             supports_translation=False,
         ),
         ASRBackend.QWEN: ASRSpec(
-            default_model="Qwen/Qwen3-ASR-1.7B",
-            models=("Qwen/Qwen3-ASR-1.7B",),
+            default_model="Qwen/Qwen3-ASR-1.7B-hf",
+            models=("Qwen/Qwen3-ASR-1.7B-hf",),
             languages=tuple(QWEN_LANGUAGE_NAMES),
             supports_translation=False,
         ),

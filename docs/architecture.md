@@ -110,6 +110,9 @@ segmentation:
   mode B with predicate-tail presentation joining; Chinese uses jieba with its
   packaged dictionary and HMM. Other languages retain aligned word boundaries.
 - It emits a cue at a sentence end or a pause of at least 0.45 seconds when possible.
+- It keeps zero-duration alignment records with their real timestamps but does
+  not isolate them into zero-duration cues when an adjacent timed record can
+  carry the complete source text.
 - It targets no more than 6 seconds per semantic cue; width no longer uses a
   fixed character count.
 - It calculates a PlayRes width budget from `max-width` after subtracting the
@@ -652,9 +655,9 @@ no adapter imports another backend.
   source-language alignment model for transcription. Translation keeps coarse
   segments bounded to six seconds.
 - Faster-Whisper is optional, detects visible CUDA devices through CTranslate2,
-  uses CUDA/float16 or CPU/int8 without importing PyTorch, requests native word
-  timestamps for transcription, and bounds translation VAD chunks to six
-  seconds.
+  uses CUDA/float16 or CPU/int8 without importing PyTorch, enables Silero VAD
+  with the runtime defaults for transcription and translation, and requests
+  native word timestamps for transcription.
 - Parakeet is optional and uses NeMo with
   `nvidia/parakeet-tdt-0.6b-v3`. It receives a private 16 kHz mono WAV, returns
   native segment/word timestamps, and recognizes supported languages without a
@@ -662,12 +665,17 @@ no adapter imports another backend.
   an omitted `--lang` leaves language metadata null; an explicit code labels
   artifacts without conditioning inference. NeMo's transcription progress bar
   follows the CLI verbosity setting and is hidden by default.
-- Qwen3-ASR is selected as `qwen`, uses only `Qwen/Qwen3-ASR-1.7B`, and
-  receives the same private WAV. It exposes detected language. An explicit
-  aligner-supported source code loads
-  `Qwen/Qwen3-ForcedAligner-0.6B` through Qwen's integrated long-audio path.
-  Automatic detection and other supported languages retain one coarse timed
-  segment and therefore use the existing no-word-effects fallback.
+- Qwen3-ASR is selected as `qwen`, uses the native Transformers checkpoint
+  `Qwen/Qwen3-ASR-1.7B-hf`, and receives the same private WAV in chunks of at
+  most five minutes. It exposes the detected language when `--lang` is omitted.
+  Each explicit or detected language supported by the aligner is passed to
+  `Qwen/Qwen3-ForcedAligner-0.6B-hf`; its word timestamps are offset back onto
+  the source timeline. Because the HF aligner may omit punctuation from its
+  timed units, the adapter monotonically restores punctuation-only source gaps
+  onto the preceding record before common source mapping; lexical mismatches
+  still use the safe coarse fallback. Languages outside the aligner's smaller
+  catalog retain real chunk boundaries and use the existing no-word-effects
+  coarse fallback.
 
 All model and aligner loaders retry transient network failures. Every ASR
 runtime is an installation extra; a core installation therefore does not

@@ -15,8 +15,6 @@ from .base import (
 )
 from .catalog import validate_result_language
 
-MAX_TRANSLATION_CHUNK_SECONDS = 6
-
 
 def _load_faster_whisper() -> tuple[Any, Any]:
     try:
@@ -92,14 +90,8 @@ class FasterWhisperAdapter:
                 "language": request.language,
                 "task": request.task,
                 "word_timestamps": request.task == "transcribe",
+                "vad_filter": True,
             }
-            if request.task == "translate":
-                options.update(
-                    vad_filter=True,
-                    vad_parameters={
-                        "max_speech_duration_s": MAX_TRANSLATION_CHUNK_SECONDS
-                    },
-                )
             segment_stream, info = model.transcribe(str(request.input_path), **options)
             segments = tuple(
                 _segment_record(
