@@ -180,6 +180,26 @@ def write_ass(
     atomic_write_text(path, "\n".join(lines) + "\n")
 
 
+def validate_ass_layout(
+    segments: Sequence[Mapping[str, Any]],
+    subtitle_config: SubtitleConfig | None,
+    geometry: VideoGeometry,
+    *,
+    placements: Sequence[CuePlacement | None] | None = None,
+    wrapping_metrics: WrappingMetrics | None = None,
+    suppress_animation: bool = False,
+) -> None:
+    """Validate measured ASS cue geometry without writing an artifact."""
+    _prepare_ass_write_state(
+        segments,
+        subtitle_config,
+        geometry,
+        placements=placements,
+        wrapping_metrics=wrapping_metrics,
+        suppress_animation=suppress_animation,
+    )
+
+
 def _prepare_ass_write_state(
     segments: Sequence[Mapping[str, Any]],
     subtitle_config: SubtitleConfig | None,

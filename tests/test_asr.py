@@ -217,6 +217,7 @@ def test_faster_whisper_normalises_native_word_timestamps(tmp_path, monkeypatch)
     assert state["load"] == ("turbo", {"device": "cpu", "compute_type": "int8"})
     assert state["transcribe"][1]["word_timestamps"] is True
     assert state["transcribe"][1]["vad_filter"] is True
+    assert "chunk_length" not in state["transcribe"][1]
     assert "vad_parameters" not in state["transcribe"][1]
     assert result.language == "pt"
     assert result.text == "Olá"
@@ -274,7 +275,45 @@ def test_faster_whisper_enables_translation_vad_filter(tmp_path, monkeypatch):
 
     assert state["word_timestamps"] is False
     assert state["vad_filter"] is True
+    assert state["chunk_length"] == faster_whisper.MAX_TRANSLATION_CHUNK_SECONDS
     assert "vad_parameters" not in state
+
+
+def test_whisperx_uses_six_second_chunks_for_translation(tmp_path, monkeypatch):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"input")
+    state = {}
+
+    class Model:
+        def transcribe(self, audio, **kwargs):
+            state["transcribe"] = (audio, kwargs)
+            return {
+                "language": "pt",
+                "text": "Hello",
+                "segments": [{"start": 0.0, "end": 1.0, "text": " Hello"}],
+            }
+
+    whisper = SimpleNamespace(
+        load_model=lambda *args, **kwargs: Model(),
+        load_audio=lambda path: "audio",
+    )
+    monkeypatch.setattr(whisperx, "load_torch", lambda: _torch())
+    monkeypatch.setattr(whisperx, "_load_whisperx", lambda: whisper)
+
+    result = whisperx.WhisperXAdapter().transcribe(
+        ASRRequest(source, "pt", "translate", "medium")
+    )
+
+    assert state["transcribe"] == (
+        "audio",
+        {
+            "language": "pt",
+            "task": "translate",
+            "chunk_size": whisperx.MAX_TRANSLATION_CHUNK_SECONDS,
+        },
+    )
+    assert result.language == "pt"
+    assert result.text == "Hello"
 
 
 def test_qwen_uses_bfloat16_when_cuda_supports_it():
