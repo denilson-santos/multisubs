@@ -1,10 +1,10 @@
 # Add selectable ASR adapters
 
-Status: In review
+Status: Done
 
 Depends on: the current transcription, cue-layout, artifact, and CLI contracts.
 
-Delivery branch: `fix/qwen-memory-safe-chunking`
+Delivery branch: `feat/asr-backends`
 
 ## Objective
 

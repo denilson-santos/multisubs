@@ -617,6 +617,73 @@ def validate_subtitle_config(
     return config
 
 
+def apply_subtitle_feature_disables(
+    config: SubtitleConfig,
+    *,
+    disable_cue_animations: bool = False,
+    disable_word_animations: bool = False,
+) -> SubtitleConfig:
+    """Remove all animation-dependent presentation features by scope.
+
+    Cue suppression clears its text/backdrop tracks while preserving the static
+    cue backdrop. Word suppression additionally clears timed word decoration and
+    highlight color, because those fields depend on aligned-word animation
+    support.
+    """
+    validated = validate_subtitle_config(config)
+    if not any(
+        (
+            disable_cue_animations,
+            disable_word_animations,
+        )
+    ):
+        return validated
+
+    cue = validated.animation.cue
+    word = validated.animation.word
+    style = validated.style
+    typography = style.typography
+
+    if disable_cue_animations:
+        cue = replace(
+            cue,
+            text=SubtitleElementAnimation(),
+            backdrop=SubtitleElementAnimation(),
+        )
+
+    if disable_word_animations:
+        word = replace(
+            word,
+            text=replace(
+                word.text,
+                entrance=SubtitleAnimationPhase(),
+                emphasis=SubtitleAnimationPhase(),
+                exit=SubtitleAnimationPhase(),
+            ),
+            backdrop=replace(
+                word.backdrop,
+                entrance=SubtitleAnimationPhase(),
+                emphasis=SubtitleAnimationPhase(),
+                exit=SubtitleAnimationPhase(),
+            ),
+        )
+        typography = replace(typography, highlight_color=None)
+        style = replace(
+            style,
+            word_backdrop=replace(
+                style.word_backdrop,
+                kind=SubtitleBackdrop.NONE,
+            ),
+        )
+
+    updated = replace(
+        validated,
+        style=replace(style, typography=typography),
+        animation=replace(validated.animation, cue=cue, word=word),
+    )
+    return validate_subtitle_config(updated)
+
+
 def _resolve_layout_options(
     values: Mapping[str, RelativeLength | str] | None,
     *,

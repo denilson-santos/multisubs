@@ -15,6 +15,8 @@ from .base import (
 )
 from .catalog import validate_result_language
 
+MAX_TRANSLATION_CHUNK_SECONDS = 6
+
 
 def _load_faster_whisper() -> tuple[Any, Any]:
     try:
@@ -92,6 +94,11 @@ class FasterWhisperAdapter:
                 "word_timestamps": request.task == "transcribe",
                 "vad_filter": True,
             }
+            if request.task == "translate":
+                # Faster-Whisper calls WhisperX's translation chunk boundary
+                # ``chunk_length``. Keep both translation paths at six seconds
+                # before the layout-level font fallback is considered.
+                options["chunk_length"] = MAX_TRANSLATION_CHUNK_SECONDS
             segment_stream, info = model.transcribe(str(request.input_path), **options)
             segments = tuple(
                 _segment_record(

@@ -191,8 +191,8 @@ multisubs -i ./video.mp4 -l pt --asr qwen
 
 | ASR | Default model | Task and timing notes |
 | --- | --- | --- |
-| `whisperx` | `turbo` | Transcription with WhisperX alignment; English translation requires a multilingual non-Turbo model. |
-| `faster-whisper` | `turbo` | Silero VAD and native word timestamps; the same translation restriction as WhisperX. |
+| `whisperx` | `turbo` | Transcription with WhisperX alignment; translation uses six-second chunks and a shared layout fallback; English translation requires a multilingual non-Turbo model. |
+| `faster-whisper` | `turbo` | Silero VAD and native word timestamps; translation uses the same six-second chunks and layout fallback as WhisperX. |
 | `parakeet` | `nvidia/parakeet-tdt-0.6b-v3` | Automatic multilingual transcription and native timestamps; optional `--lang` labels artifact metadata because NeMo does not expose the detected code. |
 | `qwen` | `Qwen/Qwen3-ASR-1.7B-hf` | Native Hugging Face multilingual transcription with quiet-boundary chunks up to three minutes; explicit or automatically detected aligner-supported languages receive word timestamps. |
 
@@ -251,6 +251,14 @@ multisubs -i ./video.mp4 --preview-layout \
   --template mint-progress --animation-word-text-emphasis none
 ```
 
+The two suppression flags operate independently by scope. Every
+`entrance`, `emphasis`, and `exit` phase is an animation. Therefore,
+`--disable-cue-animations` removes all cue text and backdrop animation tracks,
+while preserving the static cue backdrop. `--disable-word-animations` removes
+all word text and backdrop animation tracks, the word backdrop decoration, and
+highlight color. The word backdrop is removed because it depends on aligned-word
+timestamps even when its own phases are neutral.
+
 ### Use a custom template directory
 
 Custom templates live in a flat local directory and are selected by the JSON
@@ -307,6 +315,21 @@ multisubs \
 
 Translation output is always English. `turbo` and model names ending in `.en`
 cannot be used with `--task translate`.
+
+Translated text has no lossless source-word timing map. If the selected template
+or explicit parameters contain word animations or a word backdrop, the command
+reports the exact category and recommends `--disable-word-animations` before
+model loading. Alternatively, select a compatible template such as `default`,
+`bold-headline`, or `golden-title`. Cue-level animations and backdrops remain
+available during translation.
+
+Translation uses two safeguards. First, WhisperX and Faster-Whisper process the
+translation task in six-second chunks (`chunk_size` and `chunk_length`,
+respectively), matching the WhisperX translation behavior. If a translated cue
+still exceeds the measured width or height envelope, the artifact writer makes
+up to three small retries, reducing the effective font size by about 4% per
+step. The requested size remains intact in JSON, while the effective size used
+by JSON, SRT, ASS, and the rendered video is recorded in the resolved metadata.
 
 ### Preview a layout before transcribing
 
@@ -392,7 +415,7 @@ multisubs -i ./video.mp4 -l pt \
 
 `active-word` follows only the current alignment interval; `progressive` keeps
 each affected word visible through the cue. Word effects require source-language
-alignment and are disabled for translation or incomplete mappings. Unsupported
+alignment and are rejected for translation or incomplete mappings. Unsupported
 shaping cases retain cue-level effects and fall back to complete logical-line
 rendering; word tracks are suppressed. Previews use the same fallback and
 report a warning.
@@ -527,8 +550,10 @@ Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
 | `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
 | `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
 | `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
-| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit} TYPE` | inherited or `none` | Select one phase on one independent visual track; run `--help` for the effects valid for each phase. |
-| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit}-duration DURATION` | effect or template default | Override an enabled phase with `10ms`–`5000ms`, expressed as `150ms` or `0.15s`. |
+| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit} TYPE` | inherited or `none` | Select one phase on one independent visual track; run `--help` for the animation types valid for each phase. |
+| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit}-duration DURATION` | phase or template default | Override an enabled phase with `10ms`–`5000ms`, expressed as `150ms` or `0.15s`. |
+| `--disable-cue-animations` | off | Remove all cue text/backdrop animation phases, preserving the static cue backdrop. |
+| `--disable-word-animations` | off | Remove all word text/backdrop animation phases, word highlight, and timed word decoration. |
 | `--animation-word-text-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for word text. |
 | `--animation-word-backdrop-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for the word decoration. |
 | `--animation-word-text-highlight-color COLOR` | `#FFD54F` when enabled | Set the text color used by the `highlight` word emphasis. |
@@ -653,8 +678,11 @@ maximum dimensions all contribute. Japanese and Chinese records receive
 while validated alignment records remain the timing units for word effects.
 Text is never truncated. If a source/alignment map is incomplete, the full cue
 keeps its segment timing and word effects are disabled rather than inventing
-timestamps. SRT and ASS share intentional line breaks; JSON retains source text
-beside rendered `display_text`.
+timestamps. For translation, six-second backend chunks are tried before the
+layout fallback reduces the effective font size by small steps when the
+translated text cannot fit its measured width or height envelope. SRT and ASS
+share intentional line breaks; JSON retains source text beside rendered
+`display_text` and records requested versus effective rendering values.
 
 ## 🌍 Supported languages
 

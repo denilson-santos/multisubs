@@ -68,7 +68,7 @@ flowchart LR
 | multisubs/render_capabilities.py | Classifies actual display text for bidirectional/contextual shaping and selects positioned word fragments or complete logical-line fallback without using a language allowlist. | assess_renderer_capability(), RendererCapability |
 | multisubs/ass.py | Compiles semantic appearance and cue/word animation into trusted private ASS fields and overrides around safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
 | multisubs/subtitler.py | Probes normalized video geometry, extracts private 16 kHz mono audio for audio-only ASRs, and invokes FFmpeg to burn ASS into the selected video stream or render previews. | probe_video_geometry(), extract_audio_track(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
-| multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config() |
+| multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, applies scoped animation/effect suppressions, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config(), apply_subtitle_feature_disables() |
 | multisubs/templates.py | Strictly loads the deterministic packaged JSON index and sparse built-in style/layout/animation definitions, expands them from semantic defaults, and compiles complete baselines through the normal validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
 | multisubs/custom_templates.py | Reads the bounded public schema-1 template directory, validates every discovered file, resolves custom names with built-in-only inheritance, and returns immutable source metadata for one request. | load_custom_template_directory(), resolve_subtitle_template(), ResolvedSubtitleTemplate |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, validates native or explicit envelopes, and positions measured visual-line fragments on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement(), position_visual_lines() |
@@ -83,7 +83,7 @@ flowchart LR
 
 ## Execution flow
 
-1. The console script calls `cli.main()`. Typer parses options and their custom values; the CLI validates combinations, paths, and built-in or custom template defaults plus explicit overrides before probing. During a default processing run, the CLI routes its own progress to standard output and discards external runtimes' Python and native stdout/stderr writes through the platform's null device. Exceptions still become multisubs errors after normal streams are restored. `--verbose` leaves runtime output visible and includes detailed progress. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
+1. The console script calls `cli.main()`. Typer parses options and their custom values; the CLI validates combinations, paths, and built-in or custom template defaults plus explicit overrides before probing. Scoped disable flags are then applied to the resolved typed configuration: each scope-level animation flag removes every phase from text and backdrop tracks; cue suppression preserves its static backdrop, while word suppression also removes the dependent word decoration fields. During a default processing run, the CLI routes its own progress to standard output and discards external runtimes' Python and native stdout/stderr writes through the platform's null device. Exceptions still become multisubs errors after normal streams are restored. `--verbose` leaves runtime output visible and includes detailed progress. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
 2. Both paths validate FFmpeg/ffprobe and probe the lowest-index usable stream, checking coded dimensions, rotation, sample/display aspect ratios, and container duration in one `VideoGeometry`. Autorotation keeps coded axes at 0°/180° and swaps render and sample-aspect-ratio axes at 90°/270°; legacy rotate-tag signs are normalized, and contradictory metadata fails. This precedes normal work-directory creation and model loading. The normal path resolves layout and wrapping and validates a decorated line can fit before model loading. See [FFmpeg](#ffmpeg), [design constraints](#design-constraints), and [FR-15](prd.md#functional-requirements).
 3. The normal path resolves `--asr` and a backend-specific default model before
    loading any runtime. The selected adapter owns device selection, inference,
@@ -94,7 +94,7 @@ flowchart LR
    FFmpeg and removed after inference. Model and aligner downloads retry
    transient connection failures up to three times. See [local ASR adapters](#local-asr-adapters)
    and [FR-3–FR-5, FR-14, FR-19](prd.md#functional-requirements).
-4. `transcriber.py` maps aligned records to source text, constructs timed cues, and rebuilds wrapping metrics for the subtitle language and display-cased sample. Incomplete mappings retain complete source text at coarse segment timing instead of fabricated word times. See [subtitle-cue construction](#subtitle-cue-construction) and [Unicode segmentation and source mapping](#unicode-segmentation-and-source-mapping) for the detailed rules.
+4. `transcriber.py` maps aligned records to source text, constructs timed cues, and rebuilds wrapping metrics for the subtitle language and display-cased sample. Incomplete mappings retain complete source text at coarse segment timing instead of fabricated word times. Translation has a second, layout-level safeguard: after the six-second backend chunking stage, the artifact writer validates the measured ASS envelope and retries up to three times with the effective font size reduced by 4% per step when width or height still overflows. It then serializes JSON, SRT, and ASS from the same successful cue/config/metric set. See [subtitle-cue construction](#subtitle-cue-construction) and [Unicode segmentation and source mapping](#unicode-segmentation-and-source-mapping) for the detailed rules.
 5. The artifact writer validates timestamps and atomically writes JSON/SRT; `ass.py` compiles the same resolved configuration and cues. Both preview modes bypass transcription and reuse layout, ASS, and FFmpeg without publishing subtitle artifacts. See [JSON](#json), [SRT and ASS](#srt-and-ass), and [FR-16–FR-18](prd.md#functional-requirements) for their contracts.
 6. Normal rendering burns ASS into the selected stream with autorotation and copies available audio; preview rendering produces its still or clip without transcription artifacts. After a successful normal render, the CLI publishes collision-safe outputs and removes its private work directory; failed normal runs retain that directory for diagnosis. Preview runs remove temporary ASS/frame files and partial media. See [FFmpeg](#ffmpeg), [output layouts](#output-layouts), and [design constraints](#design-constraints).
 
@@ -115,6 +115,13 @@ segmentation:
   carry the complete source text.
 - It targets no more than 6 seconds per semantic cue; width no longer uses a
   fixed character count.
+- Translation is handled in two stages. WhisperX limits translation inference
+  with `chunk_size=6`, and Faster-Whisper uses its equivalent
+  `chunk_length=6`; this keeps translated source chunks bounded before cue
+  layout. If the resulting translated display still exceeds the measured ASS
+  width or height envelope, the artifact writer retries up to three times with
+  a 4% smaller effective font per retry. Requested style values remain in JSON,
+  while the resolved values describe the successful fallback layout.
 - It calculates a PlayRes width budget from `max-width` after subtracting the
   horizontal backdrop/shadow allowance. In native mode, percentage width uses
   the region remaining after left/right margins; in explicit mode it uses the
@@ -554,6 +561,17 @@ enabled by style. Preview suppresses every motion phase and renders the stable
 state, selecting the first word for `active-word` and the first half of the cue
 for `progressive` independently on both word tracks.
 
+Every `entrance`, `emphasis`, and `exit` phase is an animation. Therefore,
+`--disable-cue-animations` and `--disable-word-animations` clear all text and
+backdrop tracks in the selected scope. Cue suppression preserves the static cue
+backdrop; word suppression also removes the word decoration and highlight color
+because they depend on aligned-word timestamps. These transformations happen
+after template and explicit-option resolution, so a selected template remains
+the recorded template even when a scope is suppressed. Translation reports
+remaining word animation or backdrop requirements and recommends the single
+`--disable-word-animations` flag; cue-level animation and backdrop remain valid
+for translation.
+
 ass.py converts line breaks to ASS's \N syntax in dialogue events and escapes
 subtitle-derived braces and backslashes separately from generated override tags
 so they cannot become unintended controls. Every generated ASS declares
@@ -652,12 +670,14 @@ no adapter imports another backend.
 
 - WhisperX is the default adapter but an optional installation extra. It uses
   CUDA/float16 or CPU/int8, leaves VAD selection to WhisperX, and loads its
-  source-language alignment model for transcription. Translation keeps coarse
-  segments bounded to six seconds.
+  source-language alignment model for transcription. Translation requests
+  six-second chunks with WhisperX's `chunk_size` option.
 - Faster-Whisper is optional, detects visible CUDA devices through CTranslate2,
   uses CUDA/float16 or CPU/int8 without importing PyTorch, enables Silero VAD
-  with the runtime defaults for transcription and translation, and requests
-  native word timestamps for transcription.
+  with the runtime defaults for transcription and translation, requests
+  `chunk_length=6` for translation, and requests native word timestamps for
+  transcription. Its translation layout fallback is shared with WhisperX in
+  the artifact writer.
 - Parakeet is optional and uses NeMo with
   `nvidia/parakeet-tdt-0.6b-v3`. It receives a private 16 kHz mono WAV, returns
   native segment/word timestamps, and recognizes supported languages without a
