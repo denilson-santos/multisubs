@@ -1,10 +1,10 @@
 # Add selectable ASR adapters
 
-Status: In review
+Status: Done
 
 Depends on: the current transcription, cue-layout, artifact, and CLI contracts.
 
-Delivery branch: `feat/translation-fallback-animation-controls`
+Delivery branch: `feat/asr-backends`
 
 ## Objective
 
@@ -32,10 +32,7 @@ Excluded:
 
 - `whisperx` is the default adapter and keeps `turbo` as its default model.
 - `faster-whisper` uses native word timestamps and supports the same
-  transcription/English-translation task policy as Whisper models. Translation
-  uses a six-second `chunk_length`, matching WhisperX's six-second
-  `chunk_size`; both then share the artifact-level measured-font fallback for
-  translated envelope overflow.
+  transcription/English-translation task policy as Whisper models.
 - `parakeet` defaults to `nvidia/parakeet-tdt-0.6b-v3`, accepts transcription
   only, and recognizes supported languages without a prompt. Because its normal
   NeMo result does not expose the recognized code, omitted `--lang` produces
@@ -66,14 +63,6 @@ metadata. Its language is nullable when a backend cannot expose detection.
 Unknown-language filenames omit the language suffix; collision handling and
 cleanup are unchanged.
 
-The subtitle CLI also exposes scoped presentation suppression for translation
-compatibility: `--disable-cue-animations` and `--disable-word-animations` remove
-all animation phases from text and backdrop tracks in their scope. Cue
-suppression preserves its static backdrop; word suppression also removes the
-dependent word decoration fields. A translation request that retains word
-requirements reports the active category, recommends the word-scope flag, and
-lists compatible built-in templates; cue-level presentation remains available.
-
 ## Implementation tasks
 
 - [x] Add the adapter protocol, catalog, shared validation, and normalized
@@ -87,8 +76,6 @@ lists compatible built-in templates; cue-level presentation remains available.
       runtime isolation.
 - [x] Add unit and regression coverage for every adapter and invalid
       backend/task/language/model combination.
-- [x] Add scoped cue/word animation and effect suppression flags, with explicit
-      translation diagnostics and compatibility-template guidance.
 - [x] Update package metadata, README, PRD, architecture, conventions, and plan
       status.
 
