@@ -36,6 +36,7 @@ from .config import (
     WORD_ENTRANCE_ANIMATION_CHOICES,
     WORD_EXIT_ANIMATION_CHOICES,
     WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
+    apply_subtitle_feature_disables,
     parse_line_height,
     parse_opacity,
     parse_relative_length,
@@ -50,11 +51,13 @@ from .layout import (
     resolve_wrapping_metrics,
 )
 from .models import (
+    CueAnimationType,
     PreviewMode,
     PreviewRequest,
     RelativeLength,
     RunArtifacts,
     RunRequest,
+    SubtitleBackdrop,
     SubtitleConfig,
     SubtitleElementAnimation,
     SubtitleOpacity,
@@ -70,6 +73,7 @@ from .preview import (
 from .templates import (
     DEFAULT_SUBTITLE_TEMPLATE,
     TEMPLATE_CHOICES,
+    get_subtitle_template,
     require_template_catalog,
 )
 from .utils import (
@@ -925,6 +929,30 @@ def _cli_command(
             show_default=False,
         ),
     ] = None,
+    disable_cue_animations: Annotated[
+        bool,
+        typer.Option(
+            "--disable-cue-animations",
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Remove all cue text/backdrop animation phases while preserving "
+                "the static cue backdrop."
+            ),
+            show_default=False,
+        ),
+    ] = False,
+    disable_word_animations: Annotated[
+        bool,
+        typer.Option(
+            "--disable-word-animations",
+            rich_help_panel="Subtitle animations",
+            help=(
+                "Remove all word text/backdrop animation phases, word highlight, "
+                "and timed word decoration."
+            ),
+            show_default=False,
+        ),
+    ] = False,
     # Relative layout units
     font_size: Annotated[
         RelativeLength | None,
@@ -1311,6 +1339,11 @@ def _resolve_request_config(
             relative_values=relative_values,
             anchor=args.anchor,
         )
+        subtitle_config = apply_subtitle_feature_disables(
+            subtitle_config,
+            disable_cue_animations=args.disable_cue_animations,
+            disable_word_animations=args.disable_word_animations,
+        )
     except (TemplateError, ValidationError) as exc:
         parser.fail(str(exc))
     return selection, subtitle_config
@@ -1412,15 +1445,61 @@ def _validate_animation_request(
     task: str,
     parser: _ValidationContext,
 ) -> None:
-    needs_word_timing = (
-        subtitle_config.animation.word.text.enabled
-        or subtitle_config.style.word_backdrop.kind.value != "none"
+    word_animations, word_backdrop = _word_translation_features(subtitle_config)
+    if task != "translate" or not (word_animations or word_backdrop):
+        return
+
+    features: list[str] = []
+    if word_animations:
+        features.append("word animations (entrance/emphasis/exit)")
+    if word_backdrop:
+        features.append("word backdrop decoration (outline/box)")
+    disable_flag = "--disable-word-animations"
+
+    safe_templates = _translation_safe_template_names()
+    template_hint = (
+        ", ".join(safe_templates)
+        if safe_templates
+        else "a template without word animations or effects"
     )
-    if needs_word_timing and task == "translate":
-        parser.fail(
-            "word animation cannot be combined with --task translate because "
-            "source-language word timings do not map losslessly to translated text"
-        )
+    feature_text = " and ".join(features)
+    parser.fail(
+        "word animations/backdrop decoration cannot be combined with --task "
+        "translate because "
+        "translated text has no lossless source-word timing map. The selected "
+        f"template or parameters contain {feature_text}. Use {disable_flag}, or "
+        f"choose a compatible template: {template_hint}."
+    )
+
+
+def _word_translation_features(config: SubtitleConfig) -> tuple[bool, bool]:
+    """Return visible word animation and backdrop requirements for a config."""
+    word_text = config.animation.word.text
+    word_backdrop = config.animation.word.backdrop
+    word_decoration_enabled = (
+        config.style.word_backdrop.kind is not SubtitleBackdrop.NONE
+    )
+    word_animations = word_text.enabled or (
+        word_decoration_enabled and _has_transition(word_backdrop)
+    )
+    return word_animations, word_decoration_enabled
+
+
+def _has_transition(track: SubtitleElementAnimation) -> bool:
+    """Return whether a track has a visible entrance or exit transition."""
+    return any(
+        phase.type is not CueAnimationType.NONE
+        for phase in (track.entrance, track.exit)
+    )
+
+
+def _translation_safe_template_names() -> tuple[str, ...]:
+    """Return built-in templates without visible word timing requirements."""
+    return tuple(
+        name
+        for name in TEMPLATE_CHOICES
+        if not any(_word_translation_features(get_subtitle_template(name).config))
+    )
 
 
 def _run_request(

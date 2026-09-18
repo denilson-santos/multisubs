@@ -505,6 +505,8 @@ def test_animation_cli_replaces_removed_karaoke_flags(tmp_path: Path):
         "--animation-cue-entrance",
         "--animation-word-emphasis",
         "--animation-word-mode",
+        "--disable-cue-backdrop",
+        "--disable-word-backdrop",
     ):
         with pytest.raises(SystemExit):
             parser.parse_args(["-i", str(input_path), removed])
@@ -538,6 +540,57 @@ def test_animation_cli_replaces_removed_karaoke_flags(tmp_path: Path):
     assert "--word-backdrop {none,outline,box}" in help_text
     assert "--word-backdrop-color COLOR" in help_text
     assert "--word-backdrop-size LENGTH" in help_text
+    for option in (
+        "--disable-cue-animations",
+        "--disable-word-animations",
+    ):
+        assert option in help_text
+
+
+def test_animation_disable_flags_remove_scope_features(tmp_path: Path):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = TestParser()
+
+    cue_motion = cli._build_request(
+        parser.parse_args(
+            [
+                "-i",
+                str(input_path),
+                "--template",
+                "bold-headline",
+                "--animation-cue-text-emphasis",
+                "pulse",
+                "--disable-cue-animations",
+            ]
+        ),
+        parser,
+    ).subtitle_config
+    assert cue_motion.animation.cue.text.entrance.type is CueAnimationType.NONE
+    assert cue_motion.animation.cue.text.emphasis.type is CueAnimationType.NONE
+    assert cue_motion.animation.cue.text.exit.type is CueAnimationType.NONE
+    assert cue_motion.animation.cue.backdrop.entrance.type is CueAnimationType.NONE
+    assert cue_motion.animation.cue.backdrop.enabled is False
+    assert cue_motion.style.backdrop.kind.value == "outline"
+
+    word_motion = cli._build_request(
+        parser.parse_args(
+            [
+                "-i",
+                str(input_path),
+                "--template",
+                "coral-marker",
+                "--disable-word-animations",
+            ]
+        ),
+        parser,
+    ).subtitle_config
+    assert word_motion.animation.word.text.enabled is False
+    assert word_motion.animation.word.backdrop.entrance.type is CueAnimationType.NONE
+    assert word_motion.animation.word.backdrop.emphasis.type is CueAnimationType.NONE
+    assert word_motion.animation.word.backdrop.exit.type is CueAnimationType.NONE
+    assert word_motion.style.word_backdrop.kind.value == "none"
+    assert word_motion.style.typography.highlight_color is None
 
 
 def test_animation_template_branches_can_be_disabled_independently():
@@ -652,6 +705,70 @@ def test_every_word_animation_phase_rejects_translation(
             ),
             parser,
         )
+
+
+def test_translation_message_identifies_word_features_and_recommends_fixes(
+    tmp_path: Path, capsys
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = TestParser()
+
+    with pytest.raises(SystemExit):
+        cli._build_request(
+            parser.parse_args(
+                [
+                    "-i",
+                    str(input_path),
+                    "--template",
+                    "coral-marker",
+                    "--task",
+                    "translate",
+                    "--model",
+                    "medium",
+                ]
+            ),
+            parser,
+        )
+
+    message = capsys.readouterr().err
+    assert "word animations (entrance/emphasis/exit)" in message
+    assert "word backdrop decoration (outline/box)" in message
+    assert message.count("--disable-word-animations") == 1
+    assert "default, bold-headline, golden-title" in message
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--template", "amber-word", "--disable-word-animations"],
+        ["--template", "coral-marker", "--disable-word-animations"],
+    ],
+)
+def test_word_feature_disable_flags_make_translation_valid(
+    tmp_path: Path, options: list[str]
+):
+    input_path = tmp_path / "video.mp4"
+    input_path.write_bytes(b"input")
+    parser = TestParser()
+
+    request = cli._build_request(
+        parser.parse_args(
+            [
+                "-i",
+                str(input_path),
+                "--task",
+                "translate",
+                "--model",
+                "medium",
+                *options,
+            ]
+        ),
+        parser,
+    )
+
+    assert request.subtitle_config.animation.word.enabled is False
+    assert request.subtitle_config.style.word_backdrop.kind.value == "none"
 
 
 def test_ass_compiles_bounded_motion_scale_and_fade_events(tmp_path: Path):
