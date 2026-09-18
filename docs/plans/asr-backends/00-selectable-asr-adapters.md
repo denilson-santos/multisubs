@@ -4,7 +4,7 @@ Status: In review
 
 Depends on: the current transcription, cue-layout, artifact, and CLI contracts.
 
-Delivery branch: `fix/qwen-memory-safe-chunking`
+Delivery branch: `feat/translation-fallback-animation-controls`
 
 ## Objective
 
