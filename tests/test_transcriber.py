@@ -801,6 +801,84 @@ def test_source_separators_survive_json_srt_and_ass(tmp_path: Path):
     assert text in Path(ass_path).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("asr_backend", ["whisperx", "faster-whisper"])
+def test_translation_layout_fallback_is_shared_by_asr_backends(
+    tmp_path: Path, monkeypatch, asr_backend
+):
+    def build_scaled_measurer(
+        appearance,
+        *,
+        language=None,
+        sample_text=None,
+        verify_font_coverage=False,
+        bundled_fonts_dir=None,
+    ):
+        del language, sample_text, verify_font_coverage, bundled_fonts_dir
+        font_size = appearance.font_size
+        assert isinstance(font_size, int)
+        info = TextMeasurementInfo(
+            mode="font-metrics",
+            requested_font="Test",
+            resolved_font="Test",
+            resolved_style="Regular",
+            font_source="test",
+            shaping="raqm",
+            metric_size=font_size,
+        )
+        return TextMeasurer(
+            info,
+            lambda value: len(value) * 12.0 * font_size / 58.0,
+            line_height=float(font_size),
+            ascent=font_size * 0.8,
+            descent=font_size * 0.2,
+        )
+
+    monkeypatch.setattr("multisubs.layout.build_text_measurer", build_scaled_measurer)
+    source_path = tmp_path / "input.mp4"
+    source_path.write_bytes(b"input")
+    text = "Those who do not know the pain and do not know the true peace."
+    document = TranscriptDocument(
+        source_path=source_path,
+        language="pt",
+        task="translate",
+        model_name="medium",
+        full_text=text,
+        segments=({"id": 0, "start": 0.0, "end": 4.0, "text": text},),
+        asr_backend=asr_backend,
+    )
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"backdrop": "box"},
+        relative_values={
+            "font_size": "58px",
+            "outline_weight": "15px",
+            "shadow_weight": "0px",
+            "max_width": "400px",
+            "max_height": "150px",
+        },
+    )
+    progress: list[str] = []
+
+    paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        config,
+        geometry=GEOMETRY,
+        progress=progress.append,
+    )
+
+    payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
+    rendering = payload["metadata"]["rendering"]
+    assert rendering["requested"]["font_size"] == "58px"
+    assert rendering["resolved"]["font_size"] == 56
+    assert rendering["wrapping"]["font_size"] == 56
+    assert progress[:1] == [
+        "Translation layout fallback (1/3): reduced font size from 58px to "
+        "56px after subtitle envelope overflow.",
+    ]
+    assert all(Path(path).exists() for path in paths)
+
+
 def test_artifacts_omit_suffix_when_source_language_is_unknown(tmp_path: Path):
     source_path = tmp_path / "input.mp4"
     source_path.write_bytes(b"input")

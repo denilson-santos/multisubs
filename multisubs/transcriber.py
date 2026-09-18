@@ -28,6 +28,7 @@ from .ass import (
     allocate_karaoke_durations,
     quantize_ass_centiseconds,
     resolve_subtitle_palettes,
+    validate_ass_layout,
     write_ass,
 )
 from .config import validate_subtitle_config
@@ -119,6 +120,15 @@ from .wrapping import (
 
 MAX_CUE_DURATION = 6.0
 PAUSE_BREAK_THRESHOLD = 0.45
+TRANSLATION_FONT_FALLBACK_SCALE = 0.96
+MAX_TRANSLATION_FONT_FALLBACK_STEPS = 3
+
+_TRANSLATION_LAYOUT_OVERFLOW_MESSAGES = frozenset(
+    {
+        "Measured subtitle lines exceed the configured max-width envelope",
+        "Measured subtitle lines exceed the configured max-height envelope",
+    }
+)
 
 ProgressReporter = Callable[[str], None] | None
 _SKIP_JSON_VALUE = object()
@@ -288,17 +298,18 @@ def write_transcription_artifacts(
         geometry,
     )
     _validate_subtitle_segments(document.segments)
-    display_segments, resolved_wrapping_metrics = layout_subtitle_cues(
-        document.segments,
-        resolved_config,
-        geometry,
-        language="en" if document.task == "translate" else document.language,
-        wrapping_metrics=wrapping_metrics,
-        verify_font_coverage=verify_font_coverage,
-    )
-    display_segments, fallback_cues = prepare_karaoke_cues(
+    (
         display_segments,
         resolved_config,
+        resolved_wrapping_metrics,
+        fallback_cues,
+    ) = _layout_artifacts_with_translation_fallback(
+        document,
+        resolved_config,
+        geometry,
+        wrapping_metrics=wrapping_metrics,
+        verify_font_coverage=verify_font_coverage,
+        progress=progress,
     )
     if _requires_word_timing(resolved_config) and fallback_cues:
         _report(
@@ -351,6 +362,125 @@ def write_transcription_artifacts(
     )
     _report(progress, "Completed ASS transcript.")
     return paths.as_tuple()
+
+
+def _layout_artifacts_with_translation_fallback(
+    document: TranscriptDocument,
+    resolved_config: SubtitleConfig,
+    geometry: VideoGeometry,
+    *,
+    wrapping_metrics: WrappingMetrics | None,
+    verify_font_coverage: bool,
+    progress: ProgressReporter,
+) -> tuple[list[dict[str, Any]], SubtitleConfig, WrappingMetrics, int]:
+    """Lay out cues, retrying translated output with a smaller font if needed."""
+    current_config = resolved_config
+    current_metrics_input = wrapping_metrics
+
+    for fallback_step in range(MAX_TRANSLATION_FONT_FALLBACK_STEPS + 1):
+        display_segments, current_metrics = layout_subtitle_cues(
+            document.segments,
+            current_config,
+            geometry,
+            language="en" if document.task == "translate" else document.language,
+            wrapping_metrics=current_metrics_input,
+            verify_font_coverage=verify_font_coverage,
+        )
+        display_segments, fallback_cues = prepare_karaoke_cues(
+            display_segments,
+            current_config,
+        )
+        if document.task != "translate":
+            return display_segments, current_config, current_metrics, fallback_cues
+        try:
+            validate_ass_layout(
+                display_segments,
+                current_config,
+                geometry,
+                wrapping_metrics=current_metrics,
+            )
+        except ValidationError as exc:
+            if (
+                str(exc) not in _TRANSLATION_LAYOUT_OVERFLOW_MESSAGES
+                or fallback_step >= MAX_TRANSLATION_FONT_FALLBACK_STEPS
+            ):
+                raise
+            next_layout = _next_translation_font_layout(
+                current_config,
+                current_metrics,
+                document.segments,
+                geometry,
+                verify_font_coverage=verify_font_coverage,
+            )
+            if next_layout is None:
+                raise
+            next_config, next_metrics = next_layout
+            _report(
+                progress,
+                "Translation layout fallback "
+                f"({fallback_step + 1}/{MAX_TRANSLATION_FONT_FALLBACK_STEPS}): "
+                f"reduced font size from {current_metrics.font_size}px to "
+                f"{next_metrics.font_size}px after subtitle envelope overflow.",
+            )
+            current_config = next_config
+            current_metrics_input = next_metrics
+            continue
+        return display_segments, current_config, current_metrics, fallback_cues
+
+    raise AssertionError("translation layout fallback loop did not return")
+
+
+def _next_translation_font_layout(
+    config: SubtitleConfig,
+    metrics: WrappingMetrics,
+    segments: Sequence[Mapping[str, Any]],
+    geometry: VideoGeometry,
+    *,
+    verify_font_coverage: bool,
+) -> tuple[SubtitleConfig, WrappingMetrics] | None:
+    """Build the next small translation-font fallback step."""
+    current_size = metrics.font_size
+    if current_size <= 1:
+        return None
+    next_size = min(
+        current_size - 1,
+        max(1, round(current_size * TRANSLATION_FONT_FALLBACK_SCALE)),
+    )
+    if next_size >= current_size:
+        return None
+
+    typography = replace(
+        config.style.typography,
+        font_size=next_size,
+    )
+    next_config = replace(
+        config,
+        style=replace(config.style, typography=typography),
+    )
+    sample_text = [
+        _transform_display_text(
+            str(segment.get("semantic_text", segment.get("text", ""))),
+            next_config.style.typography.text_case,
+        )
+        for segment in segments
+    ]
+    renderer_fonts_dir = metrics.text_measurer.info.renderer_fonts_dir
+    next_metrics = resolve_wrapping_metrics(
+        next_config,
+        geometry,
+        language="en",
+        bundled_fonts_dir=(
+            renderer_fonts_dir if renderer_fonts_dir is not None else None
+        ),
+        sample_text=sample_text if verify_font_coverage else None,
+        verify_font_coverage=verify_font_coverage,
+    )
+    next_config = resolve_subtitle_config(
+        next_config,
+        geometry,
+        text_measurer=next_metrics.text_measurer,
+    )
+    return next_config, next_metrics
 
 
 def _normalise_input_path(input_path: str | Path) -> Path:
