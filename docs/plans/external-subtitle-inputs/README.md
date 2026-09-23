@@ -1,6 +1,6 @@
 # External subtitle inputs roadmap
 
-Status: In review
+Status: Planned
 
 ## Objective and scope
 
@@ -11,20 +11,22 @@ public contracts and can be used independently.
 
 ## Plans and progress
 
-Progress: 0/2 implementations complete. Both plan specifications are in
-review on `docs/external-subtitle-input-plans`; implementation has not started.
+Progress: 0/2 implementations complete. Both plans are accepted and ready
+for implementation; implementation has not started. Plan documents merged in
+[PR #95](https://github.com/denilson-santos/multisubs/pull/95).
 
-| Plan | Status | Dependencies | Delivery branch |
+| Plan | Status | Dependencies | Implementation delivery |
 | --- | --- | --- | --- |
-| [0 — Timed-cue JSON workflow](00-compile-timed-cue-json.md) | In review | Existing layout, ASS, SRT, and FFmpeg contracts | `docs/external-subtitle-input-plans` |
-| [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | In review | Existing FFmpeg boundary; independent of Plan 0 | `docs/external-subtitle-input-plans` |
+| [0 — Timed-cue JSON workflow](00-compile-timed-cue-json.md) | Planned | Existing layout, ASS, SRT, and FFmpeg contracts | Not started |
+| [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | Planned | Existing FFmpeg boundary; independent of Plan 0 | Not started |
 
 ## Delivery order and strategy
 
 Implement Plan 0 first so its generated ASS and video can exercise Plan 1,
-then deliver Plan 1 in its own focused pull request. Neither plan is a runtime prerequisite
-of the other. Each plan proposes a short-lived branch from current `main` and
-a draft pull request against `main` after explicit Git delivery confirmation.
+then deliver Plan 1 in its own focused pull request. Neither plan is a runtime
+prerequisite of the other. Each plan proposes a short-lived branch from
+current `main` and a draft pull request against `main` after explicit Git
+delivery confirmation.
 
 ## Shared definition of done
 

@@ -1,8 +1,6 @@
 # Generate SRT, ASS, and a subtitled video from timed-cue JSON
 
-Status: In review
-
-Delivery: `docs/external-subtitle-input-plans`
+Status: Planned
 
 Depends on:
 
