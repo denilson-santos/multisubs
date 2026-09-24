@@ -323,6 +323,15 @@ def _cli_command(
             show_default=False,
         ),
     ] = ".",
+    subtitle_file: Annotated[
+        str | None,
+        typer.Option(
+            "--subtitle-file",
+            metavar="PATH",
+            help="Burn an existing SRT or ASS file into a copy of the video.",
+            show_default=False,
+        ),
+    ] = None,
     asr: Annotated[
         str,
         typer.Option(
@@ -1158,10 +1167,20 @@ def _cli_command(
     """Generate and embed subtitles into a local video."""
     with _cli_logging(verbose):
         try:
-            require_template_catalog()
             args = SimpleNamespace(
                 **{name: value for name, value in locals().items() if name != "ctx"}
             )
+            if subtitle_file is not None:
+                _validate_external_subtitle_options(ctx, args)
+                video, destination = _resolve_request_paths(args, ctx)
+                from .subtitler import render_subtitle_file
+
+                rendered = render_subtitle_file(
+                    video, subtitle_file, destination, fonts_dir=fonts_dir
+                )
+                print(f"Video saved to: {rendered}")
+                return 0
+            require_template_catalog()
             request = _build_request(args, ctx)
             if verbose:
                 result_path = _run_request(
@@ -1196,12 +1215,37 @@ def _cli_command(
     return 0
 
 
+def _validate_external_subtitle_options(
+    ctx: typer.Context, args: SimpleNamespace
+) -> None:
+    """Allow only video, output, diagnostics, and optional external fonts."""
+    allowed = {
+        "input_path",
+        "output_dir",
+        "version",
+        "verbose",
+        "subtitle_file",
+        "fonts_dir",
+    }
+    for name in vars(args):
+        if name in allowed:
+            continue
+        source = ctx.get_parameter_source(name)
+        if source is not None and source.name == "COMMANDLINE":
+            ctx.fail(f"--{name.replace('_', '-')} cannot be used with --subtitle-file")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return a process-appropriate exit status."""
     try:
-        require_template_catalog()
+        command_args = list(argv) if argv is not None else sys.argv[1:]
+        if not any(
+            argument == "--subtitle-file" or argument.startswith("--subtitle-file=")
+            for argument in command_args
+        ):
+            require_template_catalog()
         result = get_command(app).main(
-            args=list(argv) if argv is not None else None,
+            args=command_args,
             prog_name="multisubs",
             standalone_mode=False,
         )
