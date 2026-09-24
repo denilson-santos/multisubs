@@ -18,7 +18,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Multilingual subtitle correctness | Done | 6/6 | Complete | [Open dashboard](multilingual-subtitles/README.md) |
 | Codebase simplification | Done | 5/5 | Complete | [Open dashboard](codebase-simplification/README.md) |
 | Selectable ASR backends | In review | 1/1 | Plan 0 | [Open dashboard](asr-backends/README.md) |
-| External subtitle inputs | In review | 0/2 | Plans 0 and 1 | [Open dashboard](external-subtitle-inputs/README.md) |
+| External subtitle inputs | In review | 1/2 | Plan 1 | [Open dashboard](external-subtitle-inputs/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

@@ -81,6 +81,21 @@ flowchart LR
 | multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
 | multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
 
+### External SRT and ASS input
+
+`render_subtitle_file()` in `subtitler.py` validates the local video and
+nonempty `.srt` or `.ass` file before probing, checks FFmpeg/libass support,
+then passes the original subtitle path directly to the existing `subtitles`
+filter. ASS styles and override tags are authored by the caller; SRT uses
+libass defaults. Optional `--fonts-dir` is passed to the same filter.
+No template, font measurement, cue compiler, transcript, or ASR is involved.
+
+Rendering happens in a private directory inside the output directory. Only
+after FFmpeg succeeds is the new `<video>-subtitled<extension>` media file
+published with collision-safe naming; the private directory is removed on
+success or failure. The established `embed_subtitles()` positional ASS API
+remains unchanged.
+
 ### Timed-cue JSON input
 
 `timed_cues.py` handles a separate public schema-version-1 JSON contract.

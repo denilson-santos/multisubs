@@ -15,7 +15,13 @@ from typing import Any
 
 from .errors import ArtifactError, DependencyError, RenderingError, ValidationError
 from .models import VideoGeometry
-from .utils import get_unique_path, with_language_suffix
+from .utils import (
+    create_work_dir,
+    find_unique_stem,
+    get_unique_path,
+    publish_files,
+    with_language_suffix,
+)
 
 ProgressReporter = Callable[[str], None] | None
 MAX_VIDEO_DIMENSION = 32_768
@@ -356,6 +362,66 @@ def _probe_duration(format_value: object) -> float | None:
     if not math.isfinite(duration) or duration < 0:
         raise ValidationError("ffprobe returned an invalid container duration")
     return duration
+
+
+def render_subtitle_file(
+    video_path: str | Path,
+    subtitle_path: str | Path,
+    output_dir: str | Path,
+    *,
+    fonts_dir: str | Path | None = None,
+) -> Path:
+    """Burn a supplied SRT or ASS file into a collision-safe copy of a video."""
+    source = _require_file(video_path, "Input video")
+    subtitles = _require_file(subtitle_path, "Subtitle file")
+    if subtitles.suffix.lower() not in {".srt", ".ass"}:
+        raise ValidationError("Subtitle file must have an .srt or .ass extension")
+    try:
+        with subtitles.open("rb") as stream:
+            if not stream.read(1):
+                raise ValidationError("Subtitle file must not be empty")
+    except OSError as exc:
+        raise ValidationError(
+            f"Could not read subtitle file '{subtitle_path}': {exc}"
+        ) from exc
+    selected_fonts = _require_directory(fonts_dir, "Fonts directory")
+    destination = Path(output_dir).expanduser().resolve(strict=False)
+    if destination.exists() and not destination.is_dir():
+        raise ValidationError(
+            f"Output path '{output_dir}' is a file; provide a directory instead"
+        )
+    validate_ffmpeg_support()
+    geometry = probe_video_geometry(source)
+    work_dir = create_work_dir(destination)
+    try:
+        private_video = work_dir / f"video{source.suffix}"
+        try:
+            embed_subtitles(
+                source,
+                subtitles,
+                work_dir,
+                lang=None,
+                output_path=private_video,
+                geometry=geometry,
+                fonts_dir=selected_fonts,
+            )
+        except RenderingError as exc:
+            raise RenderingError(
+                f"FFmpeg could not render subtitle file '{subtitle_path}'; "
+                "check that it is a valid SRT or ASS file."
+            ) from exc
+        while True:
+            stem = find_unique_stem(
+                destination, f"{source.stem}-subtitled", (source.suffix,)
+            )
+            published = destination / f"{stem}{source.suffix}"
+            try:
+                publish_files({private_video: published})
+            except FileExistsError:
+                continue
+            return published
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def embed_subtitles(
