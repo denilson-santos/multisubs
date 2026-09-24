@@ -1,5 +1,6 @@
 """Direct SRT/ASS rendering contract without transcription."""
 
+import re
 import shutil
 import subprocess
 import sys
@@ -117,7 +118,8 @@ def test_cli_rejects_explicit_conflicts(tmp_path, conflict):
         ["-i", str(video), "--subtitle-file", str(subtitle), option, value],
     )
     assert result.exit_code == 2
-    assert "cannot be used with --subtitle-file" in result.output
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output)
+    assert "cannot be used with --subtitle-file" in " ".join(output.split())
 
 
 def test_external_mode_skips_template_catalog(tmp_path, monkeypatch, capsys):
