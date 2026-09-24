@@ -1,8 +1,8 @@
 # Burn an external SRT or ASS file into a video
 
-Status: In review
+Status: Done
 
-Delivery: `feat/external-subtitle-file`
+Delivery: [PR #98](https://github.com/denilson-santos/multisubs/pull/98)
 
 Depends on:
 
