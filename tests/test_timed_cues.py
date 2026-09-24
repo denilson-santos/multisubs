@@ -1,6 +1,7 @@
 """Public timed-cue JSON contract and ASR-free publication tests."""
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -238,7 +239,8 @@ def test_cli_rejects_explicit_asr_default_before_video_probe(tmp_path):
         ],
     )
     assert result.exit_code == 2
-    assert "--asr cannot be used with --cues-json" in result.output
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output)
+    assert "--asr cannot be used with --cues-json" in " ".join(output.split())
 
 
 def test_public_api_does_not_import_asr_runtime_in_fresh_process():
