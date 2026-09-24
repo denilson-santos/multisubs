@@ -1,8 +1,6 @@
 # Burn an external SRT or ASS file into a video
 
-Status: In review
-
-Delivery: `docs/external-subtitle-input-plans`
+Status: Planned
 
 Depends on:
 
