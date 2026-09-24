@@ -63,6 +63,8 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-18 | The user must be able to request `--preview-animation` instead of `--preview-layout` to export one collision-safe silent MP4 without transcription or speech synthesis. It must reuse the first fitting transformed preview cue, selected template, layout, font metrics, ASS geometry, production animation compiler, and shaping-capability decision. A single uncaptioned frame selected by `--preview-at` is frozen as the background; the timestamp does not affect the animation clock. The cue runs after a 500 ms lead-in and before a 500 ms tail, with a configurable `--preview-duration` from 1 through 15 seconds (default `4s`) accepted as whole milliseconds or seconds. Simulated word units preserve whitespace fragments, punctuation attachment, CJK graphemes, combining marks, and ZWJ clusters; sentence/clause/default gaps are deterministic and capped at 20% of the cue, and weighted integer timing conserves the ASS centisecond interval with positive ordered units. Unsafe per-word shaping uses complete logical lines and a warning rather than presenting simulated motion as supported. The MP4 contains one 30 fps H.264 video stream, no audio, preserves autorotated geometry, uses a compatible pixel format for odd dimensions, and publishes no JSON, SRT, or ASS. Progress and optional guides must identify timings as simulated rather than speech-synchronized. Language, model, and task do not trigger speech validation in this mode, and `--keep-transcriptions` is rejected. |
 | FR-19 | The CLI must expose `--asr` with `whisperx`, `faster-whisper`, `parakeet`, and `qwen`; WhisperX remains the default. Omitted `--model` must resolve per backend while preserving `whisperx` plus `turbo` for existing commands and selecting `Qwen/Qwen3-ASR-1.7B-hf` for Qwen. Every ASR runtime must be an optional lazy import so the core package and Faster-Whisper CPU path do not require PyTorch or CUDA packages. Every adapter must normalize text, an optional reported language, segments, and real available word timestamps into one internal contract; unavailable word timing must use the existing visible coarse-segment fallback and must never be fabricated. WhisperX and Faster-Whisper translation must use equivalent six-second inference chunks, followed by the shared measured-font fallback when translated layout exceeds its envelope. Qwen must split long audio at nearby low-energy boundaries with source offsets intact, release its ASR model before loading the aligner, select BF16 when supported with an FP16 CUDA fallback, and pass an automatically detected aligner-supported language to its forced aligner. Retained JSON must identify the selected ASR and model. |
 
+| FR-21 | A caller may provide a readable, nonempty local SRT or ASS file and video to render one hard-subtitled copy without ASR or rewriting the subtitle file. ASS is passed through with authored styling; SRT receives FFmpeg/libass default styling. Optional local fonts may be supplied. The CLI rejects transcription, template, appearance, animation, and preview options in this mode; failures publish no video, and collisions add a suffix. |
+
 ## Non-functional requirements
 
 | Area | Requirement |
@@ -150,6 +152,11 @@ up to three 4% reductions when the translated subtitle envelope overflows.
 Parakeet and Qwen3-ASR temporary WAV input is removed after success or failure;
 missing native or forced-alignment timestamps produce coarse static cues instead
 of invented word timing.
+
+35. `--subtitle-file` accepts a local SRT or ASS, renders it unchanged
+through FFmpeg/libass into a new collision-safe video, and copies the available
+audio. The source video and subtitle file remain unchanged, no transcript
+artifacts are created, and invalid or malformed input publishes nothing.
 
 ## Constraints and risks
 

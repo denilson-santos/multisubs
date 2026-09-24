@@ -178,6 +178,27 @@ video.
 
 ## 🧰 Common recipes
 
+### Burn an existing subtitle file
+
+Use an existing local SRT or ASS file without transcription:
+
+```bash
+multisubs -i ./video.mp4 --subtitle-file ./captions.srt -o ./output
+multisubs -i ./video.mp4 --subtitle-file ./styled.ass --fonts-dir ./fonts -o ./output
+```
+
+The output is one collision-safe `video-subtitled.mp4` copy with hard
+subtitles and copied audio. The input subtitle file is passed unchanged to
+FFmpeg/libass. ASS keeps its authored style and override tags; SRT uses
+libass default styling, which depends on the installed fonts and FFmpeg build.
+Only `--fonts-dir`, `--verbose`, input, and output options apply in this mode.
+ASR, template, appearance, animation, preview, and
+`--keep-transcriptions` options are rejected.
+
+Python callers can use
+`multisubs.render_subtitle_file(video_path, subtitle_path, output_dir,
+fonts_dir=None)`, which returns the output video `Path`.
+
 ### Choose an ASR backend
 
 Omitting `--asr` keeps the established WhisperX `turbo` behavior. Each backend
@@ -518,6 +539,7 @@ Run `multisubs --help` for the CLI's complete, authoritative help text.
 | --- | --- | --- |
 | `-i`, `--input-path PATH` | required | Path to one local input video. |
 | `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
+| `--subtitle-file PATH` | off | Burn an existing SRT or ASS file into the video without transcription. |
 | `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
 | `-l`, `--lang CODE` | automatic when exposed | Source-language code supported by the selected ASR. For Parakeet it labels metadata but does not condition transcription; English-only Whisper models use `en`. |
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
@@ -739,6 +761,10 @@ output/
 # With --preview-animation: one silent frozen-background clip
 output/
 └── video-subtitle-animation-preview.mp4
+
+# With --subtitle-file captions.srt or styled.ass
+output/
+└── video-subtitled.mp4
 ```
 
 Existing paths are never overwritten. multisubs adds suffixes such as `(1)` to

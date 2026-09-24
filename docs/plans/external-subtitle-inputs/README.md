@@ -11,13 +11,15 @@ public contracts and can be used independently.
 
 ## Plans and progress
 
-Progress: 0/2 implementations complete. Both plan specifications are in
-review on `docs/external-subtitle-input-plans`; implementation has not started.
+Progress: 0/2 implementations complete. Plan 0 is in review on
+`feat/timed-cue-json-rendering`; Plan 1 is in review on
+`feat/external-subtitle-file`. Plan documents merged in
+[PR #95](https://github.com/denilson-santos/multisubs/pull/95).
 
-| Plan | Status | Dependencies | Delivery branch |
+| Plan | Status | Dependencies | Implementation delivery |
 | --- | --- | --- | --- |
-| [0 — Timed-cue JSON workflow](00-compile-timed-cue-json.md) | In review | Existing layout, ASS, SRT, and FFmpeg contracts | `docs/external-subtitle-input-plans` |
-| [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | In review | Existing FFmpeg boundary; independent of Plan 0 | `docs/external-subtitle-input-plans` |
+| [0 — Timed-cue JSON workflow](00-compile-timed-cue-json.md) | In review | Existing layout, ASS, SRT, and FFmpeg contracts | `feat/timed-cue-json-rendering` |
+| [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | In review | Existing FFmpeg boundary; independent of Plan 0 | `feat/external-subtitle-file` |
 
 ## Delivery order and strategy
 

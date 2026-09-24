@@ -2,7 +2,7 @@
 
 Status: In review
 
-Delivery: `docs/external-subtitle-input-plans`
+Delivery: `feat/external-subtitle-file`
 
 Depends on:
 
@@ -117,13 +117,13 @@ files on failure. Do not create a `subtitles` directory or a transcript JSON.
 
 ## Implementation tasks
 
-- [ ] Add validated external subtitle file and video inputs plus a dedicated
+- [x] Add validated external subtitle file and video inputs plus a dedicated
   request/public API; preserve the existing ASS-only positional API.
-- [ ] Generalize the private FFmpeg subtitle-file path and add CLI dispatch,
+- [x] Generalize the private FFmpeg subtitle-file path and add CLI dispatch,
   conflicts, output naming, and failure cleanup.
-- [ ] Cover real SRT and ASS rendering, authored ASS style preservation, audio
+- [x] Cover real SRT and ASS rendering, authored ASS style preservation, audio
   copying, geometry, no-ASR-import behavior, and collisions.
-- [ ] Update README, PRD, architecture, CLI help, AGENTS map if module
+- [x] Update README, PRD, architecture, CLI help, AGENTS map if module
   ownership changes, and this package's plan status during implementation.
 
 ## Verification

@@ -81,6 +81,21 @@ flowchart LR
 | multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
 | multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
 
+### External SRT and ASS input
+
+`render_subtitle_file()` in `subtitler.py` validates the local video and
+nonempty `.srt` or `.ass` file before probing, checks FFmpeg/libass support,
+then passes the original subtitle path directly to the existing `subtitles`
+filter. ASS styles and override tags are authored by the caller; SRT uses
+libass defaults. Optional `--fonts-dir` is passed to the same filter.
+No template, font measurement, cue compiler, transcript, or ASR is involved.
+
+Rendering happens in a private directory inside the output directory. Only
+after FFmpeg succeeds is the new `<video>-subtitled<extension>` media file
+published with collision-safe naming; the private directory is removed on
+success or failure. The established `embed_subtitles()` positional ASS API
+remains unchanged.
+
 ## Execution flow
 
 1. The console script calls `cli.main()`. Typer parses options and their custom values; the CLI validates combinations, paths, and built-in or custom template defaults plus explicit overrides before probing. Scoped disable flags are then applied to the resolved typed configuration: each scope-level animation flag removes every phase from text and backdrop tracks; cue suppression preserves its static backdrop, while word suppression also removes the dependent word decoration fields. During a default processing run, the CLI routes its own progress to standard output and discards external runtimes' Python and native stdout/stderr writes through the platform's null device. Exceptions still become multisubs errors after normal streams are restored. `--verbose` leaves runtime output visible and includes detailed progress. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
