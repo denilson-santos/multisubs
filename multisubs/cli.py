@@ -323,6 +323,15 @@ def _cli_command(
             show_default=False,
         ),
     ] = ".",
+    cues_json: Annotated[
+        str | None,
+        typer.Option(
+            "--cues-json",
+            metavar="PATH",
+            help="Generate SRT/ASS from timed-cue JSON and burn ASS into the video.",
+            show_default=False,
+        ),
+    ] = None,
     asr: Annotated[
         str,
         typer.Option(
@@ -1158,10 +1167,23 @@ def _cli_command(
     """Generate and embed subtitles into a local video."""
     with _cli_logging(verbose):
         try:
-            require_template_catalog()
             args = SimpleNamespace(
                 **{name: value for name, value in locals().items() if name != "ctx"}
             )
+            if cues_json is not None:
+                _validate_timed_cue_options(ctx)
+                _, subtitle_config = _resolve_request_config(args, ctx)
+                input_video, destination = _resolve_request_paths(args, ctx)
+                from .timed_cues import generate_subtitles_from_json
+
+                artifacts = generate_subtitles_from_json(
+                    cues_json, input_video, destination, subtitle_config=subtitle_config
+                )
+                print(f"SRT saved to: {artifacts.srt_path}")
+                print(f"ASS saved to: {artifacts.ass_path}")
+                print(f"Video saved to: {artifacts.video_path}")
+                return 0
+            require_template_catalog()
             request = _build_request(args, ctx)
             if verbose:
                 result_path = _run_request(
@@ -1194,6 +1216,28 @@ def _cli_command(
     else:
         print(f"File saved in: {result_path}")
     return 0
+
+
+def _validate_timed_cue_options(ctx: typer.Context) -> None:
+    """Reject ASR and preview options explicitly supplied with timed cues."""
+    conflicts = (
+        "asr",
+        "lang",
+        "task",
+        "model",
+        "subtitle_file",
+        "keep_transcriptions",
+        "preview_layout",
+        "preview_animation",
+        "preview_at",
+        "preview_text",
+        "preview_guides",
+        "preview_duration",
+    )
+    for name in conflicts:
+        source = ctx.get_parameter_source(name)
+        if source is not None and source.name == "COMMANDLINE":
+            ctx.fail(f"--{name.replace('_', '-')} cannot be used with --cues-json")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -178,6 +178,50 @@ video.
 
 ## 🧰 Common recipes
 
+### Generate subtitles from known word times
+
+Save a UTF-8 JSON file with version 1, a language tag, and ordered cues:
+
+```json
+{
+  "schema_version": 1,
+  "language": "pt",
+  "cues": [
+    {
+      "start": 0.4,
+      "end": 1.8,
+      "text": "Isso é importante",
+      "words": [
+        {"start": 0.4, "end": 0.7, "text": "Isso"},
+        {"start": 0.8, "end": 1.0, "text": "é"},
+        {"start": 1.1, "end": 1.8, "text": "importante"}
+      ]
+    }
+  ]
+}
+```
+
+```bash
+multisubs -i ./video.mp4 --cues-json ./cues.json -o ./output
+multisubs -i ./video.mp4 --cues-json ./cues.json --template amber-word
+```
+
+This mode creates SRT and styled ASS files, then burns that generated ASS into
+a copy of the video. It uses the video's geometry, does not transcribe or create
+a transcript JSON, and keeps all three outputs. Each word must match its exact
+span in cue text, including punctuation attached to words. Spaces between
+words are preserved. Cues may overlap, in which case libass displays them
+together. A cue that cannot fit the selected layout fails; multisubs never
+changes its supplied start or end times or divides it into new cues. Word
+effects use the supplied times when safe, with the same static fallback used
+for unsupported shaping or timing. ASR, task, language, preview, and
+`--keep-transcriptions` options cannot be combined with `--cues-json`.
+
+The Python API is `multisubs.generate_subtitles_from_json(cues_json_path,
+video_path, output_dir, subtitle_config=None)`. It returns named
+`srt_path`, `ass_path`, and `video_path` values. The public JSON schema
+is independent of the retained transcription JSON schema 3.
+
 ### Choose an ASR backend
 
 Omitting `--asr` keeps the established WhisperX `turbo` behavior. Each backend
@@ -518,6 +562,7 @@ Run `multisubs --help` for the CLI's complete, authoritative help text.
 | --- | --- | --- |
 | `-i`, `--input-path PATH` | required | Path to one local input video. |
 | `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
+| `--cues-json PATH` | off | Generate SRT/ASS from timed cues and burn the generated ASS into the input video. |
 | `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
 | `-l`, `--lang CODE` | automatic when exposed | Source-language code supported by the selected ASR. For Parakeet it labels metadata but does not condition transcription; English-only Whisper models use `en`. |
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
@@ -739,6 +784,12 @@ output/
 # With --preview-animation: one silent frozen-background clip
 output/
 └── video-subtitle-animation-preview.mp4
+
+# With --cues-json cues.json, language pt
+output/
+├── video-pt.srt
+├── video-pt.ass
+└── video-pt.mp4
 ```
 
 Existing paths are never overwritten. multisubs adds suffixes such as `(1)` to

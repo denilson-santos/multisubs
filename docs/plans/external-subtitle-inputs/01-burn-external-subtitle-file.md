@@ -1,6 +1,8 @@
 # Burn an external SRT or ASS file into a video
 
-Status: Planned
+Status: In progress
+
+Delivery: `feat/external-subtitle-file`
 
 Depends on:
 

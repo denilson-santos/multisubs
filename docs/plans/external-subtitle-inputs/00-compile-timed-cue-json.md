@@ -1,6 +1,8 @@
 # Generate SRT, ASS, and a subtitled video from timed-cue JSON
 
-Status: Planned
+Status: In review
+
+Delivery: `feat/timed-cue-json-rendering`
 
 Depends on:
 
@@ -159,17 +161,17 @@ published, and `--keep-transcriptions` is inapplicable.
 
 ## Implementation tasks
 
-- [ ] Implement bounded schema-1 parsing, exact word-to-cue mapping, immutable
+- [x] Implement bounded schema-1 parsing, exact word-to-cue mapping, immutable
   typed values, and precise validation errors with focused unit tests.
-- [ ] Separate shared cue layout and SRT/ASS serialization from transcription
+- [x] Separate shared cue layout and SRT/ASS serialization from transcription
   metadata; implement the public API and named result without changing current
   ASR output or retained JSON schema.
-- [ ] Add `--cues-json` dispatch, style/template reuse, mode conflicts,
+- [x] Add `--cues-json` dispatch, style/template reuse, mode conflicts,
   video rendering from generated ASS, and collision-safe three-artifact
   publication.
-- [ ] Cover animation timing, Unicode text, wrapping, font resolution,
+- [x] Cover animation timing, Unicode text, wrapping, font resolution,
   malformed input, output failure, and no-ASR-import behavior.
-- [ ] Update README, PRD, architecture, CLI help, public API docs, AGENTS map,
+- [x] Update README, PRD, architecture, CLI help, public API docs, AGENTS map,
   and this package's plan status when implementation begins/completes.
 
 ## Verification
