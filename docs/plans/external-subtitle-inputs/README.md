@@ -1,6 +1,6 @@
 # External subtitle inputs roadmap
 
-Status: In review
+Status: Done
 
 ## Objective and scope
 
@@ -11,15 +11,15 @@ public contracts and can be used independently.
 
 ## Plans and progress
 
-Progress: 1/2 implementations complete. Plan 0 is done in
-[PR #97](https://github.com/denilson-santos/multisubs/pull/97); Plan 1 is in review on
-`feat/external-subtitle-file`. Plan documents merged in
+Progress: 2/2 implementations complete. Plan 0 is done in
+[PR #97](https://github.com/denilson-santos/multisubs/pull/97); Plan 1 is done in
+[PR #98](https://github.com/denilson-santos/multisubs/pull/98). Plan documents merged in
 [PR #95](https://github.com/denilson-santos/multisubs/pull/95).
 
 | Plan | Status | Dependencies | Implementation delivery |
 | --- | --- | --- | --- |
 | [0 — Timed-cue JSON workflow](00-compile-timed-cue-json.md) | Done | Existing layout, ASS, SRT, and FFmpeg contracts | [PR #97](https://github.com/denilson-santos/multisubs/pull/97) |
-| [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | In review | Existing FFmpeg boundary; independent of Plan 0 | `feat/external-subtitle-file` |
+| [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | Done | Existing FFmpeg boundary; independent of Plan 0 | [PR #98](https://github.com/denilson-santos/multisubs/pull/98) |
 
 ## Delivery order and strategy
 
