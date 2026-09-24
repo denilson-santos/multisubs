@@ -60,6 +60,7 @@ from .models import (
     VideoGeometry,
 )
 from .render_capabilities import assess_renderer_capability
+from .subtitle_artifacts import format_srt_time, write_srt
 from .text_measurement import TextMeasurer
 from .text_segmentation import (
     LinguisticSegmenter,
@@ -2025,30 +2026,13 @@ def _serialize_word_effect_metadata(
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:
-    blocks: list[str] = []
-    for index, segment in enumerate(segments, start=1):
-        blocks.append(
-            "\n".join(
-                (
-                    str(index),
-                    f"{_format_srt_time(segment['start'])} --> "
-                    f"{_format_srt_time(segment['end'])}",
-                    str(segment["text"]).strip(),
-                )
-            )
-        )
-    atomic_write_text(path, "\n\n".join(blocks) + ("\n\n" if blocks else ""))
+    """Compatibility wrapper around the shared SRT serializer."""
+    write_srt(path, segments)
 
 
 def _format_srt_time(seconds: object) -> str:
-    value = _finite_time(seconds)
-    if value is None:
-        raise ArtifactError("SRT timestamp must be a finite, non-negative number")
-    total_millis = round(value * 1000)
-    hours, remainder = divmod(total_millis, 3_600_000)
-    minutes, remainder = divmod(remainder, 60_000)
-    whole_seconds, millis = divmod(remainder, 1_000)
-    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d},{millis:03d}"
+    """Compatibility wrapper around the shared SRT timestamp formatter."""
+    return format_srt_time(seconds)
 
 
 def _json_safe_mapping(value: Mapping[object, object]) -> dict[str, Any]:

@@ -96,6 +96,25 @@ published with collision-safe naming; the private directory is removed on
 success or failure. The established `embed_subtitles()` positional ASS API
 remains unchanged.
 
+### Timed-cue JSON input
+
+`timed_cues.py` handles a separate public schema-version-1 JSON contract.
+It validates a required language tag, ordered cues and words, exact word-to-cue
+source spans, finite times, resource bounds, and Unicode grapheme boundaries.
+Unlike the retained schema-3 transcript, it carries no ASR metadata.
+`subtitle_artifacts.py` writes the same SRT format used by transcription;
+`ass.py` compiles the mapped display cues with the existing template, layout,
+font, and animation contracts. Supplied cue and word times stay unchanged.
+Visual line breaks may be inserted, but an unfit cue fails instead of being
+split. Overlapping cues remain separate, simultaneous ASS dialogue events.
+
+The JSON mode probes the required input video once for normalized geometry and
+checks its known duration. It builds SRT and ASS in a private work directory,
+renders the video from that private generated ASS through `subtitler.py`, and
+publishes all three files under one collision-safe `<video>-<language>` stem.
+A failed render or publication leaves no completed output files. The supplied
+JSON and video are read-only. No transcript JSON or ASR runtime is involved.
+
 ## Execution flow
 
 1. The console script calls `cli.main()`. Typer parses options and their custom values; the CLI validates combinations, paths, and built-in or custom template defaults plus explicit overrides before probing. Scoped disable flags are then applied to the resolved typed configuration: each scope-level animation flag removes every phase from text and backdrop tracks; cue suppression preserves its static backdrop, while word suppression also removes the dependent word decoration fields. During a default processing run, the CLI routes its own progress to standard output and discards external runtimes' Python and native stdout/stderr writes through the platform's null device. Exceptions still become multisubs errors after normal streams are restored. `--verbose` leaves runtime output visible and includes detailed progress. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).

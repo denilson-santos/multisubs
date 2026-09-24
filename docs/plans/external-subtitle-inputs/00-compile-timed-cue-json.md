@@ -1,8 +1,8 @@
 # Generate SRT, ASS, and a subtitled video from timed-cue JSON
 
-Status: In review
+Status: Done
 
-Delivery: `feat/timed-cue-json-rendering`
+Delivery: [PR #97](https://github.com/denilson-santos/multisubs/pull/97)
 
 Depends on:
 

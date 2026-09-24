@@ -6,6 +6,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from functools import cache
 from typing import Any
 
+from .errors import ValidationError
 from .layout import WrappingMetrics
 from .models import (
     SubtitleDisplayFragment,
@@ -393,13 +394,18 @@ def render_display_units(
     *,
     word_indexes: Mapping[int, int] | None = None,
     display_groups: Sequence[SubtitleDisplayGroup] | None = None,
+    require_fit: bool = False,
 ) -> tuple[str, tuple[SubtitleDisplayFragment, ...], tuple[str, ...]]:
     """Wrap mapped units while preserving fragment and line-break provenance."""
-    lines, _ = _layout_display_units(
+    lines, fits = _layout_display_units(
         units,
         metrics,
         preferred_breaks=_group_break_indexes(units, display_groups),
     )
+    if require_fit and not fits:
+        raise ValidationError(
+            f"Measured cue cannot fit within {metrics.max_width}x{metrics.max_height}px"
+        )
     rendered_lines: list[str] = []
     fragments: list[SubtitleDisplayFragment] = []
     line_breaks: list[str] = []
