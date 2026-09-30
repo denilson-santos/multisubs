@@ -232,14 +232,22 @@ a copy of the video. It uses the video's geometry, does not transcribe or create
 a transcript JSON, and keeps all three outputs. Each word must match its exact
 span in cue text, including punctuation attached to words. Spaces between
 words are preserved. Cues may overlap, in which case libass displays them
-together. A cue that cannot fit the selected layout fails; multisubs never
-changes its supplied start or end times or divides it into new cues. Word
-effects use the supplied times when safe, with the same static fallback used
-for unsupported shaping or timing. ASR, task, language, preview, and
+together. If a cue does not fit the selected layout, multisubs splits it into
+consecutive groups of whole words that fit the video's geometry, preferring
+punctuation and pauses as boundaries. Cues that already fit keep their original
+intervals. Split cues keep every supplied word time; their first and last
+boundaries keep the source cue's start and end, and each internal boundary uses
+the first word's start in the following group. The input JSON is unchanged.
+An indivisible word that still cannot fit, or a split interval too short for
+ASS centisecond timing, fails before any output is published. Use
+`--cue-overflow reject` to fail whenever a supplied cue does not fit instead.
+Word effects use the supplied times when safe, with the same static fallback
+used for unsupported shaping or timing. ASR, task, language, preview, and
 `--keep-transcriptions` options cannot be combined with `--cues-json`.
 
 The Python API is `multisubs.generate_subtitles_from_json(cues_json_path,
-video_path, output_dir, subtitle_config=None)`. It returns named
+video_path, output_dir, subtitle_config=None, cue_overflow="split")`. It
+accepts `cue_overflow="reject"` for strict cue preservation and returns named
 `srt_path`, `ass_path`, and `video_path` values. The public JSON schema
 is independent of the retained transcription JSON schema 3.
 
@@ -585,6 +593,7 @@ Run `multisubs --help` for the CLI's complete, authoritative help text.
 | `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
 | `--subtitle-file PATH` | off | Burn an existing SRT or ASS file into the video without transcription. |
 | `--cues-json PATH` | off | Generate SRT/ASS from timed cues and burn the generated ASS into the input video. |
+| `--cue-overflow POLICY` | `split` | For `--cues-json`, split cues that exceed the target layout or `reject` them. |
 | `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
 | `-l`, `--lang CODE` | automatic when exposed | Source-language code supported by the selected ASR. For Parakeet it labels metadata but does not condition transcription; English-only Whisper models use `en`. |
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |

@@ -22,10 +22,15 @@ from .text_segmentation import (
     build_source_text_map,
     display_units_for_records,
     grapheme_boundaries,
+    source_text_for_records,
 )
 from .transcriber import prepare_karaoke_cues
 from .utils import create_work_dir, find_unique_stem, publish_files
-from .wrapping import render_display_units, transform_display_text
+from .wrapping import (
+    render_display_units,
+    split_display_units_for_layout,
+    transform_display_text,
+)
 
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_JSON_DEPTH = 16
@@ -170,8 +175,11 @@ def generate_subtitles_from_json(
     output_dir: str | Path,
     *,
     subtitle_config: SubtitleConfig | None = None,
+    cue_overflow: str = "split",
 ) -> GeneratedSubtitleArtifacts:
     """Generate SRT/ASS from known times, then burn that ASS into a video."""
+    if cue_overflow not in ("split", "reject"):
+        raise ValidationError("cue_overflow must be 'split' or 'reject'")
     document = load_timed_cues(cues_json_path)
     source = Path(video_path).expanduser().resolve(strict=False)
     if not source.is_file():
@@ -207,7 +215,9 @@ def generate_subtitles_from_json(
             verify_font_coverage=True,
             bundled_fonts_dir=bundled_fonts_dir,
         )
-        display_cues = _layout_cues(document, resolved, metrics)
+        display_cues = _layout_cues(
+            document, resolved, metrics, cue_overflow=cue_overflow
+        )
         display_cues, _ = prepare_karaoke_cues(display_cues, resolved)
         work_dir = create_work_dir(destination)
         try:
@@ -253,7 +263,11 @@ def generate_subtitles_from_json(
 
 
 def _layout_cues(
-    document: TimedCueDocument, config: SubtitleConfig, metrics: Any
+    document: TimedCueDocument,
+    config: SubtitleConfig,
+    metrics: Any,
+    *,
+    cue_overflow: str,
 ) -> list[dict[str, Any]]:
     display_cues: list[dict[str, Any]] = []
     with LinguisticSegmenter() as segmenter:
@@ -278,34 +292,68 @@ def _layout_cues(
             groups = segmenter.group_source_map(
                 source_map, words, language=document.language.split("-", 1)[0].lower()
             )
-            try:
-                display_text, fragments, line_breaks = render_display_units(
-                    units,
-                    metrics,
-                    word_indexes={word_index: word_index for word_index in indexes},
-                    display_groups=groups,
-                    require_fit=True,
+            parts = (
+                split_display_units_for_layout(
+                    units, metrics, boundary_words=words, display_groups=groups
                 )
-            except ValidationError as exc:
-                raise ValidationError(
-                    f"cue {index} exceeds the subtitle layout envelope: {exc}"
-                ) from exc
-            display_cues.append(
-                {
-                    "id": index,
-                    "start": cue.start,
-                    "end": cue.end,
-                    "text": display_text,
-                    "semantic_text": cue.text,
-                    "display_text": display_text,
-                    "words": words,
-                    "display_fragments": fragments,
-                    "_generated_line_breaks": line_breaks,
-                    "_source_map": source_map,
-                    "_source_record_indexes": indexes,
-                    "_display_groups": groups,
-                }
+                if cue_overflow == "split"
+                else [units]
             )
+            for part_index, part in enumerate(parts):
+                part_indexes = tuple(unit.record_index for unit in part)
+                part_words = [words[word_index] for word_index in part_indexes]
+                start = cue.start if part_index == 0 else part_words[0]["start"]
+                end = (
+                    cue.end
+                    if part_index == len(parts) - 1
+                    else words[parts[part_index + 1][0].record_index]["start"]
+                )
+                if round(start * 100) >= round(end * 100):
+                    raise ValidationError(
+                        f"cue {index} part {part_index + 1} is too short "
+                        "for the ASS centisecond timeline"
+                    )
+                try:
+                    display_text, fragments, line_breaks = render_display_units(
+                        part,
+                        metrics,
+                        word_indexes={
+                            word_index: offset
+                            for offset, word_index in enumerate(part_indexes)
+                        },
+                        display_groups=groups,
+                        require_fit=True,
+                    )
+                except ValidationError as exc:
+                    label = f"cue {index}"
+                    if len(parts) > 1:
+                        label += f" part {part_index + 1}"
+                    raise ValidationError(
+                        f"{label} exceeds the subtitle layout envelope: {exc}"
+                    ) from exc
+                display_cues.append(
+                    {
+                        "id": len(display_cues),
+                        "start": start,
+                        "end": end,
+                        "text": display_text,
+                        "semantic_text": (
+                            cue.text
+                            if len(parts) == 1
+                            else source_text_for_records(source_map, part_indexes)
+                        ),
+                        "display_text": display_text,
+                        "words": part_words,
+                        "display_fragments": fragments,
+                        "_generated_line_breaks": line_breaks,
+                        "_source_map": source_map,
+                        "_source_record_indexes": part_indexes,
+                        "_display_groups": groups,
+                    }
+                )
+    display_cues.sort(key=lambda cue: cue["start"])
+    for index, cue in enumerate(display_cues):
+        cue["id"] = index
     return display_cues
 
 

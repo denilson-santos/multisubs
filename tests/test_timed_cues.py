@@ -198,6 +198,212 @@ def test_rejects_unfit_cue_without_splitting(tmp_path, monkeypatch):
     assert not output.exists()
 
 
+def _overflow_document():
+    tokens = ["palavra"] * 8
+    words = [
+        {
+            "start": round(0.4 + index * 0.4, 2),
+            "end": round(0.7 + index * 0.4, 2),
+            "text": token,
+        }
+        for index, token in enumerate(tokens)
+    ]
+    document = _document(" ".join(tokens), words)
+    document["cues"][0]["end"] = 3.8
+    return document
+
+
+def test_overflow_splits_for_portrait_but_keeps_fitting_landscape_cue(
+    tmp_path, monkeypatch
+):
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"input")
+    document = _overflow_document()
+    cues = _write(tmp_path, document)
+    original_json = cues.read_bytes()
+    from multisubs import subtitler, timed_cues
+
+    geometry = VideoGeometry(
+        0, 360, 640, 360, 640, 0, Fraction(1), Fraction(9, 16), 10.0
+    )
+    monkeypatch.setattr(subtitler, "validate_ffmpeg_support", lambda: None)
+    monkeypatch.setattr(subtitler, "probe_video_geometry", lambda path: geometry)
+    monkeypatch.setattr(
+        subtitler,
+        "embed_subtitles",
+        lambda _video, _ass, _dir, **kw: Path(kw["output_path"]).write_bytes(b"x"),
+    )
+    captured = []
+    original_write_srt = timed_cues.write_srt
+
+    def capture_srt(path, display_cues):
+        captured.append(display_cues)
+        original_write_srt(path, display_cues)
+
+    monkeypatch.setattr(timed_cues, "write_srt", capture_srt)
+    portrait = generate_subtitles_from_json(cues, video, tmp_path / "portrait")
+    parts = captured.pop()
+    assert len(parts) > 1
+    assert parts[0]["start"] == document["cues"][0]["start"]
+    assert parts[-1]["end"] == document["cues"][0]["end"]
+    assert all(
+        first["end"] == second["start"]
+        for first, second in zip(parts, parts[1:], strict=False)
+    )
+    assert [
+        (word["start"], word["end"], word["word"])
+        for part in parts
+        for word in part["words"]
+    ] == [
+        (word["start"], word["end"], word["text"])
+        for word in document["cues"][0]["words"]
+    ]
+    for part in parts:
+        assert {
+            fragment.word_index
+            for fragment in part["display_fragments"]
+            if fragment.word_index is not None
+        } == set(range(len(part["words"])))
+    assert portrait.srt_path.read_text().count(" --> ") == len(parts)
+    assert portrait.ass_path.read_text().count("Dialogue:") >= len(parts)
+    assert "PlayResX: 360" in portrait.ass_path.read_text()
+
+    geometry = VideoGeometry(
+        0, 640, 360, 640, 360, 0, Fraction(1), Fraction(16, 9), 10.0
+    )
+    landscape = generate_subtitles_from_json(cues, video, tmp_path / "landscape")
+    fitting = captured.pop()
+    assert len(fitting) == 1
+    assert (fitting[0]["start"], fitting[0]["end"]) == (0.4, 3.8)
+    assert landscape.srt_path.read_text().count(" --> ") == 1
+    assert cues.read_bytes() == original_json
+
+
+def test_reject_policy_fails_before_publication(tmp_path, monkeypatch):
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"input")
+    cues = _write(tmp_path, _overflow_document())
+    from multisubs import subtitler
+
+    monkeypatch.setattr(subtitler, "validate_ffmpeg_support", lambda: None)
+    monkeypatch.setattr(
+        subtitler,
+        "probe_video_geometry",
+        lambda path: VideoGeometry(
+            0, 360, 640, 360, 640, 0, Fraction(1), Fraction(9, 16), 10.0
+        ),
+    )
+    output = tmp_path / "output"
+    with pytest.raises(ValidationError, match="cue 0 exceeds"):
+        generate_subtitles_from_json(cues, video, output, cue_overflow="reject")
+    assert not output.exists()
+    with pytest.raises(ValidationError, match="cue_overflow"):
+        generate_subtitles_from_json(cues, video, output, cue_overflow="unknown")
+
+
+def test_split_rejects_part_that_collapses_at_ass_precision(tmp_path, monkeypatch):
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"input")
+    document = _overflow_document()
+    for index, word in enumerate(document["cues"][0]["words"]):
+        word["start"] = round(0.4 + index * 0.0005, 4)
+        word["end"] = round(word["start"] + 0.0002, 4)
+    cues = _write(tmp_path, document)
+    from multisubs import subtitler
+
+    monkeypatch.setattr(subtitler, "validate_ffmpeg_support", lambda: None)
+    monkeypatch.setattr(
+        subtitler,
+        "probe_video_geometry",
+        lambda path: VideoGeometry(
+            0, 360, 640, 360, 640, 0, Fraction(1), Fraction(9, 16), 10.0
+        ),
+    )
+    output = tmp_path / "output"
+    with pytest.raises(ValidationError, match="centisecond timeline"):
+        generate_subtitles_from_json(cues, video, output)
+    assert not output.exists()
+
+
+def test_split_cues_are_ordered_with_overlapping_source_cues(tmp_path, monkeypatch):
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"input")
+    document = _overflow_document()
+    document["cues"].append(
+        {
+            "start": 1.5,
+            "end": 1.9,
+            "text": "Sim!",
+            "words": [{"start": 1.5, "end": 1.9, "text": "Sim!"}],
+        }
+    )
+    cues = _write(tmp_path, document)
+    from multisubs import subtitler, timed_cues
+
+    monkeypatch.setattr(subtitler, "validate_ffmpeg_support", lambda: None)
+    monkeypatch.setattr(
+        subtitler,
+        "probe_video_geometry",
+        lambda path: VideoGeometry(
+            0, 360, 640, 360, 640, 0, Fraction(1), Fraction(9, 16), 10.0
+        ),
+    )
+    monkeypatch.setattr(
+        subtitler,
+        "embed_subtitles",
+        lambda _video, _ass, _dir, **kw: Path(kw["output_path"]).write_bytes(b"x"),
+    )
+    captured = []
+    original_write_srt = timed_cues.write_srt
+
+    def capture_srt(path, display_cues):
+        captured.extend(display_cues)
+        original_write_srt(path, display_cues)
+
+    monkeypatch.setattr(timed_cues, "write_srt", capture_srt)
+    generate_subtitles_from_json(cues, video, tmp_path / "output")
+    assert len(captured) > len(document["cues"])
+    assert [cue["start"] for cue in captured] == sorted(
+        cue["start"] for cue in captured
+    )
+    assert [cue["id"] for cue in captured] == list(range(len(captured)))
+    assert captured[1]["semantic_text"] == "Sim!"
+    assert (captured[1]["start"], captured[1]["end"]) == (1.5, 1.9)
+
+
+def test_cli_forwards_reject_policy_to_public_api(tmp_path, monkeypatch):
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"input")
+    cues = _write(tmp_path, _document())
+    from multisubs import timed_cues
+
+    received = []
+
+    def generate(cues_path, video_path, output_dir, **kwargs):
+        received.append((cues_path, video_path, output_dir, kwargs))
+        return timed_cues.GeneratedSubtitleArtifacts(
+            tmp_path / "out.srt", tmp_path / "out.ass", tmp_path / "out.mp4"
+        )
+
+    monkeypatch.setattr(timed_cues, "generate_subtitles_from_json", generate)
+    result = CliRunner().invoke(
+        cli.app,
+        ["-i", str(video), "--cues-json", str(cues), "--cue-overflow", "reject"],
+    )
+    assert result.exit_code == 0
+    assert received[0][3]["cue_overflow"] == "reject"
+
+
+def test_cli_rejects_overflow_option_without_json(tmp_path):
+    result = CliRunner().invoke(
+        cli.app,
+        ["-i", str(tmp_path / "missing.mp4"), "--cue-overflow", "reject"],
+    )
+    assert result.exit_code == 2
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output)
+    assert "--cue-overflow requires --cues-json" in " ".join(output.split())
+
+
 def test_publication_failure_rolls_back(tmp_path, monkeypatch):
     video = tmp_path / "video.mp4"
     video.write_bytes(b"input")
@@ -258,6 +464,54 @@ def test_public_api_does_not_import_asr_runtime_in_fresh_process():
         text=True,
     )
     assert completed.stdout == ""
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="FFmpeg and ffprobe are required",
+)
+def test_real_ffmpeg_portrait_render_splits_overflowing_json_cue(tmp_path):
+    video = tmp_path / "portrait.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=360x640:d=4:r=25",
+            "-c:v",
+            "mpeg4",
+            "-y",
+            str(video),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    cues = _write(tmp_path, _overflow_document())
+    artifacts = generate_subtitles_from_json(cues, video, tmp_path / "output")
+    assert artifacts.srt_path.read_text().count(" --> ") > 1
+    ass = artifacts.ass_path.read_text()
+    assert "PlayResX: 360" in ass and "PlayResY: 640" in ass
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
+            str(artifacts.video_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "360,640" in probe
 
 
 @pytest.mark.integration
