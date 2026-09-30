@@ -104,9 +104,16 @@ source spans, finite times, resource bounds, and Unicode grapheme boundaries.
 Unlike the retained schema-3 transcript, it carries no ASR metadata.
 `subtitle_artifacts.py` writes the same SRT format used by transcription;
 `ass.py` compiles the mapped display cues with the existing template, layout,
-font, and animation contracts. Supplied cue and word times stay unchanged.
-Visual line breaks may be inserted, but an unfit cue fails instead of being
-split. Overlapping cues remain separate, simultaneous ASS dialogue events.
+font, and animation contracts. By default, a cue that exceeds the target
+video's resolved layout envelope is split at whole-word boundaries, preferring
+punctuation, pauses, and linguistic groups. A cue that fits keeps its exact
+source interval. Split cues preserve every supplied word timestamp and the
+outer cue boundaries; each internal boundary is the next group's first word
+start. The derived intervals must be representable in ASS centiseconds.
+`--cue-overflow reject` and the API's `cue_overflow="reject"` retain strict
+failure on any unfit source cue. An indivisible unfit word also fails.
+Generated cues are ordered by start time after splitting so overlapping source
+cues remain separate, simultaneous ASS dialogue events.
 
 The JSON mode probes the required input video once for normalized geometry and
 checks its known duration. It builds SRT and ASS in a private work directory,
