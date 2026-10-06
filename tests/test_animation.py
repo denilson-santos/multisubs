@@ -13,6 +13,7 @@ from multisubs import cli, transcriber
 from multisubs.animation import (
     normalize_cue_animation,
     normalize_word_animation,
+    resolve_word_effect_intervals,
     sample_cue_animation,
     sample_word_animation,
 )
@@ -1069,6 +1070,507 @@ def test_cue_outline_reuses_word_fragment_positions(tmp_path: Path):
             text_position = re.search(r"\\pos\((\d+),(\d+)\)", event)
             assert text_position is not None
             assert text_position.groups() == outline_position.groups()
+
+
+@pytest.mark.parametrize(
+    "intervals, expected",
+    [
+        (((0, 40), (40, 40), (80, 100)), (40, 72, "gap", None)),
+        (((0, 60), (100, 100)), (68, 100, "gap", None)),
+        (((0, 80), (100, 100)), (0, 80, "shared", 0)),
+        (((0, 40), (40, 40), (40, 100)), (40, 100, "shared", 2)),
+        (((0, 40), (40, 40), (40, 40), (40, 100)), (40, 100, "shared", 3)),
+    ],
+)
+def test_empty_word_effect_reserves_phases_plus_stable_time_or_shares(
+    intervals: tuple[tuple[int, int], ...], expected: tuple[int, int, str, int | None]
+):
+    track = validate_subtitle_config(
+        None,
+        animation_values={
+            "word_text_entrance": "pop",
+            "word_text_entrance_duration": "120ms",
+            "word_text_exit": "fade",
+            "word_text_exit_duration": "100ms",
+        },
+    ).animation.word.text
+
+    resolved = resolve_word_effect_intervals(0, 100, intervals, track)
+
+    for index, (start, end) in enumerate(intervals):
+        interval = resolved[index]
+        if start < end:
+            assert (interval.start, interval.end, interval.strategy) == (
+                start,
+                end,
+                "aligned",
+            )
+        else:
+            assert (
+                interval.start,
+                interval.end,
+                interval.strategy,
+                interval.shared_with,
+            ) == expected
+            if interval.strategy == "gap":
+                timing = normalize_word_animation(interval.start, interval.end, track)
+                assert timing.exit_start - timing.entrance_end == 10
+                assert timing.entrance_duration == 12
+                assert timing.exit_duration == 10
+
+
+def test_zero_word_run_shares_a_reserved_gap_without_cyclic_neighbors():
+    track = get_subtitle_template("yellow-pop").config.animation.word.text
+    resolved = resolve_word_effect_intervals(0, 100, ((0, 0), (0, 0), (0, 0)), track)
+    assert [(slot.start, slot.end) for slot in resolved] == [(0, 22)] * 3
+    assert [slot.shared_with for slot in resolved] == [2, 2, None]
+    assert [slot.strategy for slot in resolved] == ["shared", "shared", "gap"]
+
+
+def test_short_positive_word_interval_is_not_extended():
+    track = get_subtitle_template("yellow-pop").config.animation.word.text
+    resolved = resolve_word_effect_intervals(0, 100, ((0, 1), (100, 100)), track)
+    assert (resolved[0].start, resolved[0].end, resolved[0].strategy) == (
+        0,
+        1,
+        "aligned",
+    )
+    assert (resolved[1].start, resolved[1].end, resolved[1].strategy) == (
+        78,
+        100,
+        "gap",
+    )
+
+
+def test_unrecoverable_word_effect_falls_back_to_complete_cue(tmp_path: Path):
+    words = [_word_animation_record("zero", 0.0, 0.0)]
+    config = validate_subtitle_config(
+        None, animation_values={"word_text_entrance": "pop"}
+    )
+    prepared, fallback_count = transcriber.prepare_karaoke_cues(
+        [{"start": 0.0, "end": 0.1, "text": "zero", "words": words}],
+        resolve_subtitle_config(config, GEOMETRY),
+    )
+    assert fallback_count == 1
+    assert "_karaoke_cue" not in prepared[0]
+    assert (
+        prepared[0]["_word_effect"]["fallback_reason"]
+        == "insufficient-word-animation-time"
+    )
+    assert prepared[0]["words"] == words
+    path = tmp_path / "complete-cue.ass"
+    write_ass(path, prepared, config, GEOMETRY)
+    events = [
+        line for line in path.read_text().splitlines() if line.startswith("Dialogue:")
+    ]
+    assert any(
+        ",0:00:00.00,0:00:00.10," in line and line.endswith("zero") for line in events
+    )
+
+
+def test_disabled_word_tracks_do_not_recover_source_timestamps():
+    config = validate_subtitle_config(None)
+    segment = {
+        "start": 0.0,
+        "end": 1.0,
+        "text": "zero",
+        "words": [_word_animation_record("zero", 0.0, 0.0)],
+    }
+    prepared, fallback_count = transcriber.prepare_karaoke_cues([segment], config)
+    assert prepared == [segment]
+    assert fallback_count == 0
+
+
+@pytest.mark.parametrize("mode", ["active-word", "progressive"])
+@pytest.mark.parametrize("entrance, exit", [("pop", "none"), ("fade", "fade")])
+def test_trailing_zero_word_shares_neighbor_motion_and_outline(
+    tmp_path: Path, mode: str, entrance: str, exit: str
+):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"backdrop": "outline", "backdrop_color": "#000000"},
+        animation_values={
+            "word_text_mode": mode,
+            "word_text_entrance": entrance,
+            "word_text_emphasis": "highlight",
+            "word_text_exit": exit,
+        },
+    )
+    cue = KaraokeCue(
+        fragments=(
+            SubtitleDisplayFragment("Intro", 0),
+            SubtitleDisplayFragment(" "),
+            SubtitleDisplayFragment("Example,", 1),
+            SubtitleDisplayFragment(" "),
+            SubtitleDisplayFragment("tail.", 2),
+        ),
+        durations=(40, 60, 0),
+        active_intervals=((0, 20), (40, 80), (100, 100)),
+    )
+    path = tmp_path / "zero-duration-tail.ass"
+
+    write_ass(
+        path,
+        [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Intro Example, tail.",
+                "_karaoke_cue": cue,
+            }
+        ],
+        config,
+        GEOMETRY,
+    )
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    for layer in (0, 2):
+        events = [
+            line
+            for line in dialogue
+            if line.startswith(f"Dialogue: {layer},") and line.endswith("tail.")
+        ]
+        neighbor_events = [
+            line
+            for line in dialogue
+            if line.startswith(f"Dialogue: {layer},") and line.endswith("Example,")
+        ]
+        assert events
+        assert [line.split(",")[1:3] for line in events] == [
+            line.split(",")[1:3] for line in neighbor_events
+        ]
+        assert ",0:00:00.40," in events[0]
+        assert any(r"\t(" in line or r"\fade(" in line for line in events)
+        assert [re.findall(r"\\fsc[xy]\d+", line) for line in events] == [
+            re.findall(r"\\fsc[xy]\d+", line) for line in neighbor_events
+        ]
+
+
+def test_active_word_with_entrance_and_exit_keeps_zero_duration_middle_word(
+    tmp_path: Path,
+):
+    config = validate_subtitle_config(
+        None,
+        animation_values={
+            "word_text_entrance": "pop",
+            "word_text_emphasis": "highlight",
+            "word_text_exit": "fade",
+        },
+    )
+    words = [
+        _word_animation_record("one", 0.0, 0.4),
+        _word_animation_record("zero", 0.4, 0.4),
+        _word_animation_record("two", 0.4, 1.0),
+    ]
+    prepared, _ = transcriber.prepare_karaoke_cues(
+        [{"start": 0.0, "end": 1.0, "text": "one zero two", "words": words}],
+        resolve_subtitle_config(config, GEOMETRY),
+    )
+    path = tmp_path / "zero-duration-middle.ass"
+
+    write_ass(path, prepared, config, GEOMETRY)
+
+    text = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue: 2,") and line.endswith("zero")
+    ]
+    assert text
+    assert ",0:00:00.40," in text[0]
+    assert any(r"\t(" in line for line in text)
+    assert any(r"\1c&H" in line for line in text)
+    assert any(r"\fade(" in line for line in text)
+    assert prepared[0]["_word_effect"]["timing_recovery"]["text"]["shared_count"] == 1
+
+
+@pytest.mark.parametrize("mode", ["active-word", "progressive"])
+def test_zero_duration_word_retains_a_nonempty_visibility_window(
+    tmp_path: Path, mode: str
+):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"backdrop": "none"},
+        animation_values={
+            "word_text_entrance": "pop",
+            "word_text_emphasis": "highlight",
+            "word_text_mode": mode,
+        },
+    )
+    words = [
+        _word_animation_record("one", 0.0, 0.4),
+        _word_animation_record("zero", 0.4, 0.4),
+        _word_animation_record("two", 0.4, 1.0),
+    ]
+    prepared, _ = transcriber.prepare_karaoke_cues(
+        [{"start": 0.0, "end": 1.0, "text": "one zero two", "words": words}],
+        resolve_subtitle_config(config, GEOMETRY),
+    )
+    path = tmp_path / "visible-zero-duration.ass"
+
+    write_ass(path, prepared, config, GEOMETRY)
+
+    events = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue: 2,") and line.endswith("zero")
+    ]
+    assert events
+    assert all(",0:00:00.00," not in line for line in events)
+    assert ",0:00:00.40," in events[0]
+    assert any(r"\t(" in line for line in events)
+    assert any(r"\1c&H" in line for line in events)
+    if mode == "progressive":
+        assert "timing_recovery" not in prepared[0]["_word_effect"]
+    else:
+        assert (
+            prepared[0]["_word_effect"]["timing_recovery"]["text"]["shared_count"] == 1
+        )
+
+
+@pytest.mark.parametrize("tail_start", [1.0, 0.998])
+def test_shared_word_timing_preserves_artifacts_and_reports_its_count(
+    tmp_path: Path, tail_start: float
+):
+    words = [
+        _word_animation_record("Example,", 0.0, 0.8),
+        _word_animation_record("tail.", tail_start, 1.0),
+    ]
+    document = TranscriptDocument(
+        source_path=tmp_path / "video.mp4",
+        language="en",
+        task="transcribe",
+        model_name="turbo",
+        full_text="Example, tail.",
+        segments=(
+            {"start": 0.0, "end": 1.0, "text": "Example, tail.", "words": words},
+        ),
+    )
+    paths = transcriber.write_transcription_artifacts(
+        document,
+        tmp_path / "output",
+        validate_subtitle_config(None, animation_values={"word_text_entrance": "pop"}),
+        geometry=GEOMETRY,
+    )
+
+    payload = json.loads(Path(paths[0]).read_text(encoding="utf-8"))
+    segment = payload["transcription"]["segments"][0]
+    assert segment["words"] == words
+    assert segment["start"] == 0.0
+    assert segment["end"] == 1.0
+    assert segment["word_effect"]["status"] == "active"
+    assert segment["word_effect"]["timing_recovery"] == {
+        "minimum_stable_ms": 100,
+        "text": {
+            "unit_count": 1,
+            "gap_count": 0,
+            "shared_count": 1,
+            "units": [
+                {
+                    "word_index": 1,
+                    "strategy": "shared",
+                    "start": 0.0,
+                    "end": 0.8,
+                    "shared_with": 0,
+                }
+            ],
+        },
+    }
+    assert payload["metadata"]["rendering"]["word_effects"]["timing_recovery"] == {
+        "minimum_stable_ms": 100,
+        "text": {"cues": 1, "unit_count": 1, "gap_count": 0, "shared_count": 1},
+    }
+    assert "Example, tail." in Path(paths[1]).read_text(encoding="utf-8")
+    assert any(
+        line.startswith("Dialogue: 2,") and line.endswith("tail.")
+        for line in Path(paths[2]).read_text(encoding="utf-8").splitlines()
+    )
+
+
+def test_recovered_text_keeps_independent_progressive_word_backdrop(
+    tmp_path: Path,
+):
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"word_backdrop": "box"},
+        animation_values={
+            "word_text_entrance": "pop",
+            "word_text_exit": "fade",
+            "word_backdrop_mode": "progressive",
+        },
+    )
+    words = [
+        _word_animation_record("one", 0.0, 0.4),
+        _word_animation_record("zero", 0.4, 0.4),
+        _word_animation_record("two", 0.4, 1.0),
+    ]
+    prepared, _ = transcriber.prepare_karaoke_cues(
+        [{"start": 0.0, "end": 1.0, "text": "one zero two", "words": words}],
+        resolve_subtitle_config(config, GEOMETRY),
+    )
+    path = tmp_path / "independent-zero-duration-backdrop.ass"
+
+    write_ass(path, prepared, config, GEOMETRY)
+
+    dialogue = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Dialogue:")
+    ]
+    assert any(
+        line.startswith("Dialogue: 2,")
+        and ",0:00:00.40," in line
+        and line.endswith("zero")
+        and r"\t(" in line
+        for line in dialogue
+    )
+    assert "backdrop" not in prepared[0]["_word_effect"]["timing_recovery"]
+    assert (
+        sum(
+            line.startswith("Dialogue: 1,") and ",0:00:00.40,0:00:01.00," in line
+            for line in dialogue
+        )
+        == 2
+    )
+
+
+@pytest.mark.parametrize("kind", ["outline", "box"])
+def test_word_decoration_recovers_timing_with_text_motion_disabled(
+    tmp_path: Path, kind: str
+):
+    config = validate_subtitle_config(
+        None, appearance_values={"backdrop": "outline", "word_backdrop": kind}
+    )
+    prepared, fallback_count = transcriber.prepare_karaoke_cues(
+        [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "one tail",
+                "words": [
+                    _word_animation_record("one", 0.0, 0.8),
+                    _word_animation_record("tail", 1.0, 1.0),
+                ],
+            }
+        ],
+        resolve_subtitle_config(config, GEOMETRY),
+    )
+    assert fallback_count == 0
+    recovery = prepared[0]["_word_effect"]["timing_recovery"]
+    assert "text" not in recovery
+    assert recovery["backdrop"]["gap_count"] == 1
+    assert recovery["backdrop"]["units"] == [
+        {"word_index": 1, "strategy": "gap", "start": 0.9, "end": 1.0}
+    ]
+    path = tmp_path / f"word-{kind}.ass"
+    write_ass(path, prepared, config, GEOMETRY)
+    dialogue = [
+        line for line in path.read_text().splitlines() if line.startswith("Dialogue:")
+    ]
+    assert any(
+        line.startswith("Dialogue: 1,") and ",0:00:00.90,0:00:01.00," in line
+        for line in dialogue
+    )
+    assert any(
+        line.startswith("Dialogue: 2,")
+        and ",0:00:00.00," in line
+        and line.endswith("tail")
+        for line in dialogue
+    )
+    if kind == "outline":
+        assert any(
+            line.startswith("Dialogue: 0,")
+            and ",0:00:00.00,0:00:00.90," in line
+            and line.endswith("tail")
+            for line in dialogue
+        )
+
+
+@pytest.mark.integration
+def test_ffmpeg_libass_gap_recovery_matches_explicit_pop_timing(tmp_path: Path):
+    if shutil.which("ffmpeg") is None or shutil.which("fc-match") is None:
+        pytest.skip("FFmpeg and fontconfig are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+    font_match = subprocess.run(
+        ["fc-match", "-f", "%{family}", "DejaVu Sans"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if "DejaVu Sans" not in font_match:
+        pytest.skip("The controlled DejaVu Sans font is not available")
+    geometry = VideoGeometry(
+        stream_index=0,
+        coded_width=640,
+        coded_height=360,
+        render_width=640,
+        render_height=360,
+        rotation_degrees=0,
+        sample_aspect_ratio=Fraction(1, 1),
+        display_aspect_ratio=Fraction(16, 9),
+        duration_seconds=1.0,
+    )
+    config = validate_subtitle_config(
+        None,
+        appearance_values={"font": "DejaVu Sans", "backdrop": "outline"},
+        relative_values={"font_size": "35px", "max_height": "100px"},
+        animation_values={
+            "word_text_entrance": "pop",
+            "word_text_entrance_duration": "120ms",
+        },
+    )
+
+    def frame(tail_start: float, filename: str, at: float) -> bytes:
+        words = [
+            _word_animation_record("Example,", 0.0, 0.7),
+            _word_animation_record("tail.", tail_start, 1.0),
+        ]
+        prepared, _ = transcriber.prepare_karaoke_cues(
+            [{"start": 0.0, "end": 1.0, "text": "Example, tail.", "words": words}],
+            resolve_subtitle_config(config, geometry),
+        )
+        path = tmp_path / filename
+        write_ass(path, prepared, config, geometry)
+        return subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=640x360:d=1",
+                "-vf",
+                f"subtitles={path}",
+                "-ss",
+                str(at),
+                "-frames:v",
+                "1",
+                "-threads",
+                "1",
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+
+    for at in (0.74, 0.84, 0.9):
+        actual = frame(1.0, f"empty-window-{at}.ass", at)
+        reference = frame(0.78, f"visible-reference-{at}.ass", at)
+        assert len(actual) == 640 * 360 * 3
+        assert any(actual)
+        assert actual == reference
 
 
 def test_cue_outline_follows_cue_and_word_text_motion(tmp_path: Path):

@@ -16,6 +16,8 @@ from .animation import (
     animation_boundaries,
     normalize_cue_animation,
     normalize_word_animation,
+    resolve_word_effect_timings,
+    resolve_word_text_visibility,
     sample_cue_animation,
     sample_word_animation,
     word_animation_boundaries,
@@ -829,6 +831,13 @@ def _append_word_animation_events(
     """Render measured fragments independently for word-local effects."""
     _validate_karaoke_cue(cue)
     word = config.animation.word
+    effect_timings = resolve_word_effect_timings(
+        cue_start,
+        cue_end,
+        cue.active_intervals,
+        word,
+        backdrop_enabled=config.style.word_backdrop.kind is not SubtitleBackdrop.NONE,
+    )
     for positioned in visual_lines:
         for fragment, placement in zip(
             positioned.line.fragments,
@@ -853,39 +862,27 @@ def _append_word_animation_events(
                 continue
             if word_index < 0 or word_index >= len(cue.active_intervals):
                 raise ArtifactError("Word animation fragment index is invalid")
-            word_start, word_end = cue.active_intervals[word_index]
-            text_end = (
-                cue_end if word.text.mode is WordAnimationMode.PROGRESSIVE else word_end
+            text_interval = effect_timings.text[word_index]
+            word_start, word_end = text_interval.start, text_interval.end
+            visibility = resolve_word_text_visibility(
+                cue_start, cue_end, word_start, word_end, word.text
             )
-            text_timing = normalize_word_animation(word_start, text_end, word.text)
-            visible_start = (
-                word_start
-                if word.text.entrance.type is not CueAnimationType.NONE
-                else cue_start
-            )
-            visible_end = (
-                text_end
-                if word.text.exit.type is not CueAnimationType.NONE
-                else cue_end
-            )
-            if visible_end <= visible_start:
-                continue
             if config.style.word_backdrop.kind is not SubtitleBackdrop.NONE:
-                backdrop_end = (
-                    word_end
-                    if word.backdrop.mode is WordAnimationMode.ACTIVE_WORD
-                    else cue_end
+                backdrop_interval = effect_timings.backdrop[word_index]
+                backdrop_start, backdrop_end = (
+                    backdrop_interval.start,
+                    backdrop_interval.end,
                 )
-                if backdrop_end > word_start:
+                if backdrop_end > backdrop_start:
                     backdrop_timing = normalize_word_animation(
-                        word_start, backdrop_end, word.backdrop
+                        backdrop_start, backdrop_end, word.backdrop
                     )
                     _append_word_backdrop_event(
                         append_event,
                         fragment.text,
                         placement,
                         positioned.block_placement,
-                        word_start,
+                        backdrop_start,
                         backdrop_end,
                         palette,
                         metrics,
@@ -893,7 +890,18 @@ def _append_word_animation_events(
                         word_timing=backdrop_timing,
                         style_name=style_name,
                     )
+            if visibility.timing is None:
+                continue
+            visible_start, visible_end = visibility.start, visibility.end
+            text_timing = visibility.timing
             boundaries = {visible_start, visible_end, word_start, word_end}
+            if text_interval.strategy in {"aligned", "shared"}:
+                source_index = (
+                    text_interval.shared_with
+                    if text_interval.shared_with is not None
+                    else word_index
+                )
+                boundaries.add(cue.active_intervals[source_index][1])
             for boundary in word_animation_boundaries(text_timing, word.text):
                 boundaries.add(boundary)
             points = sorted(
@@ -975,6 +983,18 @@ def _append_fragmented_cue_outline_events(
     """Render cue outlines with the exact placement and motion of word text."""
     if cue is not None:
         _validate_karaoke_cue(cue)
+    effect_timings = (
+        resolve_word_effect_timings(
+            cue_start,
+            cue_end,
+            cue.active_intervals,
+            config.animation.word,
+            backdrop_enabled=config.style.word_backdrop.kind
+            is not SubtitleBackdrop.NONE,
+        )
+        if cue is not None
+        else None
+    )
     for positioned in visual_lines:
         for fragment, placement in zip(
             positioned.line.fragments,
@@ -988,31 +1008,22 @@ def _append_fragmented_cue_outline_events(
             word_timing: WordAnimationTiming | None = None
             word_animation: SubtitleWordElementAnimation | None = None
             word_index = fragment.word_index
-            if cue is not None and word_index is not None:
+            if (
+                cue is not None
+                and effect_timings is not None
+                and word_index is not None
+            ):
                 if word_index < 0 or word_index >= len(cue.active_intervals):
                     raise ArtifactError("Word outline fragment index is invalid")
-                word_start, word_end = cue.active_intervals[word_index]
-                text_end = (
-                    cue_end
-                    if config.animation.word.text.mode is WordAnimationMode.PROGRESSIVE
-                    else word_end
+                interval = effect_timings.text[word_index]
+                word_start, word_end = interval.start, interval.end
+                visibility = resolve_word_text_visibility(
+                    cue_start, cue_end, word_start, word_end, config.animation.word.text
                 )
-                word_animation = config.animation.word.text
-                word_timing = normalize_word_animation(
-                    word_start, text_end, word_animation
-                )
-                start = (
-                    word_start
-                    if word_animation.entrance.type is not CueAnimationType.NONE
-                    else cue_start
-                )
-                end = (
-                    text_end
-                    if word_animation.exit.type is not CueAnimationType.NONE
-                    else cue_end
-                )
-                if end <= start:
-                    continue
+                start, end = visibility.start, visibility.end
+                word_timing = visibility.timing
+                if word_timing is not None:
+                    word_animation = config.animation.word.text
             _append_cue_outline_event(
                 append_event,
                 fragment.text,
@@ -1042,6 +1053,13 @@ def _append_cue_outline_around_word_decoration(
 ) -> None:
     """Remove the cue outline only while a word outline replaces it."""
     _validate_karaoke_cue(cue)
+    effect_timings = resolve_word_effect_timings(
+        cue_start,
+        cue_end,
+        cue.active_intervals,
+        config.animation.word,
+        backdrop_enabled=True,
+    )
     preview_indexes = (
         set(range((len(cue.durations) + 1) // 2))
         if config.animation.word.backdrop.mode is WordAnimationMode.PROGRESSIVE
@@ -1063,13 +1081,8 @@ def _append_cue_outline_around_word_decoration(
                 if preview:
                     intervals = [] if word_index in preview_indexes else intervals
                 else:
-                    word_start, word_end = cue.active_intervals[word_index]
-                    decoration_end = (
-                        cue_end
-                        if config.animation.word.backdrop.mode
-                        is WordAnimationMode.PROGRESSIVE
-                        else word_end
-                    )
+                    interval = effect_timings.backdrop[word_index]
+                    word_start, decoration_end = interval.start, interval.end
                     intervals = [
                         (cue_start, word_start),
                         (decoration_end, cue_end),
@@ -1544,7 +1557,16 @@ def _safe_word_effect_cue(
         str(segment.get("text", "")),
         word_effects_requested=_has_positioned_word_animation(config),
     )
-    return cue if capability.word_effects_supported else None
+    if not capability.word_effects_supported:
+        return None
+    timings = resolve_word_effect_timings(
+        quantize_ass_centiseconds(segment["start"]),
+        quantize_ass_centiseconds(segment["end"]),
+        cue.active_intervals,
+        config.animation.word,
+        backdrop_enabled=config.style.word_backdrop.kind is not SubtitleBackdrop.NONE,
+    )
+    return cue if timings.available else None
 
 
 def _render_strategy_for_segments(

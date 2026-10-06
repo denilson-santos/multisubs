@@ -559,9 +559,31 @@ normal/highlight color overrides around independently escaped display
 fragments. Word starts and ends are quantized with the existing ASS rule.
 `progressive` keeps each affected fragment active through the cue;
 `active-word` uses the validated end capped at the next start, leaves pauses
-normal, and omits zero-length intervals. Word outline and measured box
+normal, and resolves empty effect intervals as described below. Word outline and measured box
 decorations follow their own mode and animation track. Plain fallback cues use
 the same style, placement, timing, and text as the ordinary path.
+`animation.py` derives word-effect presentation intervals separately from
+`KaraokeCue.active_intervals` and original alignment records. Positive effective
+intervals are unchanged. For an empty interval, each enabled track first tries
+the gap after the source start, then the gap before it, within the same cue.
+The reserved interval includes the configured entrance and exit durations plus
+100 ms of stable display. It does not overlap another aligned or reserved
+interval. If neither gap fits, the nearest positive presentation interval is
+shared; a tie prefers the following word, and a trailing word uses the preceding
+word. Shared words use the same motion normalization and highlight timing as
+their anchor, even when that anchor's own short interval shrinks its phases.
+Neighbor lookup is linear in the alignment-record count. Progressive tracks
+retain their existing start-to-cue-end interval when positive. Disabled tracks
+are not recovered. No source timestamp, positive aligned interval, or cue
+boundary is changed; these presentation estimates are explicitly diagnosed.
+If any enabled track has no gap or positive neighbor, word effects fall back
+for the complete logical cue with reason `insufficient-word-animation-time`;
+source text and cue-level effects remain available.
+Word-text visibility is then resolved from the derived interval: an entrance
+starts visibility at its start, an exit ends it at its end, and unspecified
+phases retain the corresponding cue boundary. Text and its cue glyph outline
+use the same timing and measured placement. Word decorations use their own
+track's derived intervals, including cue-outline replacement boundaries.
 The positioned-fragment path is limited to display text classified as safe by
 `render_capabilities.py`. Arabic-family, Hebrew, Indic, and other detected
 bidirectional/contextual-shaping content uses complete logical-line events;
@@ -570,6 +592,16 @@ per-cue `word_effect` object records `renderer_strategy`, bounded
 `shaping_features`, and `unsupported-word-shaping` when requested word tracks
 are suppressed. Aggregate diagnostics count each cue once and summarize both
 fallback reasons and renderer strategies.
+Recovered intervals add a per-cue `timing_recovery` diagnostic with
+`minimum_stable_ms: 100` and separate `text`/`backdrop` entries. Each entry
+reports `unit_count`, `gap_count`, and `shared_count`; `units` contains at most
+32 estimates with `word_index`, `strategy`, presentation `start`/`end` in seconds,
+and `shared_with` for a shared anchor. Additional entries are counted in
+`units_truncated`. Aggregate `word_effects.timing_recovery` reports the same
+minimum and track counts plus affected `cues`. The stable minimum applies to
+reserved gaps; shared anchors retain their own duration. Recovery fields are
+omitted when unused, and recovered cues remain active effects rather than
+complete-cue fallbacks. Retained JSON remains schema version 3.
 When aligned-word behavior positions text fragments independently, a cue glyph
 outline is partitioned into the same fragments and reuses their exact measured
 placements. Mixing a libass-shaped whole-line outline with positioned fragment
@@ -590,10 +622,10 @@ interval according to its validated duration, and a final partial cycle settles
 before exit. Cue slides travel 75% of resolved font size, word slides travel
 35%, and fixed pop, zoom, pulse, bounce, float, shake, flash, and breathe paths
 settle to the stable state. A private typed dialogue event
-retains its logical cue interval, derived event interval, and optional aligned
-word interval. ass.py splits only at word, visual-line, and a fixed number of
+retains its logical cue interval, derived event interval, and optional word
+presentation interval. ass.py splits only at word, visual-line, and a fixed number of
 phase boundaries, then samples cue-global and word-local state from their
-original timelines. This keeps movement, scale, opacity, and highlight state
+logical cue and resolved word timelines. This keeps movement, scale, opacity, and highlight state
 continuous instead of restarting them at derived boundaries. Generated
 positioning contains at most one `\\pos` or `\\move` per event; transcript
 fragments remain separately escaped. With all twelve phases set to `none`, the
