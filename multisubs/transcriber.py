@@ -13,7 +13,13 @@ from numbers import Real
 from pathlib import Path
 from typing import Any, cast
 
-from .animation import normalize_cue_animation, normalize_word_animation
+from .animation import (
+    MIN_RECOVERED_WORD_STABLE_MS,
+    WordEffectTimings,
+    normalize_cue_animation,
+    normalize_word_animation,
+    resolve_word_effect_timings,
+)
 from .asr import (
     ASRBackend,
     ASRRequest,
@@ -1349,6 +1355,19 @@ def prepare_karaoke_cues(
             if karaoke_cue is not None and not capability.word_effects_supported:
                 karaoke_cue = None
                 fallback_reason = capability.fallback_reason
+            effect_timings = None
+            if karaoke_cue is not None:
+                effect_timings = resolve_word_effect_timings(
+                    quantize_ass_centiseconds(segment["start"]),
+                    quantize_ass_centiseconds(segment["end"]),
+                    karaoke_cue.active_intervals,
+                    resolved_config.animation.word,
+                    backdrop_enabled=resolved_config.style.word_backdrop.kind.value
+                    != "none",
+                )
+                if not effect_timings.available:
+                    karaoke_cue = None
+                    fallback_reason = "insufficient-word-animation-time"
             if karaoke_cue is None:
                 fallback_cues += 1
                 prepared_segment["_word_effect"] = {
@@ -1375,8 +1394,51 @@ def prepare_karaoke_cues(
                     "fallback_reason": None,
                     "fallback_count": 0,
                 }
+                if effect_timings is not None:
+                    recovery = _word_timing_recovery_diagnostic(effect_timings)
+                    if recovery:
+                        prepared_segment["_word_effect"]["timing_recovery"] = recovery
         prepared.append(prepared_segment)
     return prepared, fallback_cues
+
+
+def _word_timing_recovery_diagnostic(
+    timings: WordEffectTimings,
+) -> dict[str, Any]:
+    """Report bounded presentation estimates separately from source records."""
+    diagnostic: dict[str, Any] = {}
+    for name, intervals in (("text", timings.text), ("backdrop", timings.backdrop)):
+        recovered = [
+            (index, interval)
+            for index, interval in enumerate(intervals)
+            if interval.strategy in {"gap", "shared"}
+        ]
+        if not recovered:
+            continue
+        units = []
+        for index, interval in recovered[:32]:
+            unit: dict[str, Any] = {
+                "word_index": index,
+                "strategy": interval.strategy,
+                "start": interval.start / 100,
+                "end": interval.end / 100,
+            }
+            if interval.shared_with is not None:
+                unit["shared_with"] = interval.shared_with
+            units.append(unit)
+        diagnostic[name] = {
+            "unit_count": len(recovered),
+            "gap_count": sum(interval.strategy == "gap" for _, interval in recovered),
+            "shared_count": sum(
+                interval.strategy == "shared" for _, interval in recovered
+            ),
+            "units": units,
+        }
+        if len(recovered) > len(units):
+            diagnostic[name]["units_truncated"] = len(recovered) - len(units)
+    if diagnostic:
+        diagnostic["minimum_stable_ms"] = MIN_RECOVERED_WORD_STABLE_MS
+    return diagnostic
 
 
 def _prepare_karaoke_cue(
@@ -1841,13 +1903,21 @@ def _serialize_animation_metadata(
         prepared = segment.get("_karaoke_cue")
         if not isinstance(prepared, KaraokeCue):
             continue
-        for start, end in prepared.active_intervals:
-            shortened_words["text"] += normalize_word_animation(
-                start, end, word.text
-            ).shortened
-            shortened_words["backdrop"] += normalize_word_animation(
-                start, end, word.backdrop
-            ).shortened
+        timings = resolve_word_effect_timings(
+            quantize_ass_centiseconds(segment["start"]),
+            quantize_ass_centiseconds(segment["end"]),
+            prepared.active_intervals,
+            word,
+            backdrop_enabled=config.style.word_backdrop.kind.value != "none",
+        )
+        for name, track, intervals in (
+            ("text", word.text, timings.text),
+            ("backdrop", word.backdrop, timings.backdrop),
+        ):
+            shortened_words[name] += sum(
+                normalize_word_animation(interval.start, interval.end, track).shortened
+                for interval in intervals
+            )
     return {
         "cue": {
             "text": track_data(cue.text, active=True),
@@ -2004,7 +2074,21 @@ def _serialize_word_effect_metadata(
     reasons: dict[str, int] = {}
     renderer_strategies: dict[str, int] = {}
     fallback_cues = 0
+    recovery_tracks: dict[str, dict[str, int]] = {}
     for diagnostic in diagnostics:
+        recovery = diagnostic.get("timing_recovery")
+        if isinstance(recovery, Mapping):
+            for name in ("text", "backdrop"):
+                track = recovery.get(name)
+                if not isinstance(track, Mapping):
+                    continue
+                total = recovery_tracks.setdefault(
+                    name,
+                    {"cues": 0, "unit_count": 0, "gap_count": 0, "shared_count": 0},
+                )
+                total["cues"] += 1
+                for count in ("unit_count", "gap_count", "shared_count"):
+                    total[count] += track[count]
         renderer_strategy = diagnostic.get("renderer_strategy")
         if isinstance(renderer_strategy, str) and renderer_strategy:
             renderer_strategies[renderer_strategy] = (
@@ -2016,13 +2100,19 @@ def _serialize_word_effect_metadata(
         reason = diagnostic.get("fallback_reason")
         if isinstance(reason, str) and reason:
             reasons[reason] = reasons.get(reason, 0) + 1
-    return {
+    metadata = {
         "units": "alignment-records",
         "cues": len(diagnostics),
         "fallback_cues": fallback_cues,
         "reasons": reasons,
         "renderer_strategies": renderer_strategies,
     }
+    if recovery_tracks:
+        metadata["timing_recovery"] = {
+            "minimum_stable_ms": MIN_RECOVERED_WORD_STABLE_MS,
+            **recovery_tracks,
+        }
+    return metadata
 
 
 def _write_srt(path: Path, segments: Sequence[Mapping[str, Any]]) -> None:

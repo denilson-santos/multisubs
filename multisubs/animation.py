@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from .errors import ArtifactError
 from .models import (
     CueAnimationType,
     SubtitleAnimationPhase,
     SubtitleElementAnimation,
+    SubtitleWordAnimation,
     SubtitleWordElementAnimation,
+    WordAnimationMode,
 )
 
 _SLIDE_DISTANCE_PERCENT = Decimal(75)
@@ -29,6 +33,7 @@ _SHAKE_DISTANCE_PERCENT = Decimal(12)
 _FLASH_ALPHA = 89
 _BREATHE_ALPHA = 64
 _MAX_EMPHASIS_BOUNDARIES = 64
+MIN_RECOVERED_WORD_STABLE_MS = 100
 
 
 @dataclass(frozen=True)
@@ -58,7 +63,7 @@ class CueAnimationState:
 
 @dataclass(frozen=True)
 class WordAnimationTiming:
-    """Normalized phase boundaries for one aligned word interval."""
+    """Normalized phase boundaries for one word presentation interval."""
 
     word_start: int
     word_end: int
@@ -69,6 +74,146 @@ class WordAnimationTiming:
     emphasis_duration: int
     exit_duration: int
     shortened: bool
+
+
+@dataclass(frozen=True)
+class WordTextVisibility:
+    """Visible ASS interval and optional word-relative animation timing."""
+
+    start: int
+    end: int
+    timing: WordAnimationTiming | None
+
+
+@dataclass(frozen=True)
+class WordEffectInterval:
+    """Presentation timing, kept separate from original aligned timestamps."""
+
+    start: int
+    end: int
+    strategy: Literal["aligned", "gap", "shared", "unavailable"] = "aligned"
+    shared_with: int | None = None
+
+
+@dataclass(frozen=True)
+class WordEffectTimings:
+    """Independent presentation intervals for the two word tracks."""
+
+    text: tuple[WordEffectInterval, ...]
+    backdrop: tuple[WordEffectInterval, ...]
+
+    @property
+    def available(self) -> bool:
+        return all(
+            interval.strategy != "unavailable"
+            for track in (self.text, self.backdrop)
+            for interval in track
+        )
+
+
+def resolve_word_effect_timings(
+    cue_start: int,
+    cue_end: int,
+    intervals: Sequence[tuple[int, int]],
+    animation: SubtitleWordAnimation,
+    *,
+    backdrop_enabled: bool,
+) -> WordEffectTimings:
+    """Recover empty effect windows without modifying the alignment contract."""
+    return WordEffectTimings(
+        text=resolve_word_effect_intervals(
+            cue_start,
+            cue_end,
+            intervals,
+            animation.text,
+            recover=animation.text.enabled,
+        ),
+        backdrop=resolve_word_effect_intervals(
+            cue_start,
+            cue_end,
+            intervals,
+            animation.backdrop,
+            recover=backdrop_enabled,
+        ),
+    )
+
+
+def resolve_word_effect_intervals(
+    cue_start: int,
+    cue_end: int,
+    intervals: Sequence[tuple[int, int]],
+    animation: SubtitleWordElementAnimation,
+    *,
+    recover: bool = True,
+) -> tuple[WordEffectInterval, ...]:
+    """Use a free adjacent gap or share a neighbor for empty effect intervals.
+
+    A reserved gap includes the complete entrance and exit plus 100 ms of
+    stable display. Sharing retains the neighbor's own phase normalization.
+    Positive effect intervals and source timestamps are never extended.
+    The two passes for nearest neighbors keep recovery linear in word count.
+    """
+    previous_end = cue_start
+    for start, end in ((cue_start, cue_end), *intervals):
+        if (
+            any(isinstance(t, bool) or not isinstance(t, int) for t in (start, end))
+            or not 0 <= cue_start <= start <= end <= cue_end
+        ):
+            raise ArtifactError("Word effect timing requires timestamps inside the cue")
+    for start, end in intervals:
+        if start < previous_end:
+            raise ArtifactError(
+                "Word effect timing requires ordered alignment intervals"
+            )
+        previous_end = end
+    required = (
+        _milliseconds_to_centiseconds(animation.entrance.duration_ms)
+        + _milliseconds_to_centiseconds(MIN_RECOVERED_WORD_STABLE_MS)
+        + _milliseconds_to_centiseconds(animation.exit.duration_ms)
+    )
+    resolved: list[WordEffectInterval] = []
+    for index, (start, end) in enumerate(intervals):
+        if animation.mode is WordAnimationMode.PROGRESSIVE:
+            end = cue_end
+        interval = WordEffectInterval(start, end)
+        if recover and start == end:
+            next_start = (
+                intervals[index + 1][0] if index + 1 < len(intervals) else cue_end
+            )
+            previous_end = resolved[-1].end if resolved else cue_start
+            if next_start - start >= required:
+                interval = WordEffectInterval(start, start + required, "gap")
+            elif start - previous_end >= required:
+                interval = WordEffectInterval(start - required, start, "gap")
+            else:
+                interval = WordEffectInterval(start, end, "unavailable")
+        resolved.append(interval)
+    next_neighbors: list[int | None] = [None] * len(resolved)
+    next_index = None
+    for index in range(len(resolved) - 1, -1, -1):
+        next_neighbors[index] = next_index
+        if resolved[index].end > resolved[index].start:
+            next_index = index
+    previous_index = None
+    for index, interval in enumerate(resolved):
+        if interval.strategy != "unavailable":
+            if interval.end > interval.start:
+                previous_index = index
+            continue
+        next_index = next_neighbors[index]
+        neighbor = previous_index
+        if next_index is not None and (
+            previous_index is None
+            or resolved[next_index].start - interval.start
+            <= interval.start - resolved[previous_index].end
+        ):
+            neighbor = next_index
+        if neighbor is not None:
+            anchor = resolved[neighbor]
+            resolved[index] = WordEffectInterval(
+                anchor.start, anchor.end, "shared", neighbor
+            )
+    return tuple(resolved)
 
 
 def normalize_cue_animation(
@@ -234,6 +379,35 @@ def normalize_word_animation(
             or exit_duration != exit_requested
         ),
     )
+
+
+def resolve_word_text_visibility(
+    cue_start: int,
+    cue_end: int,
+    word_start: int,
+    word_end: int,
+    animation: SubtitleWordElementAnimation,
+) -> WordTextVisibility:
+    """Resolve glyph visibility from recovered presentation timing and phases."""
+    if (
+        any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in (cue_start, cue_end, word_start, word_end)
+        )
+        or not 0 <= cue_start <= word_start <= word_end <= cue_end
+    ):
+        raise ArtifactError("Word visibility requires timestamps inside the cue")
+    text_end = cue_end if animation.mode is WordAnimationMode.PROGRESSIVE else word_end
+    timing = normalize_word_animation(word_start, text_end, animation)
+    start = (
+        word_start
+        if animation.entrance.type is not CueAnimationType.NONE
+        else cue_start
+    )
+    end = text_end if animation.exit.type is not CueAnimationType.NONE else cue_end
+    if end <= start:
+        return WordTextVisibility(start, end, None)
+    return WordTextVisibility(start, end, timing)
 
 
 def word_animation_boundaries(

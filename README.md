@@ -493,6 +493,18 @@ shaping cases retain cue-level effects and fall back to complete logical-line
 rendering; word tracks are suppressed. Previews use the same fallback and
 report a warning.
 
+Source word timestamps are preserved, including zero durations. For an empty
+word-effect interval after ASS centisecond rounding, multisubs first uses an
+adjacent free gap large enough for the configured entrance and exit plus
+100 ms of stable display. If no such gap fits, the word shares a nearby word's
+animation and highlight interval. This estimates presentation timing only;
+other positive intervals and cue times remain unchanged. Text and word backdrop
+resolve their timing independently, and usable progressive intervals are kept.
+If neither a gap nor a timed neighbor is available, the complete cue retains
+its text and cue effects with word effects suppressed. Retained JSON reports
+these estimates under `timing_recovery` in per-cue `word_effect` and aggregate
+rendering `word_effects` diagnostics, separately from original word timestamps.
+
 ### Customize typography
 
 ```bash
