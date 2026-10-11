@@ -62,7 +62,8 @@ flowchart LR
 | --- | --- | --- |
 | multisubs/cli.py | Defines the Typer console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | app, main() |
 | multisubs/asr/ | Defines backend capabilities and normalizes WhisperX, Faster-Whisper, Parakeet/NeMo, and Qwen3-ASR results into one language/text/segments contract without importing unselected runtimes. | ASRBackend, ASRRequest, ASRResult, create_adapter() |
-| multisubs/transcriber.py | Selects an ASR adapter, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
+| multisubs/speech.py | Validates lossless source-speech interchange and renders it through the normal transcription pipeline without ASR. | SpeechTranscript, render_transcript() |
+| multisubs/transcriber.py | Selects an ASR adapter, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_speech(), transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, generates deterministic simulated word timing for animated previews, and generates optional native or explicit ASS guide events. | build_preview_ass(), build_animation_preview_ass(), build_simulated_karaoke_cue(), resolve_preview_timestamp() |
 | multisubs/animation.py | Normalizes cue and aligned-word phases with configured durations inside quantized bounds and samples relative opacity, movement, and scale state without I/O. | normalize_cue_animation(), normalize_word_animation(), animation_boundaries(), word_animation_boundaries(), sample_cue_animation(), sample_word_animation() |
 | multisubs/render_capabilities.py | Classifies actual display text for bidirectional/contextual shaping and selects positioned word fragments or complete logical-line fallback without using a language allowlist. | assess_renderer_capability(), RendererCapability |
@@ -79,7 +80,48 @@ flowchart LR
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, template-catalog, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
 | multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
-| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__ |
+| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__, transcribe_speech(), SpeechTranscript, render_transcript() |
+
+### Deferred speech rendering
+
+The public `transcribe_speech()` API calls the same selected adapter as normal
+transcription but returns `SpeechTranscript` before semantic cue selection,
+linguistic grouping, layout, or artifact writes. It preserves raw normalized
+ASR segment/word association, text including whitespace, observed point times,
+missing/null word fields, and JSON-compatible confidence metadata. Language may
+be unknown. Legacy `multisubs.transcriber.transcribe_video()` still returns its
+semantic-cue `multisubs.models.TranscriptDocument`; both share one recognition
+boundary. These existing module APIs are not exported from the package root.
+The reusable speech API is exposed there as `transcribe_speech`,
+`SpeechTranscript`, and `render_transcript`.
+
+`SpeechTranscript.to_dict()` and `SpeechTranscript.from_dict()` provide detached
+lossless `format: "multisubs-speech", schema_version: 1` interchange. Required
+top-level fields are format, schema_version, language, task, asr_backend,
+model_name, full_text, and segments. Each segment supplies text/start/end and
+optional words; each word supplies word and optional observed start/end.
+Unknown segment/word JSON metadata is retained. Validation requires finite
+nonnegative supplied times, chronological segment starts, unreversed intervals,
+and bounded depth/text/record counts. It permits overlapping or incomplete word
+alignment so the ordinary source mapper can select its safe fallback.
+
+`render_transcript()` accepts the object or dictionary with times already local
+to the supplied final video. It resolves a built-in/custom template or an
+explicit typed configuration, probes final geometry once, and reconstructs
+semantic cues using `_build_subtitle_segments()`. It delegates artifact creation
+to `write_transcription_artifacts()` with the same language, covering-font
+measurement, resolved layout, and karaoke preparation as the normal path.
+Missing word timing never becomes simulated alignment. Suppressed effects are
+reported through progress or UserWarning. New APIs reject tasks other than
+transcribe before expensive work; legacy translation behavior is unchanged.
+
+SRT, ASS, and media are built privately and published together under a
+collision-safe stem after FFmpeg succeeds. The artifact writer's schema-3 JSON
+is transient in this path. Failed rendering/publication removes private files
+and leaves existing outputs untouched. No source path or ASR runtime is required
+in the interchange data; cropping, source selection, and shifting observed times
+to an edit's timeline are the consumer's responsibility. See the
+[Python API reference](../README.md#transcribe-once-and-render-later-python-api).
 
 ### External SRT and ASS input
 
@@ -154,6 +196,12 @@ segmentation:
 - It keeps zero-duration alignment records with their real timestamps but does
   not isolate them into zero-duration cues when an adjacent timed record can
   carry the complete source text.
+  Visual partition candidates must also leave positive ASS-centisecond coverage
+  on each timed side. A point-only semantic cue keeps observed source segment
+  bounds and renders statically; it does not force adjacent valid visual groups
+  back into an unsplit coarse segment. If no visible observed interval exists,
+  or the intact coarse text cannot fit, generation fails explicitly. Word times
+  remain unchanged throughout this presentation fallback.
 - It targets no more than 6 seconds per semantic cue; width no longer uses a
   fixed character count.
 - Translation is handled in two stages. WhisperX limits translation inference
