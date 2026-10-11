@@ -65,6 +65,27 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-20 | A caller may supply a strict local schema-version-1 timed-cue JSON file and an input video to generate SRT, styled ASS, and a copied hard-subtitled video without loading ASR. The video supplies normalized geometry. Each cue and word has finite ordered times within 24 hours; every non-whitespace cue character must map exactly to a word string. Cue overlaps are retained. By default, cues that exceed the target layout are split at whole-word boundaries into fitting cues while preserving word timestamps and the supplied outer interval; fitting cues remain unchanged. Internal boundaries use the next group's first word start. A strict overflow option rejects unfit source cues instead. Invalid, oversized, indivisibly unfit, or centisecond-unrepresentable input fails before publishing; all three outputs use one collision-safe stem. The CLI retains style and template options in this mode and rejects explicit ASR, preview, and transcription-retention options. |
 | FR-21 | A caller may provide a readable, nonempty local SRT or ASS file and video to render one hard-subtitled copy without ASR or rewriting the subtitle file. ASS is passed through with authored styling; SRT receives FFmpeg/libass default styling. Optional local fonts may be supplied. The CLI rejects transcription, template, appearance, animation, and preview options in this mode; failures publish no video, and collisions add a suffix. |
 
+### Reusable source transcription API
+
+Library consumers such as multicuts must be able to call `transcribe_speech()`
+once, retain source segment/word association, text, whitespace, punctuation,
+observed equal timestamps, missing/null word timing, unknown language, and
+backend/model provenance, then call `render_transcript()` for a final video's
+geometry, template, and placement without another ASR call. The supported
+`SpeechTranscript` result must feed rendering directly or through its public,
+lossless format-1 dictionary conversion. Consumers may select source content and
+shift supplied times to a cut's timeline without private APIs or token cleanup.
+
+New APIs support only transcription and validate the task restriction before
+expensive work. Existing APIs, timed-cue version 1, retained schema-3 artifacts,
+translation, and collision/retention behavior remain compatible. Deferred SRT
+and ASS must match normal generation from the same ASR data, configuration, and
+geometry in portrait and landscape, including source spaces, point groups,
+missing/partial alignment, and unknown language. Missing alignment keeps normal
+coarse timing with an explicit warning for unavailable word effects. Point words
+retain their source times, must not cancel unrelated visual partitions, and
+must never cause silently overflowing output or fabricated word timestamps.
+
 ## Non-functional requirements
 
 | Area | Requirement |

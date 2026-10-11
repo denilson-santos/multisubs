@@ -21,6 +21,7 @@ Read the relevant project documentation before changing behavior:
 | --- | --- |
 | multisubs/cli.py | Argument parsing, user-facing validation, output-directory selection, and artifact cleanup. |
 | multisubs/asr/ | ASR capability catalog, lazy backend adapters, and normalized language/text/segment/timestamp results. |
+| multisubs/speech.py | Public source-speech transcript interchange and ASR-free rendering through the normal pipeline. |
 | multisubs/timed_cues.py | Public bounded timed-cue JSON input and ASR-free SRT/ASS/video generation. |
 | multisubs/subtitle_artifacts.py | SRT serialization shared by transcription and timed-cue input. |
 | multisubs/transcriber.py | ASR selection, subtitle-cue construction, and JSON/SRT/ASS generation. |

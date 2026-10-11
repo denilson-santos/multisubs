@@ -251,6 +251,109 @@ accepts `cue_overflow="reject"` for strict cue preservation and returns named
 `srt_path`, `ass_path`, and `video_path` values. The public JSON schema
 is independent of the retained transcription JSON schema 3.
 
+### Transcribe once and render later (Python API)
+
+Use `transcribe_speech()` to retain source ASR segments before semantic cue
+selection or visual layout. It returns `SpeechTranscript` and creates no subtitle
+artifacts. `render_transcript()` accepts that object or its `to_dict()` result,
+then uses the normal transcription cue builder, wrapping, ASS compiler, and
+FFmpeg renderer against the final video's geometry. It never calls an ASR.
+
+```python
+from multisubs import transcribe_speech, render_transcript
+
+speech = transcribe_speech("source.mp4", lang="pt", asr_backend="faster-whisper")
+artifacts = render_transcript(speech, "source.mp4", "output", template="yellow-pop")
+print(artifacts.srt_path, artifacts.ass_path, artifacts.video_path)
+```
+
+Public signatures (all paths accept `str` or `Path`):
+
+```python
+transcribe_speech(input_path, lang=None, task="transcribe", model_name=None,
+                  *, asr_backend="whisperx", progress=None, verbose=False)
+# -> SpeechTranscript
+
+render_transcript(transcript, video_path, output_dir, *, template=None,
+                  template_dir=None, subtitle_config=None, progress=None)
+# -> GeneratedSubtitleArtifacts(srt_path, ass_path, video_path)
+
+speech.to_dict()                  # -> detached JSON-compatible dict
+SpeechTranscript.from_dict(data) # -> validated SpeechTranscript
+```
+
+`template` and `template_dir` select the same built-in/custom templates as the
+CLI. Alternatively, pass a complete `SubtitleConfig` through `subtitle_config`,
+including positioning and appearance overrides; do not combine it with template
+arguments. Layout is resolved only against `video_path`, which may be a cropped
+or reframed cut unrelated to the original source path.
+
+The intermediate dictionary is an independent `multisubs-speech` format,
+version 1. It is not a `--cues-json` document or retained schema-3 JSON:
+
+```json
+{
+  "format": "multisubs-speech",
+  "schema_version": 1,
+  "language": "pt",
+  "task": "transcribe",
+  "asr_backend": "faster-whisper",
+  "model_name": "turbo",
+  "full_text": " Olá, mundo!",
+  "segments": [
+    {
+      "start": 0.0, "end": 2.0, "text": " Olá, mundo!",
+      "words": [
+        {"word": " Olá,", "start": 0.2, "end": 0.2, "score": 0.9},
+        {"word": " mundo!", "start": null}
+      ]
+    }
+  ]
+}
+```
+
+`segments` retain the original association of words to ASR speech segments,
+source text, spaces, punctuation, and JSON-compatible metadata. `words` may be
+absent, null, or empty; individual word times may be absent, null, equal, or overlapping.
+No token stripping or renaming is required. `language` may be null. The duration
+property is the latest observed segment end, including leading silence and
+excluding trailing silence; it is not the media duration or summed speech time.
+`to_dict()` and `from_dict()` copy their data so callers can edit a cut without
+changing the cached source object. Ordinary `json.dump`/`json.load` can persist
+this dictionary locally; the render API accepts the object or dictionary, not a
+JSON filename.
+
+For a cut, select the intended source segments/words, preserve their text, and
+subtract the cut's source start from every supplied segment/word time before
+rendering. Leave absent and null times unchanged. Rebuild `full_text` for the
+selected content if needed. Times must be nonnegative and local to the final
+video; selection of words crossing an edit boundary belongs to the caller.
+Observed bounds are retained even if an ASR interval extends beyond the media
+end, matching normal transcription; FFmpeg limits the rendered media duration.
+A coarse segment cannot be accurately trimmed into timed words without alignment.
+
+Both new APIs accept only `task="transcribe"`; translation is rejected before
+ASR or rendering. Existing transcription APIs retain translation support.
+Missing or incomplete word alignment keeps the normal coarse segment fallback
+and suppresses unavailable word effects. A supplied `progress` callback reports
+that limitation; without a callback, rendering emits `UserWarning`. Point words
+retain their observed timestamps. Visual splitting avoids isolating a group with
+no visible timed interval; a point-only cue uses observed source segment bounds
+and disables word effects. Point-only text that cannot fit the visual envelope
+or has no visible observed segment interval fails explicitly. Coarse text keeps
+the normal renderer's envelope validation. No word timing is invented and no
+source text is dropped.
+
+Input validation bounds the dictionary to 20,000 segments, 100,000 words,
+1,000,000 string characters, nesting depth 16, and times from 0 to 86,400 seconds.
+Successful rendering publishes only SRT, ASS, and video under one collision-safe
+stem (without a language suffix when `language=None`). A failed render publishes
+no completed files. Existing `multisubs.generate_transcriptions`, `--cues-json`
+version 1, and retained schema-3 JSON preserve their established contracts.
+`transcribe_video` and `TranscriptDocument` remain available at their existing
+module paths, `multisubs.transcriber.transcribe_video` and
+`multisubs.models.TranscriptDocument`; they are not exported from the package root.
+
 ### Choose an ASR backend
 
 Omitting `--asr` keeps the established WhisperX `turbo` behavior. Each backend
