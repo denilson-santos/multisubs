@@ -478,6 +478,11 @@ class TranscriptDocument:
     segments: tuple[Mapping[str, Any], ...]
     asr_backend: str = "whisperx"
 
+    @property
+    def duration(self) -> float:
+        """Observed transcript coverage in seconds, excluding trailing silence."""
+        return max((float(segment["end"]) for segment in self.segments), default=0.0)
+
 
 @dataclass(frozen=True)
 class TranscriptionPaths:

@@ -135,8 +135,13 @@ def split_display_units_for_layout(
     *,
     boundary_words: Sequence[Mapping[str, Any]] | None = None,
     display_groups: Sequence[SubtitleDisplayGroup] | None = None,
+    can_split: Callable[[int, int], bool] | None = None,
 ) -> list[list[SubtitleDisplayUnit]]:
-    """Split mapped display units into groups that fit the visual budget."""
+    """Split mapped display units into groups that fit the visual budget.
+
+    Optional can_split(start, end) validates a prefix using absolute unit
+    indexes, so timing restrictions can exclude unsuitable cue boundaries.
+    """
     remaining = list(units)
     groups: list[list[SubtitleDisplayUnit]] = []
     offset = 0
@@ -157,9 +162,19 @@ def split_display_units_for_layout(
                 boundary_words[offset:] if boundary_words is not None else None
             ),
             preferred_breaks=preferred_breaks,
+            can_split=(
+                (
+                    lambda index, cue_offset=offset: can_split(
+                        cue_offset, cue_offset + index
+                    )
+                )
+                if can_split is not None
+                else None
+            ),
         )
         if break_at <= 0 or break_at >= len(remaining):
-            break_at = 1
+            groups.append(remaining)
+            break
         groups.append(remaining[:break_at])
         remaining = remaining[break_at:]
         offset += break_at
@@ -202,6 +217,7 @@ def _find_best_display_unit_break(
     *,
     boundary_words: Sequence[Mapping[str, Any]] | None,
     preferred_breaks: Collection[int] = (),
+    can_split: Callable[[int], bool] | None = None,
 ) -> int:
     if len(units) > _MAX_EXHAUSTIVE_PARTITION_UNITS:
         return _find_bounded_display_unit_break(
@@ -209,15 +225,23 @@ def _find_best_display_unit_break(
             metrics,
             boundary_words=boundary_words,
             preferred_breaks=preferred_breaks,
+            can_split=can_split,
         )
     candidates: list[int] = []
     for index in range(1, len(units)):
+        if can_split is not None and not can_split(index):
+            continue
         if index not in preferred_breaks and not units[index].can_break_before:
             continue
         _, fits = _layout_display_units(units[:index], metrics)
         if fits:
             candidates.append(index)
     if not candidates:
+        if can_split is not None:
+            return next(
+                (index for index in range(1, len(units)) if can_split(index)),
+                len(units),
+            )
         return 1
 
     def key(index: int) -> tuple[int, int, int, int]:
@@ -246,6 +270,7 @@ def _find_bounded_display_unit_break(
     *,
     boundary_words: Sequence[Mapping[str, Any]] | None,
     preferred_breaks: Collection[int],
+    can_split: Callable[[int], bool] | None = None,
 ) -> int:
     """Choose a large-cue prefix with linear line-filling work."""
     maximum = _greedy_display_prefix_break(units, metrics)
@@ -259,7 +284,14 @@ def _find_bounded_display_unit_break(
         if index == maximum or units[index].can_break_before
     }
     candidates.intersection_update(legal)
+    if can_split is not None:
+        candidates = {index for index in candidates if can_split(index)}
     if not candidates:
+        if can_split is not None:
+            return next(
+                (index for index in range(1, len(units)) if can_split(index)),
+                len(units),
+            )
         return maximum
 
     def key(index: int) -> tuple[int, int, int, int]:

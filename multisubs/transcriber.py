@@ -11,7 +11,7 @@ from decimal import Decimal
 from fractions import Fraction
 from numbers import Real
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from .animation import (
     MIN_RECOVERED_WORD_STABLE_MS,
@@ -118,6 +118,9 @@ from .wrapping import (
     split_words_for_layout as _wrapping_split_words_for_layout,
 )
 from .wrapping import transform_display_text as _wrapping_transform_display_text
+
+if TYPE_CHECKING:
+    from .speech import SpeechTranscript
 from .wrapping import (
     words_to_text as _wrapping_words_to_text,
 )
@@ -151,6 +154,8 @@ class _MappedWord:
     token: str
     start: float
     end: float
+    source_start: float | None = None
+    source_end: float | None = None
 
     @property
     def record(self) -> dict[str, Any]:
@@ -244,7 +249,75 @@ def transcribe_video(
     progress: ProgressReporter = None,
     verbose: bool = False,
 ) -> TranscriptDocument:
-    """Transcribe one video through the selected local ASR adapter."""
+    """Transcribe one video into the established semantic-cue document."""
+    document = _recognize_video(
+        input_path,
+        lang,
+        task,
+        model_name,
+        asr_backend=asr_backend,
+        progress=progress,
+        verbose=verbose,
+    )
+    segments = _build_subtitle_segments(
+        document.segments,
+        language="en" if task == "translate" else document.language,
+    )
+    _validate_subtitle_segments(segments)
+    return replace(document, segments=tuple(segments))
+
+
+def transcribe_speech(
+    input_path: str | Path,
+    lang: str | None = None,
+    task: str = "transcribe",
+    model_name: str | None = None,
+    *,
+    asr_backend: str | ASRBackend = ASRBackend.WHISPERX,
+    progress: ProgressReporter = None,
+    verbose: bool = False,
+) -> SpeechTranscript:
+    """Return source segments and observed words without cue selection or layout.
+
+    Only task='transcribe' is supported. No subtitle artifacts are written;
+    source whitespace, missing word fields, and point timestamps are retained.
+    The result can be cached with to_dict() and passed to render_transcript().
+    """
+    if task != "transcribe":
+        raise ValidationError("transcribe_speech supports only task='transcribe'")
+    from .speech import SpeechTranscript
+
+    document = _recognize_video(
+        input_path,
+        lang,
+        task,
+        model_name,
+        asr_backend=asr_backend,
+        progress=progress,
+        verbose=verbose,
+    )
+    result = SpeechTranscript(
+        language=document.language,
+        task=document.task,
+        asr_backend=document.asr_backend,
+        model_name=document.model_name,
+        full_text=document.full_text,
+        segments=document.segments,
+    )
+    return SpeechTranscript.from_dict(result.to_dict())
+
+
+def _recognize_video(
+    input_path: str | Path,
+    lang: str | None = None,
+    task: str = "transcribe",
+    model_name: str | None = None,
+    *,
+    asr_backend: str | ASRBackend = ASRBackend.WHISPERX,
+    progress: ProgressReporter = None,
+    verbose: bool = False,
+) -> TranscriptDocument:
+    """Run one selected adapter, retaining its source segment association."""
     source_path = _normalise_input_path(input_path)
     backend = parse_backend(asr_backend)
     resolved_model = resolve_model(backend, model_name)
@@ -261,18 +334,18 @@ def transcribe_video(
             "The selected ASR did not expose its detected source language; "
             "language metadata and filename suffixes were omitted.",
         )
-    segments = _build_subtitle_segments(
-        result.segments,
-        language="en" if task == "translate" else result.language,
-    )
-    _validate_subtitle_segments(segments)
     return TranscriptDocument(
         source_path=source_path,
         language=result.language,
         task=task,
         model_name=resolved_model,
         full_text=result.text,
-        segments=tuple(segments),
+        segments=tuple(
+            _json_safe_mapping(
+                cast(Mapping[object, object], _require_mapping(segment, "ASR segment"))
+            )
+            for segment in result.segments
+        ),
         asr_backend=backend.value,
     )
 
@@ -580,6 +653,8 @@ def _build_subtitle_segments(
                         token=group.source_text,
                         start=group.start_time,
                         end=group.end_time,
+                        source_start=_finite_time(segment.get("start")),
+                        source_end=_finite_time(segment.get("end")),
                     )
                     for group in display_groups
                 ]
@@ -752,11 +827,25 @@ def _append_words_cue(
     source_maps: tuple[SubtitleSourceMap, ...] | None = None
     if mapped_words:
         source_maps = tuple(dict.fromkeys(word.source_map for word in mapped_words))
+    start, end = _word_start(words[0]), _word_end(words[-1])
+    if quantize_ass_centiseconds(end) <= quantize_ass_centiseconds(start):
+        source_starts = [
+            word.source_start for word in mapped_words if word.source_start is not None
+        ]
+        source_ends = [
+            word.source_end for word in mapped_words if word.source_end is not None
+        ]
+        if source_starts and source_ends:
+            # Only cue presentation falls back to observed source coverage;
+            # alignment records keep their point timestamps unchanged.
+            start, end = min(source_starts), max(source_ends)
+            if cues:
+                start = max(start, cues[-1]["start"])
     _append_cue(
         cues,
         _source_text_for_words(words),
-        _word_start(words[0]),
-        _word_end(words[-1]),
+        start,
+        end,
         [record for word in words for record in _word_records(word)],
         source_map=source_map,
         source_record_indexes=source_record_indexes,
@@ -975,7 +1064,9 @@ def layout_subtitle_cues(
     display_cues: list[dict[str, Any]] = []
     for segment_index, segment in enumerate(segments):
         prepared = _prepare_cue_source(segment, segment_index)
-        if _append_timed_display_cues(display_cues, prepared, metrics, text_case):
+        if _append_timed_display_cues(
+            display_cues, prepared, metrics, text_case, segment
+        ):
             continue
         _append_coarse_display_cue(
             display_cues,
@@ -1089,6 +1180,7 @@ def _append_timed_display_cues(
     prepared: _PreparedCueSource,
     metrics: WrappingMetrics,
     text_case: TextCase,
+    segment: Mapping[str, Any],
 ) -> bool:
     if not prepared.source_map.timing_complete or not prepared.words:
         return False
@@ -1104,13 +1196,24 @@ def _append_timed_display_cues(
     ):
         return False
 
+    boundary_words = [
+        prepared.words_by_record[index] for index in prepared.record_indexes
+    ]
+    starts = [quantize_ass_centiseconds(_word_start(word)) for word in boundary_words]
+    ends = [quantize_ass_centiseconds(_word_end(word)) for word in boundary_words]
+
+    def can_split(start_index: int, break_index: int) -> bool:
+        return (
+            ends[break_index - 1] > starts[start_index]
+            and ends[-1] > starts[break_index]
+        )
+
     groups = _wrapping_split_display_units_for_layout(
         units,
         metrics,
-        boundary_words=[
-            prepared.words_by_record[index] for index in prepared.record_indexes
-        ],
+        boundary_words=boundary_words,
         display_groups=prepared.display_groups,
+        can_split=can_split,
     )
     for group in groups:
         group_indexes = tuple(unit.record_index for unit in group)
@@ -1135,12 +1238,29 @@ def _append_timed_display_cues(
             display_groups=cue_display_groups,
         )
         group_words = [prepared.words_by_record[index] for index in group_indexes]
+        start, end = _word_start(group_words[0]), _word_end(group_words[-1])
+        point_only = quantize_ass_centiseconds(end) <= quantize_ass_centiseconds(start)
+        if point_only:
+            start, end = _segment_times(segment)
+            if quantize_ass_centiseconds(end) <= quantize_ass_centiseconds(start):
+                raise ValidationError(
+                    "Point-only subtitle text has no visible observed segment interval"
+                )
+            display_lines = display_text.split("\n")
+            if len(display_lines) > metrics.line_capacity or any(
+                metrics.text_measurer.measure(line) > metrics.width_budget
+                for line in display_lines
+            ):
+                raise ValidationError(
+                    "Point-only subtitle text exceeds the max-width or max-height "
+                    "envelope without a usable timed split"
+                )
         _append_display_cue(
             cues,
             source_group,
             display_text,
-            _word_start(group_words[0]),
-            _word_end(group_words[-1]),
+            start,
+            end,
             group_words,
             [],
             metrics,
@@ -1149,6 +1269,7 @@ def _append_timed_display_cues(
             source_map=prepared.source_map,
             source_record_indexes=group_indexes,
             display_groups=cue_display_groups,
+            mapping_reason="point-only-cue" if point_only else None,
         )
     return True
 

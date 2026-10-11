@@ -10,23 +10,31 @@ __all__ = (
     "__version__",
     "embed_subtitles",
     "generate_transcriptions",
+    "transcribe_speech",
+    "SpeechTranscript",
+    "render_transcript",
     "generate_subtitles_from_json",
     "GeneratedSubtitleArtifacts",
     "render_subtitle_file",
 )
 
 if TYPE_CHECKING:
+    from .speech import SpeechTranscript, render_transcript
     from .subtitler import embed_subtitles, render_subtitle_file
     from .timed_cues import GeneratedSubtitleArtifacts, generate_subtitles_from_json
-    from .transcriber import generate_transcriptions
+    from .transcriber import generate_transcriptions, transcribe_speech
 
 
 def __getattr__(name: str):
     """Load optional runtime-heavy public APIs only when requested."""
-    if name == "generate_transcriptions":
-        from .transcriber import generate_transcriptions
+    if name in ("generate_transcriptions", "transcribe_speech"):
+        from . import transcriber
 
-        return generate_transcriptions
+        return getattr(transcriber, name)
+    if name in ("SpeechTranscript", "render_transcript"):
+        from . import speech
+
+        return getattr(speech, name)
     if name in ("embed_subtitles", "render_subtitle_file"):
         from . import subtitler
 
