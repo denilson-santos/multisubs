@@ -1167,6 +1167,7 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(
         last = pixels.getpixel((image.width - 6, image.height - 6))
     # The asymmetric background proves rotation was applied to the pixels,
     # including 180 degrees where checking only dimensions would miss a bug.
+    assert isinstance(first, tuple) and isinstance(last, tuple)
     first_channel, last_channel = (0, 2) if rotation == 270 else (2, 0)
     assert first[first_channel] > 150 and first[last_channel] < 100
     assert last[last_channel] > 150 and last[first_channel] < 100
