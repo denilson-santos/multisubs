@@ -143,7 +143,7 @@ def validate_animation_preview_support() -> None:
 def probe_video_geometry(input_path: str | Path) -> VideoGeometry:
     """Probe and normalize the first renderable video stream.
 
-    FFmpeg autorotation is enabled by the render graph. Consequently, right-angle
+    FFmpeg autorotation is enabled by default. Consequently, right-angle
     rotation swaps the dimensions and pixel aspect ratio used to calculate the
     displayed frame geometry.
     """
@@ -799,7 +799,9 @@ def _build_output_stream(
     fonts_dir: Path | None = None,
 ) -> Any:
     """Build an autorotated graph using the stream and canvas selected by probe."""
-    input_stream = ffmpeg.input(str(input_path), autorotate=1)
+    # Autorotation defaults to enabled in both legacy and current FFmpeg.
+    # Omit the override: older releases require a value, newer ones reject it.
+    input_stream = ffmpeg.input(str(input_path))
     filter_options = {
         "filename": str(ass_path),
         "original_size": geometry.original_size,
@@ -823,7 +825,7 @@ def _build_preview_stream(
     fonts_dir: Path | None = None,
 ) -> Any:
     """Build a one-frame preview graph with the final renderer's subtitle filter."""
-    input_stream = ffmpeg.input(str(input_path), ss=timestamp, autorotate=1)
+    input_stream = ffmpeg.input(str(input_path), ss=timestamp)
     filter_options = {
         "filename": str(ass_path),
         "original_size": geometry.original_size,
@@ -850,7 +852,7 @@ def _build_animation_frame_stream(
     timestamp: float,
 ) -> Any:
     """Build the uncaptioned one-frame source graph for animation previews."""
-    input_stream = ffmpeg.input(str(input_path), ss=timestamp, autorotate=1)
+    input_stream = ffmpeg.input(str(input_path), ss=timestamp)
     return ffmpeg.output(
         input_stream[str(geometry.stream_index)],
         str(output_path),

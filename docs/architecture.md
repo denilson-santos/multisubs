@@ -855,18 +855,25 @@ subtitler.py owns ffprobe inspection, ASR audio extraction, and video rendering.
 It checks that both
 executables and the subtitles filter are available, bounds probe time and
 diagnostics, and parses only the geometry contract from JSON. The render graph
-selects the recorded stream index, explicitly enables FFmpeg autorotation, uses
-the render dimensions as libass original_size, and requests copying of any
-available audio streams. Probe and FFmpeg failures preserve their original cause
-behind an actionable project error.
+selects the recorded stream index, retains FFmpeg's enabled-by-default
+autorotation, uses the render dimensions as libass original_size, and requests
+copying of any available audio streams. Probe and FFmpeg failures preserve their
+original cause behind an actionable project error.
+
+All source-video render and preview graphs omit an explicit `autorotate`
+argument. FFmpeg 4.4 requires a separate boolean value, while FFmpeg 9.0
+expects a flag without a value; both enable autorotation by default. Integration
+tests check the actual rotated pixels and canvas at 90°, 180°, and 270° for
+hard-subtitled videos, still previews, and frozen-frame animation previews.
 
 ### Pillow and font providers
 
-Pillow is a direct runtime dependency used only by the text-measurement
-boundary. It loads a validated TrueType/OpenType face and returns advance widths
-in PlayRes pixels; the standard library and existing dependencies do not expose
-equivalent shaping-aware font metrics. Because libass asks FreeType for a
-real-dimension size while Pillow starts from an EM-oriented size, the measurer
+Pillow 12.3 or a compatible 12.x release is a direct runtime dependency used only
+by the text-measurement boundary. It loads a validated TrueType/OpenType face and
+returns advance widths in PlayRes pixels; the standard library and existing
+dependencies do not expose equivalent shaping-aware font metrics. Because
+libass asks FreeType for a real-dimension size while Pillow starts from an
+EM-oriented size, the measurer
 reads the selected SFNT face's OS/2 Windows ascent/descent and units-per-em to
 derive the equivalent pixel size. It falls back to Pillow's ascent plus descent
 when those tables are unavailable and records the resulting `metric_size`. The

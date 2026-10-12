@@ -34,24 +34,11 @@ the selected ASR must download model assets that are not already cached.
 
 ## 📋 Requirements
 
-- Python 3.10 through 3.13. The optional WhisperX 3.8.6 runtime does not
-  support Python 3.14.
+- Python 3.10 through 3.13.
 - FFmpeg and ffprobe available on `PATH`.
 - An FFmpeg build with the `subtitles` filter and libass support; animated
   previews additionally require the `libx264` H.264 encoder.
-- Enough CPU or GPU memory for the selected ASR model. Parakeet is optimized
-  for NVIDIA GPUs; Qwen3-ASR also loads a separate 0.6B forced aligner when the
-  source language supports word timestamps. On CUDA, Qwen selects BF16 when the
-  device supports it and otherwise uses FP16.
-- The Python package installs `fontTools` for bounded Unicode cmap checks,
-  `uniseg` 0.10.1 for pinned Unicode boundary data, SudachiPy/SudachiDict-small
-  for Japanese grouping, jieba for Chinese grouping, and Typer for the CLI.
-  The dictionaries are installed with the package dependencies; no font or
-  dictionary is downloaded while multisubs runs.
-
-CUDA is selected automatically when the chosen runtime reports an available
-GPU. WhisperX and Faster-Whisper use float16 on CUDA and int8 on CPU; Parakeet
-and Qwen3-ASR move their models to CUDA or CPU through PyTorch.
+- Enough CPU or GPU memory for the selected ASR model.
 
 ## 📦 Installation
 
@@ -149,6 +136,23 @@ ffmpeg -version
 ffprobe -version
 multisubs --help
 ```
+
+FFmpeg and ffprobe are installed separately from the `ffmpeg-python` wrapper.
+Install both executables from the same build, using your operating system's
+packages or the [FFmpeg download page](https://ffmpeg.org/download.html).
+
+The media integration suite has been validated on Linux with Python 3.10,
+Pillow 12.3.0, and Typer 0.27.3 against these builds:
+
+| Source | FFmpeg and ffprobe version |
+| --- | --- |
+| Ubuntu 22.04 packages | `4.4.2-0ubuntu0.22.04.1` |
+| BtbN FFmpeg 9.0 release branch | `n9.0.2-27-g7e93014c5b-20261012` |
+
+These checks use synthetic media and cover hard subtitles, audio preservation,
+90°/180°/270° rotation, multilingual fonts, still previews, and animated
+previews without loading an ASR model. Contributors can check another installed
+build with `python -m pytest -m integration` from the development environment.
 
 The first run may download the selected ASR, voice-activity detection, or
 alignment models. Temporary connection failures during those downloads are
