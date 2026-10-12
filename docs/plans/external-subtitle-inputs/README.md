@@ -4,10 +4,11 @@ Status: Done
 
 ## Objective and scope
 
-Support two ASR-free workflows: generate SRT and ASS from timed-cue JSON
-using the input video's geometry and burn the generated ASS into that video,
-or burn an existing SRT or ASS file into a copied video. The workflows have separate
-public contracts and can be used independently.
+Record the original delivery of timed-cue JSON rendering and direct rendering
+of external SRT/ASS files. The timed-cue JSON workflow has since been removed;
+Plan 0 remains here as decision history. Direct SRT/ASS rendering from Plan 1
+is still supported. Reusable transcription data is rendered through the
+[speech API](../../../README.md#transcribe-once-and-reuse-the-transcript).
 
 ## Plans and progress
 
@@ -18,10 +19,13 @@ Progress: 2/2 implementations complete. Plan 0 is done in
 
 | Plan | Status | Dependencies | Implementation delivery |
 | --- | --- | --- | --- |
-| [0 — Timed-cue JSON workflow](00-compile-timed-cue-json.md) | Done | Existing layout, ASS, SRT, and FFmpeg contracts | [PR #97](https://github.com/denilson-santos/multisubs/pull/97) |
+| [0 — Timed-cue JSON workflow (historical; removed)](00-compile-timed-cue-json.md) | Done | Existing layout, ASS, SRT, and FFmpeg contracts | [PR #97](https://github.com/denilson-santos/multisubs/pull/97) |
 | [1 — Burn an external subtitle file](01-burn-external-subtitle-file.md) | Done | Existing FFmpeg boundary; independent of Plan 0 | [PR #98](https://github.com/denilson-santos/multisubs/pull/98) |
 
 ## Delivery order and strategy
+
+The delivery order and definition of done below describe the original package;
+they do not reintroduce the removed JSON workflow as current scope.
 
 Implement Plan 0 first so its generated ASS and video can exercise Plan 1,
 then deliver Plan 1 in its own focused pull request. Neither plan is a runtime prerequisite
