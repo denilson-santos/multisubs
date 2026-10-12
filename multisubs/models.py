@@ -497,6 +497,15 @@ class TranscriptionPaths:
 
 
 @dataclass(frozen=True)
+class GeneratedSubtitleArtifacts:
+    """Published subtitle files and the video rendered from their ASS."""
+
+    srt_path: Path
+    ass_path: Path
+    video_path: Path
+
+
+@dataclass(frozen=True)
 class RunArtifacts:
     """Artifacts stored in a private work directory before publication."""
 

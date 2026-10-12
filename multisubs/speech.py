@@ -13,12 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from .errors import ValidationError
-from .models import SubtitleConfig
-from .timed_cues import GeneratedSubtitleArtifacts
+from .models import GeneratedSubtitleArtifacts, SubtitleConfig
 
 _LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\Z", re.ASCII)
 _FIELDS = {
-    "format",
     "schema_version",
     "language",
     "task",
@@ -50,9 +48,8 @@ class SpeechTranscript:
         return max((float(segment["end"]) for segment in self.segments), default=0.0)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return lossless, detached format-1 data for caching or time edits."""
+        """Return lossless, detached version-1 data for caching or time edits."""
         return {
-            "format": "multisubs-speech",
             "schema_version": 1,
             "language": self.language,
             "task": self.task,
@@ -64,7 +61,7 @@ class SpeechTranscript:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> SpeechTranscript:
-        """Validate format-1 data, preserving absent and null word fields.
+        """Validate version-1 data, preserving absent and null word fields.
 
         Inputs are bounded to 20,000 segments, 100,000 words, 1,000,000 text
         characters, nesting depth 16, and finite times in [0, 86,400]. Word
@@ -73,12 +70,10 @@ class SpeechTranscript:
         _validate_json_value(value)
         if not isinstance(value, Mapping) or set(value) != _FIELDS:
             raise ValidationError("Speech transcript has missing or unknown fields")
-        if (
-            value["format"] != "multisubs-speech"
-            or type(value["schema_version"]) is not int
-            or value["schema_version"] != 1
-        ):
-            raise ValidationError("Expected multisubs-speech schema_version 1")
+        if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+            raise ValidationError(
+                "Speech transcript schema_version must be the integer 1"
+            )
         language = value["language"]
         if language is not None and (
             not isinstance(language, str)

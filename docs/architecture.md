@@ -79,8 +79,8 @@ flowchart LR
 | multisubs/wrapping.py | Applies typed Unicode display casing, shares font-aware bounded adaptive wrapping between transcription and preview without importing the model runtime, and partitions mapped display units into visual lines. | transform_display_text(), wrap_subtitle_text(), line_count(), build_visual_lines(), render_display_units() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, template-catalog, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
-| multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, RunArtifacts |
-| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__, transcribe_speech(), SpeechTranscript, render_transcript() |
+| multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, GeneratedSubtitleArtifacts, RunArtifacts |
+| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__, transcribe_speech(), SpeechTranscript, render_transcript(), GeneratedSubtitleArtifacts |
 
 ### Deferred speech rendering
 
@@ -96,8 +96,8 @@ The reusable speech API is exposed there as `transcribe_speech`,
 `SpeechTranscript`, and `render_transcript`.
 
 `SpeechTranscript.to_dict()` and `SpeechTranscript.from_dict()` provide detached
-lossless `format: "multisubs-speech", schema_version: 1` interchange. Required
-top-level fields are format, schema_version, language, task, asr_backend,
+lossless `schema_version: 1` interchange. Required
+top-level fields are schema_version, language, task, asr_backend,
 model_name, full_text, and segments. Each segment supplies text/start/end and
 optional words; each word supplies word and optional observed start/end.
 Unknown segment/word JSON metadata is retained. Validation requires finite
@@ -105,7 +105,45 @@ nonnegative supplied times, chronological segment starts, unreversed intervals,
 and bounded depth/text/record counts. It permits overlapping or incomplete word
 alignment so the ordinary source mapper can select its safe fallback.
 
-`render_transcript()` accepts the object or dictionary with times already local
+Example interchange data:
+
+```json
+{
+  "schema_version": 1,
+  "language": "pt",
+  "task": "transcribe",
+  "asr_backend": "faster-whisper",
+  "model_name": "turbo",
+  "full_text": " Olá, mundo!",
+  "segments": [
+    {
+      "start": 0.0, "end": 2.0, "text": " Olá, mundo!",
+      "words": [
+        {"word": " Olá,", "start": 0.2, "end": 0.2, "score": 0.9},
+        {"word": " mundo!", "start": null}
+      ]
+    }
+  ]
+}
+```
+
+Word arrays may be absent, null, or empty. Supplied word times may be absent,
+null, equal, or overlapping; source tokens keep their spaces and punctuation.
+Conversion makes detached copies without stripping tokens or filling missing
+fields. `language` may be null. The transcript's `duration` is the latest
+observed segment end, including leading silence and excluding trailing silence;
+it is not the media duration or summed speech time.
+
+Validation bounds input to 20,000 segments, 100,000 words, 1,000,000 string
+characters, nesting depth 16, and finite supplied times from 0 to 86,400 seconds.
+For a cut, the caller selects content, shifts every supplied segment/word time
+to the cut's timeline, and rebuilds `full_text` for the selected content while
+leaving absent/null times unchanged. A coarse segment cannot be accurately
+trimmed into timed words without alignment. Observed bounds extending past
+the media end follow normal transcription behavior; FFmpeg bounds the video.
+
+`render_transcript()` is the public entry for reusable transcription data. It
+accepts the object or dictionary with times already local
 to the supplied final video. It resolves a built-in/custom template or an
 explicit typed configuration, probes final geometry once, and reconstructs
 semantic cues using `_build_subtitle_segments()`. It delegates artifact creation
@@ -121,7 +159,7 @@ is transient in this path. Failed rendering/publication removes private files
 and leaves existing outputs untouched. No source path or ASR runtime is required
 in the interchange data; cropping, source selection, and shifting observed times
 to an edit's timeline are the consumer's responsibility. See the
-[Python API reference](../README.md#transcribe-once-and-render-later-python-api).
+[Python API reference](../README.md#transcribe-once-and-reuse-the-transcript).
 
 ### External SRT and ASS input
 
@@ -137,32 +175,6 @@ after FFmpeg succeeds is the new `<video>-subtitled<extension>` media file
 published with collision-safe naming; the private directory is removed on
 success or failure. The established `embed_subtitles()` positional ASS API
 remains unchanged.
-
-### Timed-cue JSON input
-
-`timed_cues.py` handles a separate public schema-version-1 JSON contract.
-It validates a required language tag, ordered cues and words, exact word-to-cue
-source spans, finite times, resource bounds, and Unicode grapheme boundaries.
-Unlike the retained schema-3 transcript, it carries no ASR metadata.
-`subtitle_artifacts.py` writes the same SRT format used by transcription;
-`ass.py` compiles the mapped display cues with the existing template, layout,
-font, and animation contracts. By default, a cue that exceeds the target
-video's resolved layout envelope is split at whole-word boundaries, preferring
-punctuation, pauses, and linguistic groups. A cue that fits keeps its exact
-source interval. Split cues preserve every supplied word timestamp and the
-outer cue boundaries; each internal boundary is the next group's first word
-start. The derived intervals must be representable in ASS centiseconds.
-`--cue-overflow reject` and the API's `cue_overflow="reject"` retain strict
-failure on any unfit source cue. An indivisible unfit word also fails.
-Generated cues are ordered by start time after splitting so overlapping source
-cues remain separate, simultaneous ASS dialogue events.
-
-The JSON mode probes the required input video once for normalized geometry and
-checks its known duration. It builds SRT and ASS in a private work directory,
-renders the video from that private generated ASS through `subtitler.py`, and
-publishes all three files under one collision-safe `<video>-<language>` stem.
-A failed render or publication leaves no completed output files. The supplied
-JSON and video are read-only. No transcript JSON or ASR runtime is involved.
 
 ## Execution flow
 

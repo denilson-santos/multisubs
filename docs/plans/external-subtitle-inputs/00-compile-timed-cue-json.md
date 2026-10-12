@@ -4,6 +4,11 @@ Status: Done
 
 Delivery: [PR #97](https://github.com/denilson-santos/multisubs/pull/97)
 
+This completed plan is retained as decision history. Its timed-cue JSON
+workflow has been removed. Reusable transcription rendering now uses only
+[`transcribe_speech()` and `render_transcript()`](../../../README.md#transcribe-once-and-reuse-the-transcript).
+The contracts and tasks below describe the original delivery.
+
 Depends on:
 
 - Existing cue layout, source mapping, animation, ASS, FFmpeg, and

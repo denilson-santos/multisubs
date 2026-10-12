@@ -1,4 +1,4 @@
-"""Subtitle file serializers shared by ASR and timed-cue input."""
+"""Subtitle file serializers for transcription and deferred rendering."""
 
 from __future__ import annotations
 

@@ -13,15 +13,14 @@ __all__ = (
     "transcribe_speech",
     "SpeechTranscript",
     "render_transcript",
-    "generate_subtitles_from_json",
     "GeneratedSubtitleArtifacts",
     "render_subtitle_file",
 )
 
 if TYPE_CHECKING:
+    from .models import GeneratedSubtitleArtifacts
     from .speech import SpeechTranscript, render_transcript
     from .subtitler import embed_subtitles, render_subtitle_file
-    from .timed_cues import GeneratedSubtitleArtifacts, generate_subtitles_from_json
     from .transcriber import generate_transcriptions, transcribe_speech
 
 
@@ -39,8 +38,8 @@ def __getattr__(name: str):
         from . import subtitler
 
         return getattr(subtitler, name)
-    if name in ("generate_subtitles_from_json", "GeneratedSubtitleArtifacts"):
-        from . import timed_cues
+    if name == "GeneratedSubtitleArtifacts":
+        from .models import GeneratedSubtitleArtifacts
 
-        return getattr(timed_cues, name)
+        return GeneratedSubtitleArtifacts
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -332,25 +332,6 @@ def _cli_command(
             show_default=False,
         ),
     ] = None,
-    cues_json: Annotated[
-        str | None,
-        typer.Option(
-            "--cues-json",
-            metavar="PATH",
-            help="Generate SRT/ASS from timed-cue JSON and burn ASS into the video.",
-            show_default=False,
-        ),
-    ] = None,
-    cue_overflow: Annotated[
-        str,
-        typer.Option(
-            "--cue-overflow",
-            metavar="POLICY",
-            parser=_choice_parser(("split", "reject")),
-            help="Timed-cue overflow policy: split to fit (default) or reject.",
-            show_default=False,
-        ),
-    ] = "split",
     asr: Annotated[
         str,
         typer.Option(
@@ -1199,26 +1180,6 @@ def _cli_command(
                 )
                 print(f"Video saved to: {rendered}")
                 return 0
-            if cues_json is not None:
-                _validate_timed_cue_options(ctx)
-                _, subtitle_config = _resolve_request_config(args, ctx)
-                input_video, destination = _resolve_request_paths(args, ctx)
-                from .timed_cues import generate_subtitles_from_json
-
-                artifacts = generate_subtitles_from_json(
-                    cues_json,
-                    input_video,
-                    destination,
-                    subtitle_config=subtitle_config,
-                    cue_overflow=cue_overflow,
-                )
-                print(f"SRT saved to: {artifacts.srt_path}")
-                print(f"ASS saved to: {artifacts.ass_path}")
-                print(f"Video saved to: {artifacts.video_path}")
-                return 0
-            overflow_source = ctx.get_parameter_source("cue_overflow")
-            if overflow_source is not None and overflow_source.name == "COMMANDLINE":
-                ctx.fail("--cue-overflow requires --cues-json")
             require_template_catalog()
             request = _build_request(args, ctx)
             if verbose:
@@ -1272,28 +1233,6 @@ def _validate_external_subtitle_options(
         source = ctx.get_parameter_source(name)
         if source is not None and source.name == "COMMANDLINE":
             ctx.fail(f"--{name.replace('_', '-')} cannot be used with --subtitle-file")
-
-
-def _validate_timed_cue_options(ctx: typer.Context) -> None:
-    """Reject ASR and preview options explicitly supplied with timed cues."""
-    conflicts = (
-        "asr",
-        "lang",
-        "task",
-        "model",
-        "subtitle_file",
-        "keep_transcriptions",
-        "preview_layout",
-        "preview_animation",
-        "preview_at",
-        "preview_text",
-        "preview_guides",
-        "preview_duration",
-    )
-    for name in conflicts:
-        source = ctx.get_parameter_source(name)
-        if source is not None and source.name == "COMMANDLINE":
-            ctx.fail(f"--{name.replace('_', '-')} cannot be used with --cues-json")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
