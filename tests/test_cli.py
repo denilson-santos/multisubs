@@ -89,6 +89,19 @@ def test_help_and_version_exit_without_input(capsys):
     assert "multisubs " in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("option", ["--cues-json", "--cue-overflow"])
+def test_removed_cue_options_fail_before_processing(tmp_path, monkeypatch, option):
+    def unexpected(*args, **kwargs):
+        pytest.fail("Removed input options must fail before request construction")
+
+    monkeypatch.setattr(cli, "_build_request", unexpected)
+    result = CliRunner().invoke(
+        cli.app, ["-i", str(tmp_path / "missing.mp4"), option, "unused"]
+    )
+    assert result.exit_code == 2
+    assert f"No such option: {option}" in " ".join(_strip_ansi(result.output).split())
+
+
 def test_help_uses_rich_rendering():
     result = CliRunner().invoke(cli.app, ["--help"], color=True)
 

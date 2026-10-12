@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from multisubs import (
+    GeneratedSubtitleArtifacts,
     SpeechTranscript,
     render_transcript,
     subtitler,
@@ -160,6 +161,7 @@ def test_interchange_is_lossless_and_detached(case):
         source.language, "transcribe", "whisperx", "turbo", source.text, source.segments
     )
     payload = json.loads(json.dumps(speech.to_dict(), ensure_ascii=False))
+    assert "format" not in payload
     loaded = SpeechTranscript.from_dict(payload)
     assert loaded == speech
     assert loaded.segments == source.segments
@@ -213,6 +215,7 @@ def test_deferred_render_equals_normal_srt_and_ass(
         template=template,
         progress=messages.append,
     )
+    assert isinstance(artifacts, GeneratedSubtitleArtifacts)
     assert artifacts.srt_path.read_bytes() == Path(native_srt).read_bytes()
     assert artifacts.ass_path.read_bytes() == Path(native_ass).read_bytes()
     assert artifacts.video_path.read_bytes() == b"rendered"
@@ -297,6 +300,8 @@ def test_cut_local_times_and_explicit_positioning(tmp_path, monkeypatch):
     "change,match",
     [
         (lambda data: data.update(schema_version=True), "schema_version"),
+        (lambda data: data.update(schema_version=2), "schema_version"),
+        (lambda data: data.update(format="multisubs-speech"), "unknown fields"),
         (lambda data: data.update(task="translate"), "only task"),
         (lambda data: data.update(language="pt/BR"), "language"),
         (lambda data: data.update(extra=True), "unknown fields"),
@@ -342,7 +347,10 @@ def test_fallback_without_callback_emits_warning(tmp_path, monkeypatch):
         render_transcript(speech, video, tmp_path / "out", template="yellow-pop")
 
 
-def test_collisions_and_render_failure_publish_nothing_partial(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure_phase", ["render", "publication"])
+def test_collisions_and_failure_publish_nothing_partial(
+    tmp_path, monkeypatch, failure_phase
+):
     video, _ = _media(tmp_path, monkeypatch)
     source = _source("spaces")
     speech = SpeechTranscript(
@@ -359,8 +367,16 @@ def test_collisions_and_render_failure_publish_nothing_partial(tmp_path, monkeyp
         Path(kwargs["output_path"]).write_bytes(b"partial")
         raise ArtifactError("render failed")
 
-    monkeypatch.setattr(subtitler, "embed_subtitles", failed)
-    with pytest.raises(ArtifactError, match="render failed"):
+    if failure_phase == "render":
+        monkeypatch.setattr(subtitler, "embed_subtitles", failed)
+    else:
+        from multisubs import utils
+
+        def failed_publication(files):
+            raise ArtifactError("publication failed")
+
+        monkeypatch.setattr(utils, "publish_files", failed_publication)
+    with pytest.raises(ArtifactError, match=f"{failure_phase} failed"):
         render_transcript(speech, video, destination)
     assert {
         path.name: path.read_bytes() for path in destination.iterdir()
@@ -430,9 +446,12 @@ def test_public_import_does_not_load_asr_runtimes():
             sys.executable,
             "-c",
             (
-                "import sys; "
-                "from multisubs import SpeechTranscript, transcribe_speech, "
+                "import importlib.util, sys, multisubs; "
+                "from multisubs import GeneratedSubtitleArtifacts, "
+                "SpeechTranscript, transcribe_speech, "
                 "render_transcript; "
+                "assert not hasattr(multisubs, 'generate_subtitles_from_json'); "
+                "assert importlib.util.find_spec('multisubs.timed_cues') is None; "
                 "assert not any(name == 'torch' or name.startswith("
                 "('whisperx', 'faster_whisper', 'nemo', 'transformers')) "
                 "for name in sys.modules)"
