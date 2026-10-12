@@ -6,6 +6,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
@@ -18,6 +19,8 @@ from multisubs.models import SubtitlePosition
 from multisubs.subtitler import (
     embed_subtitles,
     probe_video_geometry,
+    render_subtitle_animation_preview,
+    render_subtitle_preview,
     validate_ffmpeg_support,
 )
 from multisubs.transcriber import layout_subtitle_cues
@@ -1016,7 +1019,11 @@ def test_probe_generated_video_geometry(
 
 
 @pytest.mark.integration
-def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
+@pytest.mark.parametrize("rotation", [90, 180, 270])
+@pytest.mark.parametrize("render_mode", ["video", "still", "animation"])
+def test_rotation_canvas_matches_autorotated_rendered_frame(
+    tmp_path: Path, rotation: int, render_mode: str
+):
     base_path = tmp_path / "base.mp4"
     input_path = tmp_path / "rotated.mp4"
     subtitle_path = tmp_path / "rotated.ass"
@@ -1029,7 +1036,9 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
             "-f",
             "lavfi",
             "-i",
-            "color=c=black:s=160x90:d=0.2",
+            "color=c=blue:s=160x90:d=0.2",
+            "-vf",
+            "drawbox=x=0:y=0:w=80:h=90:color=red:t=fill",
             "-t",
             "0.2",
             "-c:v",
@@ -1051,10 +1060,10 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
     # Newer FFmpeg builds use input-side display rotation. Keep the legacy
     # metadata fallback for older developer environments.
     rotation_input_args = (
-        ["-display_rotation:v:0", "90"] if supports_display_rotation else []
+        ["-display_rotation:v:0", str(rotation)] if supports_display_rotation else []
     )
     rotation_output_args = (
-        [] if supports_display_rotation else ["-metadata:s:v:0", "rotate=90"]
+        [] if supports_display_rotation else ["-metadata:s:v:0", f"rotate={rotation}"]
     )
     subprocess.run(
         [
@@ -1093,22 +1102,75 @@ def test_rotation_canvas_matches_autorotated_rendered_frame(tmp_path: Path):
         config,
         geometry,
     )
-    output_path = Path(
-        embed_subtitles(
-            input_path,
-            subtitle_path,
-            tmp_path,
-            geometry=geometry,
+    if render_mode == "video":
+        output_path = Path(
+            embed_subtitles(
+                input_path,
+                subtitle_path,
+                tmp_path,
+                geometry=geometry,
+            )
         )
-    )
-    rendered_geometry = probe_video_geometry(output_path)
+    elif render_mode == "still":
+        output_path = Path(
+            render_subtitle_preview(
+                input_path,
+                subtitle_path,
+                tmp_path,
+                timestamp=0.0,
+                geometry=geometry,
+            )
+        )
+    else:
+        output_path = Path(
+            render_subtitle_animation_preview(
+                input_path,
+                subtitle_path,
+                tmp_path,
+                timestamp=0.0,
+                duration_ms=1_000,
+                geometry=geometry,
+            )
+        )
 
-    assert geometry.rotation_degrees == 90
-    assert (geometry.render_width, geometry.render_height) == (90, 160)
-    assert (rendered_geometry.render_width, rendered_geometry.render_height) == (
-        geometry.render_width,
-        geometry.render_height,
-    )
+    expected_size = (160, 90) if rotation == 180 else (90, 160)
+    assert geometry.rotation_degrees == rotation
+    assert (geometry.render_width, geometry.render_height) == expected_size
+    frame_path = output_path
+    if render_mode != "still":
+        rendered_geometry = probe_video_geometry(output_path)
+        assert rendered_geometry.rotation_degrees == 0
+        assert (
+            rendered_geometry.coded_width,
+            rendered_geometry.coded_height,
+        ) == expected_size
+        frame_path = tmp_path / "rendered-frame.png"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(output_path),
+                "-frames:v",
+                "1",
+                str(frame_path),
+            ],
+            check=True,
+        )
+
+    with Image.open(frame_path) as image:
+        assert image.size == expected_size
+        pixels = image.convert("RGB")
+        first = pixels.getpixel((5, 5))
+        last = pixels.getpixel((image.width - 6, image.height - 6))
+    # The asymmetric background proves rotation was applied to the pixels,
+    # including 180 degrees where checking only dimensions would miss a bug.
+    assert isinstance(first, tuple) and isinstance(last, tuple)
+    first_channel, last_channel = (0, 2) if rotation == 270 else (2, 0)
+    assert first[first_channel] > 150 and first[last_channel] < 100
+    assert last[last_channel] > 150 and last[first_channel] < 100
 
 
 @pytest.mark.integration

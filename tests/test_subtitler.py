@@ -9,6 +9,7 @@ import pytest
 from multisubs.errors import DependencyError, RenderingError, ValidationError
 from multisubs.models import VideoGeometry
 from multisubs.subtitler import (
+    _build_animation_frame_stream,
     _build_animation_preview_stream,
     _build_output_stream,
     _build_preview_stream,
@@ -73,7 +74,6 @@ def test_subtitle_filter_is_structured_and_escapes_special_paths(tmp_path: Path)
     assert "\\'" in command_text
     assert "\\\\slash.ass" in command_text
     assert "original_size=1920x1080" in command_text
-    assert "-autorotate" in command
 
 
 def test_subtitle_filter_includes_fonts_directory_only_when_supplied(
@@ -118,12 +118,35 @@ def test_preview_filter_is_one_frame_and_uses_structured_subtitle_options(
     command_text = " ".join(command)
 
     assert "-ss 2.5" in command_text
-    assert "-autorotate" in command
     assert "subtitles=filename=" in command_text
     assert "original_size=1920x1080" in command_text
     assert "-vframes" in command and command[command.index("-vframes") + 1] == "1"
     assert "-f" in command and command[command.index("-f") + 1] == "image2"
     assert "-vcodec" in command and command[command.index("-vcodec") + 1] == "png"
+
+
+@pytest.mark.parametrize("render_mode", ["video", "still", "animation-frame"])
+def test_render_graph_preserves_default_autorotation_across_ffmpeg_versions(
+    tmp_path: Path, render_mode: str
+):
+    source = tmp_path / "video.mp4"
+    subtitle = tmp_path / "captions.ass"
+    output = tmp_path / ("output.mp4" if render_mode == "video" else "frame.png")
+    if render_mode == "video":
+        stream = _build_output_stream(ffmpeg, source, subtitle, output, _geometry())
+    elif render_mode == "still":
+        stream = _build_preview_stream(
+            ffmpeg, source, subtitle, output, _geometry(), 0.0
+        )
+    else:
+        stream = _build_animation_frame_stream(ffmpeg, source, output, _geometry(), 0.0)
+
+    command = ffmpeg.compile(stream)
+
+    # An explicit boolean value breaks newer FFmpeg; a bare flag breaks older
+    # versions. All three source-video graphs must retain the enabled default.
+    assert "-autorotate" not in command
+    assert "-noautorotate" not in command
 
 
 def test_animation_preview_stream_repeats_frame_without_audio_and_handles_odd_canvas(
