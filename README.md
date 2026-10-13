@@ -182,149 +182,224 @@ video.
 
 ## 🧰 Common recipes
 
-### Burn an existing subtitle file
+Choose the task you want to perform. Replace `./video.mp4` with your local
+video; transcription recipes require the selected ASR's installation extra.
 
-Use an existing local SRT or ASS file without transcription:
-
-```bash
-multisubs -i ./video.mp4 --subtitle-file ./captions.srt -o ./output
-multisubs -i ./video.mp4 --subtitle-file ./styled.ass --fonts-dir ./fonts -o ./output
-```
-
-The output is one collision-safe `video-subtitled.mp4` copy with hard
-subtitles and copied audio. The input subtitle file is passed unchanged to
-FFmpeg/libass. ASS keeps its authored style and override tags; SRT uses
-libass default styling, which depends on the installed fonts and FFmpeg build.
-Only `--fonts-dir`, `--verbose`, input, and output options apply in this mode.
-ASR, template, appearance, animation, preview, and
-`--keep-transcriptions` options are rejected.
-
-Python callers can use
-`multisubs.render_subtitle_file(video_path, subtitle_path, output_dir,
-fonts_dir=None)`, which returns the output video `Path`.
-
-### Transcribe once and reuse the transcript
-
-Use the Python API to transcribe a video once and render subtitles later with
-different templates or video framing. `transcribe_speech()` returns the original
-speech segments and available word times without creating subtitle files.
-`render_transcript()` generates SRT, styled ASS, and a hard-subtitled video using
-the normal subtitle pipeline and the final video's geometry, without another
-ASR call:
-
-```python
-from multisubs import transcribe_speech, render_transcript
-
-speech = transcribe_speech("video.mp4", lang="pt", asr_backend="faster-whisper")
-artifacts = render_transcript(speech, "video.mp4", "output", template="yellow-pop")
-```
-
-Cache `speech.to_dict()` as JSON and pass the restored dictionary directly to
-`render_transcript()`. For a cut, select the content and shift its supplied times
-to the cut's timeline before rendering. Missing word times and unknown language
-keep the normal fallbacks.
-
-Public signatures (paths accept `str` or `Path`):
-
-```text
-transcribe_speech(input_path, lang=None, task="transcribe", model_name=None,
-                  *, asr_backend="whisperx", progress=None, verbose=False)
-# -> SpeechTranscript
-
-render_transcript(transcript, video_path, output_dir, *, template=None,
-                  template_dir=None, subtitle_config=None, progress=None)
-# -> GeneratedSubtitleArtifacts(srt_path, ass_path, video_path)
-
-build_subtitle_config(*, template=None, template_dir=None, overrides=None)
-# -> SubtitleConfig
-```
-
-`render_transcript()` accepts a `SpeechTranscript` or its dictionary; use
-`json.load()` to read a cached file. `SpeechTranscript.from_dict(data)` validates
-and restores the object. Select a built-in/custom `template`, optionally with
-`template_dir`, or pass a complete `SubtitleConfig` through `subtitle_config`.
-These configuration alternatives cannot be combined.
-
-Both APIs support only `task="transcribe"`. Missing alignment suppresses
-unavailable word effects and reports that limitation through `progress`, or
-`UserWarning` when no callback is supplied. Successful rendering publishes SRT,
-ASS, and video under one collision-safe stem. See the
-[source speech contract](docs/architecture.md#deferred-speech-rendering) for the
-version-1 data shape, timing rules, and validation limits.
-
-### Compose subtitle settings in Python
-
-Use `build_subtitle_config()` to combine a built-in or custom template with
-sparse presentation overrides before acquiring media or transcribing. Pass the
-returned immutable `SubtitleConfig` directly to `render_transcript()`:
-
-```python
-from multisubs import build_subtitle_config, render_transcript
-
-config = build_subtitle_config(
-    template="yellow-pop",
-    overrides={
-        "position": "bottom-center",
-        "margin_bottom": "8%",
-        "font_size": "4.5%",
-        "italic": False,
-        "animation_word_text_emphasis": "none",
-    },
-)
-artifacts = render_transcript(
-    speech, "final-clip.mp4", "output", subtitle_config=config
-)
-```
-
-`template=None` selects `default`. `template_dir` accepts `str` or `Path` and
-uses the CLI's custom-name precedence and validation of every discovered JSON
-file. `overrides` accepts a `Mapping[str, object]`; keys are the long
-presentation flags with `--` removed and hyphens replaced by underscores:
-
-| Concern | Supported override keys |
-| --- | --- |
-| Appearance | `font`, `text_color`, `font_weight`, `bold`, `italic`, `backdrop`, `backdrop_color`, `word_backdrop`, `word_backdrop_color`, `opacity`, `text_case`, `fonts_dir` |
-| Relative lengths | `font_size`, `letter_spacing`, `line_height`, `backdrop_size`, `word_backdrop_size`, `shadow_size`, `margin_left`, `margin_right`, `margin_top`, `margin_bottom`, `max_width`, `max_height` |
-| Placement | `position`, `position_x`, `position_y`, `anchor` |
-| Animation phases | `animation_{cue\|word}_{text\|backdrop}_{entrance\|emphasis\|exit}` and each corresponding `_duration` key |
-| Word effects | `animation_word_text_mode`, `animation_word_backdrop_mode`, `animation_word_text_highlight_color` |
-| Animation suppression | `disable_cue_animations`, `disable_word_animations` |
-
-All 57 settings use the native CLI
-[appearance](#appearance), [animation](#preview-and-animation), and
-[layout](#layout-and-positioning) values and rules:
-unit-bearing lengths (`"4.5%"`, `"24px"`), `"auto"` line height, hexadecimal
-colors, percentage opacity, weight names or numeric strings, position/anchor
-names, animation names, and durations such as `"150ms"` or `"0.15s"`. Boolean
-settings take Python `True` or `False`; `fonts_dir` takes `str` or `Path`.
-
-Absent keys and `None` inherit the template; explicit `False` and valid zero
-lengths or `"0%"` opacity survive composition. To remove an inherited effect,
-use `"none"` or a scope disable. Disables apply after override validation:
-cue suppression keeps the static cue backdrop; word suppression also clears
-word decoration and highlighting. Font-weight/bold, placement, margin, and
-animation conflicts follow the CLI's validation rules.
-
-Catch `ValidationError` for unknown keys or invalid values/combinations and
-`TemplateError` for invalid custom directories/files or packaged templates.
-Both are exported from `multisubs` and inherit its public `MultisubsError`.
-The builder reads configuration resources and checks supplied directories;
-it performs no probing, FFmpeg execution, ASR/model/font loading, networking,
-or asset materialization. Geometry-dependent bounds and envelope checks remain
-in rendering, where percentages and pixels resolve against each final video.
-The same config can be reused for multiple geometries without mutation or ASR.
-Pass it without `template`/`template_dir` to `render_transcript()`.
+- **Processing:** [ASR backend](#choose-an-asr-backend) ·
+  [Translation](#translate-speech-to-english) ·
+  [Existing subtitles](#burn-an-existing-subtitle-file)
+- **Styling:** [Templates](#choose-a-built-in-subtitle-template) ·
+  [Typography](#customize-typography) · [Placement](#adjust-subtitle-placement) ·
+  [Custom templates](#use-a-custom-template-directory)
+- **Previews and effects:** [Layout preview](#preview-a-layout-before-transcribing) ·
+  [Animation preview](#preview-subtitle-animation) ·
+  [Cue animations](#add-subtitle-animations) ·
+  [Word highlighting](#highlight-the-spoken-word)
+- **Python:** [Transcript reuse](#transcribe-once-and-reuse-the-transcript) ·
+  [Presentation overrides](#compose-subtitle-settings-in-python)
 
 ### Choose an ASR backend
 
-Omitting `--asr` keeps the established WhisperX `turbo` behavior. Each backend
-has its own default model:
+Use `--asr` to select an installed backend. This example uses Faster-Whisper:
 
 ```bash
-multisubs -i ./video.mp4 -l pt --asr faster-whisper
-multisubs -i ./video.mp4 --asr parakeet
-multisubs -i ./video.mp4 -l pt --asr qwen
+multisubs -i ./video.mp4 -l pt -o ./output --asr faster-whisper
 ```
+
+Available backends are `whisperx` (the default), `faster-whisper`, `parakeet`,
+and `qwen`. Omit `-l pt` for automatic language detection where supported.
+See [backend defaults and models](#input-and-processing) for the differences.
+
+### Choose a built-in subtitle template
+
+A template sets the font, colors, layout, and animations together:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output --template yellow-pop
+```
+
+Use `default` for plain captions, `bold-headline` for large headlines, or
+`yellow-pop` for active-word emphasis. See the
+[complete template catalog](#built-in-template-catalog) for all sixteen styles.
+Explicit flags override only the corresponding template fields.
+
+### Customize typography
+
+Start with a template and change the settings you need:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --template bold-headline \
+  --font "Inter" \
+  --font-weight semi-bold \
+  --font-size 4.5% \
+  --text-color '#F8FAFC'
+```
+
+Quote hexadecimal colors in the shell. Lengths require `%` or `px`.
+See [appearance options](#appearance) for spacing, opacity, casing, and backdrops,
+and the guides for [bundled fonts](#use-a-bundled-font) and
+[custom fonts](#use-a-custom-font).
+
+### Adjust subtitle placement
+
+Place subtitles at the bottom center with a larger inset from the bottom edge:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --position bottom-center \
+  --margin-bottom 8%
+```
+
+Top positions use `--margin-top`; middle positions use neither vertical margin.
+See [layout and positioning](#layout-and-positioning) for all nine positions
+and [exact coordinates](#exact-coordinates) for custom placement.
+
+### Preview a layout before transcribing
+
+Render one PNG to check a template on a real video frame:
+
+```bash
+multisubs -i ./video.mp4 -o ./previews \
+  --preview-layout \
+  --template yellow-pop \
+  --preview-text "This is how my subtitle will look"
+```
+
+This creates `video-subtitle-preview.png` without transcription or ASR loading.
+The frame comes from the video midpoint; use `--preview-at 00:00:10.500` to
+choose another time and `--preview-guides` to show placement guides. Only the
+first fitting subtitle is shown, with motion suppressed.
+
+### Preview subtitle animation
+
+Render a silent clip of the template's animation on a frozen video frame:
+
+```bash
+multisubs -i ./video.mp4 -o ./previews \
+  --preview-animation \
+  --template yellow-pop \
+  --preview-duration 4s \
+  --preview-text "This is how the word animation will look"
+```
+
+This creates `video-subtitle-animation-preview.mp4` without transcription or
+ASR loading. A `4s` subtitle produces a five-second clip, with half a second
+before and after the subtitle. Word timing is simulated. Both preview modes accept the
+same styling options as rendering; see [preview options](#preview-and-animation).
+
+### Add subtitle animations
+
+Fade a complete subtitle in and out:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --animation-cue-text-entrance fade \
+  --animation-cue-text-entrance-duration 150ms \
+  --animation-cue-text-exit fade
+```
+
+Use `none` to clear one inherited phase, for example
+`--animation-word-text-emphasis none`. Use `--disable-cue-animations` or
+`--disable-word-animations` to clear an entire scope. See the
+[animation reference](#cue-and-word-effects) for independent text/backdrop
+tracks and word decorations.
+
+### Highlight the spoken word
+
+Change the text color of the currently spoken word:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --animation-word-text-emphasis highlight \
+  --animation-word-text-mode active-word \
+  --animation-word-text-highlight-color '#FFD54F'
+```
+
+Use `progressive` instead of `active-word` to keep earlier words highlighted.
+Word effects need word timestamps. When they cannot be applied safely, the
+complete subtitle stays visible and multisubs reports why. Translation requires
+word effects to be disabled. See [word effects](#cue-and-word-effects) for details.
+
+### Use a custom template directory
+
+Select a saved JSON template by its `name`:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --template-dir ./templates \
+  --template my-yellow-captions
+```
+
+See [Define a custom template](#define-a-custom-template) to create the example
+file. Custom names take precedence over built-ins for this invocation, and
+all immediate JSON files in the directory are validated.
+
+### Translate speech to English
+
+Use WhisperX or Faster-Whisper with a multilingual, non-Turbo model:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --asr whisperx \
+  --task translate \
+  --model medium
+```
+
+Output is always English. `turbo`, `.en` models, Parakeet, and Qwen do not
+support this translation mode. Choose a compatible template such as `default`,
+`bold-headline`, or `golden-title`, or add `--disable-word-animations` to remove
+a template's word effects. Cue animations and static backdrops remain available.
+
+### Burn an existing subtitle file
+
+Render a local SRT or ASS without transcription:
+
+```bash
+multisubs -i ./video.mp4 -o ./output --subtitle-file ./captions.srt
+```
+
+For an ASS file that uses custom fonts:
+
+```bash
+multisubs -i ./video.mp4 -o ./output \
+  --subtitle-file ./styled.ass \
+  --fonts-dir ./fonts
+```
+
+The result is a collision-safe `video-subtitled.mp4` copy with hard subtitles
+and copied audio. ASS keeps its authored styling; SRT uses libass defaults.
+This mode accepts input, output, `--fonts-dir`, and `--verbose`; transcription,
+template, styling, animation, preview, and `--keep-transcriptions` options
+are rejected. Python callers can use `render_subtitle_file()`;
+see [public functions](#public-functions).
+
+## ⚙️ Command reference
+
+Run `multisubs --help` for the CLI's complete, authoritative help text.
+
+### Input and processing
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `-i`, `--input-path PATH` | required | Path to one local input video. |
+| `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
+| `--subtitle-file PATH` | off | Burn an existing SRT or ASS file into the video without transcription. |
+| `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
+| `-l`, `--lang CODE` | automatic when exposed | Source-language code supported by the selected ASR. For Parakeet it labels metadata but does not condition transcription; English-only Whisper models use `en`. |
+| `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
+| `-m`, `--model MODEL` | backend default | Model used by the selected ASR. |
+| `-k`, `--keep-transcriptions` | off | Keep JSON, SRT, and ASS in a `subtitles` directory. |
+| `--verbose` | off | Show detailed processing progress and backend logs. |
+| `-v`, `--version` | — | Print the package version. |
+| `-h`, `--help` | — | Show CLI help and backend-dependent support guidance. |
+
+By default, multisubs shows only its own processing stages, relevant subtitle
+warnings, errors, and final output path. Output printed by ASR runtimes and
+native libraries is suppressed during processing, including backend warnings
+and progress bars. Use `--verbose` to show detailed stages and the raw backend
+output when diagnosing a run. If a backend fails, multisubs still reports the
+failed operation; rerun with `--verbose` to inspect the backend diagnostics.
 
 | ASR | Default model | Task and timing notes |
 | --- | --- | --- |
@@ -336,178 +411,31 @@ multisubs -i ./video.mp4 -l pt --asr qwen
 Use `--model` to select another model listed in the command reference. The
 backend runtime is imported only after validation and only when selected.
 
-### Choose a built-in subtitle template
+WhisperX models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
+`medium.en`, `medium`, `large`, and `turbo`. Faster-Whisper accepts the same
+small models plus `large-v1`, `large-v2`, `large-v3`, and `large-v3-turbo`.
+Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
+`Qwen/Qwen3-ASR-1.7B-hf`.
 
-Select a complete presentation with one option:
+### Preview and animation
 
-```bash
-multisubs -i ./video.mp4 -l pt \
-  --template golden-title
-```
+| Option | Default | Description |
+| --- | --- | --- |
+| `--preview-layout` | off | Render one layout preview PNG without transcription. |
+| `--preview-animation` | off | Render a silent H.264 MP4 with simulated word timing; mutually exclusive with `--preview-layout`. |
+| `--preview-duration DURATION` | `4s` | Animated cue duration from `1s` through `15s`, using whole `ms` or `s`; requires `--preview-animation`. |
+| `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
+| `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
+| `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
+| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit} TYPE` | inherited or `none` | Select one phase on one independent visual track; run `--help` for the animation types valid for each phase. |
+| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit}-duration DURATION` | phase or template default | Override an enabled phase with `10ms`–`5000ms`, expressed as `150ms` or `0.15s`. |
+| `--disable-cue-animations` | off | Remove all cue text/backdrop animation phases, preserving the static cue backdrop. |
+| `--disable-word-animations` | off | Remove all word text/backdrop animation phases, word highlight, and timed word decoration. |
+| `--animation-word-text-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for word text. |
+| `--animation-word-backdrop-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for the word decoration. |
+| `--animation-word-text-highlight-color COLOR` | `#FFD54F` when enabled | Set the text color used by the `highlight` word emphasis. |
 
-`default` uses the current Roboto Regular, white-on-translucent-black style.
-Explicit appearance, layout, and animation options override only their own
-template fields:
-
-```bash
-multisubs -i ./video.mp4 -l pt \
-  --template bold-headline \
-  --text-color '#B8FF5A' \
-  --margin-bottom 10%
-```
-
-| Template | Good for | Font | Baseline appearance and animation |
-| --- | --- | --- | --- |
-| `default` | General use | Roboto Regular | 4%, white/original, 100%; box `#00000099`/25%, shadow 0px; max-height 12%; no animation. |
-| `bold-headline` | Short-form hooks | Montserrat ExtraBold | 4.8%, white uppercase; outline `#111827`/7%; pop in, fade out; max-height 9.9%. |
-| `amber-word` | Explanations | Inter SemiBold | 4.65%, white/original; outline `#111827`/5%; active-word amber highlight; max-height 9.7%. |
-| `mint-progress` | Tips and steps | Montserrat Medium | 5.24%, white/original; box `#111827D9`/15%; progressive mint highlight; max-height 11.3%. |
-| `focus-marker` | Accessible captions | Atkinson Hyperlegible Next Bold | 4.99%, white/original; outline `#111827`/4%, word box `#FFD54F`/12%; active-word; max-height 11.8%. |
-| `golden-title` | Topics and chapter titles | Oswald Bold | 5.06%, `#FACC15` uppercase; outline `#111827`/6%; bottom-left; max-height 11.3%; no animation. |
-| `emerald-word` | Word-led explainers | Roboto Bold | 4%, white/original; outline `#111827`/5%, word box `#166534FF`/12%; active-word; max-height 9.9%. |
-| `kinetic-lime` | Fast tutorials | Montserrat Bold | 5.2%, white/original; outline `#111827`/5%, active text `#D9F99D`; slide up 180ms, fade out 120ms; max-height 10.3%. |
-| `coral-marker` | Advice and interviews | Roboto SemiBold | 4%, white/original; outline `#111827`/4%, word box `#FDA4AFFF`/14%, active text `#111827`; fade in 140ms/out 120ms, word fade 70ms; bottom-left, max-height 9.8%. |
-| `editorial-reveal` | Reflective clips | Lora SemiBold Italic | 5.07%, `#FFF8ED`; outline `#111827`/4%; zoom in 200ms, fade out 160ms, progressive word fade 100ms; max-height 11.1%. |
-| `headline-bounce` | Punchlines | Oswald SemiBold | 5.06%, `#FDE68A` uppercase; outline `#111827`/6%; fade in 120ms, slide down 160ms, active-word bounce 420ms; max-height 11.3%. |
-| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | 4.9%, white uppercase; outline `#111827`/5%; active-word `#FBE003` pop 120ms; max-height 9.8%. |
-| `yellow-trace` | Step-by-step clips | Inter Medium | 4.65%, white/original; box `#111827FF`/15%; progressive `#FBE003`; max-height 10.7%. |
-| `neon-lime-marker` | Energetic explainers | Oswald Medium | 5.06%, white; outline `#111827`/4%, word box `#39FF14FF`/12%; active-word, word zoom 100ms/fade 70ms; max-height 11.1%. |
-| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | 4.99%, `#00F5FF`; outline `#111827`/5%; progressive slide-up 120ms; max-height 11.9%. |
-| `neon-magenta-pulse` | Reactions | Roboto Bold | 3.8%, `#FF4FD8` uppercase; outline `#111827`/5%; active-word pulse 400ms; max-height 9.4%. |
-
-Templates use 18% side margins, 0% top margin, 3% bottom margin, 100% maximum
-width, automatic line height, zero letter spacing, full opacity, and no shadow.
-Placement is bottom-center except `golden-title` and `coral-marker`
-(bottom-left). Sizes are optically calibrated; maximum heights target two
-lines. Explicit flags override template values. Static previews suppress
-motion; animated previews use simulated word times. For example, disable an
-inherited highlight phase with:
-
-```bash
-multisubs -i ./video.mp4 --preview-layout \
-  --template mint-progress --animation-word-text-emphasis none
-```
-
-The two suppression flags operate independently by scope. Every
-`entrance`, `emphasis`, and `exit` phase is an animation. Therefore,
-`--disable-cue-animations` removes all cue text and backdrop animation tracks,
-while preserving the static cue backdrop. `--disable-word-animations` removes
-all word text and backdrop animation tracks, the word backdrop decoration, and
-highlight color. The word backdrop is removed because it depends on aligned-word
-timestamps even when its own phases are neutral.
-
-### Use a custom template directory
-
-Custom templates live in a flat local directory and are selected by the JSON
-name, independently of the filename:
-
-~~~bash
-mkdir -p ./templates
-cat > ./templates/my-yellow-captions.json <<'JSON'
-{
-  "schema_version": 1,
-  "name": "my-yellow-captions",
-  "description": "A compact yellow caption variant.",
-  "base": "yellow-pop",
-  "style": {
-    "typography": {
-      "font_size": "3.6%"
-    }
-  },
-  "layout": {
-    "margins": {
-      "bottom": "15%"
-    }
-  }
-}
-JSON
-
-multisubs -i ./video.mp4 -l pt \
-  --template-dir ./templates \
-  --template my-yellow-captions
-~~~
-
-Only immediate regular JSON files are read. Each uses schema version 1 and a
-unique lowercase kebab-case name; optional fields inherit from a built-in base
-(default: `default`, never another custom file), then explicit CLI options
-override them. Custom names take precedence over built-ins for that invocation.
-Invalid files are reported even when they are not selected. See [internal
-template resources](docs/architecture.md#internal-template-resources) for the
-complete data contract.
-
-### Translate speech to English
-
-Translation requires WhisperX or Faster-Whisper with a multilingual, non-Turbo
-Whisper model:
-
-```bash
-multisubs \
-  -i ./interview.mp4 \
-  -l pt \
-  --asr whisperx \
-  --task translate \
-  --model medium \
-  -o ./output
-```
-
-Translation output is always English. `turbo` and model names ending in `.en`
-cannot be used with `--task translate`.
-
-Translated text has no lossless source-word timing map. If the selected template
-or explicit parameters contain word animations or a word backdrop, the command
-reports the exact category and recommends `--disable-word-animations` before
-model loading. Alternatively, select a compatible template such as `default`,
-`bold-headline`, or `golden-title`. Cue-level animations and backdrops remain
-available during translation.
-
-Translation uses two safeguards. First, WhisperX and Faster-Whisper process the
-translation task in six-second chunks (`chunk_size` and `chunk_length`,
-respectively), matching the WhisperX translation behavior. If a translated cue
-still exceeds the measured width or height envelope, the artifact writer makes
-up to three small retries, reducing the effective font size by about 4% per
-step. The requested size remains intact in JSON, while the effective size used
-by JSON, SRT, ASS, and the rendered video is recorded in the resolved metadata.
-
-### Preview a layout before transcribing
-
-Generate one PNG from a real video frame without loading an ASR runtime:
-
-```bash
-multisubs -i ./video.mp4 -o ./previews \
-  --preview-layout \
-  --preview-at 00:00:10.500 \
-  --preview-text "This is how my subtitle will look" \
-  --preview-guides \
-  --position bottom-center
-```
-
-Without `--preview-at`, the video midpoint is used. Preview styling, wrapping,
-placement, coordinates, and custom fonts match the final render path. Output is
-saved as `<video-stem>-subtitle-preview.png` with a numeric suffix on collision.
-If the sample does not fit, the preview shows only its first fitting cue.
-
-### Preview subtitle animation
-
-Generate a silent MP4 without loading an ASR runtime or transcribing speech:
-
-```bash
-multisubs -i ./video.mp4 -o ./previews \
-  --preview-animation \
-  --preview-duration 4s \
-  --preview-at 00:00:10.500 \
-  --template focus-marker \
-  --preview-text "This is how the word animation will look"
-```
-
-The selected frame is frozen behind a cue that starts 500 ms into the clip,
-with 500 ms before and after it. Duration accepts whole `ms` or `s` values from
-1 to 15 seconds, defaults to `4s`, and the total clip is one second longer.
-Word times are simulated, not synchronized to speech. The output is
-`<video-stem>-subtitle-animation-preview.mp4` (numbered on collision).
-`--preview-guides` labels simulated timing. Preview modes publish no transcript
-artifacts and reject `--keep-transcriptions`.
-
-### Add subtitle animations
+#### Cue and word effects
 
 Text and backdrop have independent entrance, emphasis, and exit tracks at both
 cue and aligned-word scope. This permits combinations such as a sliding cue box
@@ -552,10 +480,10 @@ multisubs -i ./video.mp4 -l pt \
 
 `active-word` follows only the current alignment interval; `progressive` keeps
 each affected word visible through the cue. Word effects require source-language
-alignment and are rejected for translation or incomplete mappings. Unsupported
-shaping cases retain cue-level effects and fall back to complete logical-line
-rendering; word tracks are suppressed. Previews use the same fallback and
-report a warning.
+alignment. They are rejected for translation; incomplete mappings use the
+complete-cue fallback. Unsupported shaping cases retain cue-level effects and
+fall back to complete logical-line rendering; word tracks are suppressed.
+Previews use the same fallback and report a warning.
 
 Source word timestamps are preserved, including zero durations. For an empty
 word-effect interval after ASS centisecond rounding, multisubs first uses an
@@ -569,144 +497,13 @@ its text and cue effects with word effects suppressed. Retained JSON reports
 these estimates under `timing_recovery` in per-cue `word_effect` and aggregate
 rendering `word_effects` diagnostics, separately from original word timestamps.
 
-### Customize typography
-
-```bash
-multisubs -i ./video.mp4 -l pt \
-  --font "Inter" \
-  --font-weight semi-bold \
-  --font-size 4.5% \
-  --letter-spacing 1px \
-  --line-height 125% \
-  --text-case uppercase \
-  --text-color '#F8FAFC' \
-  --opacity 90% \
-  --backdrop outline \
-  --backdrop-color '#0F172AB3' \
-  --margin-bottom 8%
-```
-
-Colors use `#RRGGBB` or `#RRGGBBAA`, where `00` is transparent and `FF` is
-opaque. Quote colors in the shell because `#` may start a comment.
-
-Lengths require `%` or PlayRes `px`. Font-weight accepts named or 100–900
-numeric ranks. Text case is applied before measurement; retained JSON keeps the
-original transcript and aligned words.
-
-### Use a bundled font
-
-multisubs ships 82 static desktop faces from six families. They are available
-offline through `--font` without `--fonts-dir` or global installation:
-
-| Family | Bundled weights | Italic |
-| --- | --- | --- |
-| Roboto | 100–900 | all bundled weights |
-| Inter | 100–900 | all bundled weights |
-| Montserrat | 100–900 | all bundled weights |
-| Oswald | 200–700 | no |
-| Lora | 400–700 | all bundled weights |
-| Atkinson Hyperlegible Next | 200–800 | all bundled weights |
-
-```bash
-multisubs -i ./video.mp4 \
-  --font "Atkinson Hyperlegible Next" \
-  --font-weight bold \
-  --italic
-```
-
-The unmodified static TTF faces are pinned in a package integrity manifest and
-each family includes its OFL license. They work offline; multisubs does not
-download fonts or write the system font cache. All faces add about 13 MB to the
-unpacked package.
-
-### Use a custom font
-
-Put the desired `.ttf`, `.otf`, or `.ttc` files directly in one flat directory.
-The resolver does not search nested directories:
-
-```text
-fonts/
-├── MyFont-Regular.ttf
-├── MyFont-SemiBold.ttf
-├── MyFont-Bold.ttf
-└── MyFont-BoldItalic.ttf
-```
-
-Then point both font measurement and FFmpeg/libass to that directory:
-
-```bash
-multisubs -i ./video.mp4 \
-  --fonts-dir ./fonts \
-  --font "My Font" \
-  --font-weight bold \
-  --italic
-```
-
-`--font` matches family metadata, not filenames. A custom matching family takes
-precedence over its bundled equivalent; bundled fonts precede fontconfig.
-Missing glyphs trigger a bounded search and visible fallback diagnostic. If no
-covering face is found for positioned text, multisubs asks you to choose a
-family or `--fonts-dir`; it never downloads one. Custom fonts are used only for
-this run; ensure you have rights to use and distribute them.
-
-### Coverage and fallback diagnostics
-
-Coverage is checked against displayed text before wrapping. With
-`--keep-transcriptions`, `rendering.text_measurement` reports the requested and
-resolved face and fallback reason. `coverage: "verified"` confirms cmap
-coverage, not complete shaping behavior; `unicode-estimate` denotes an
-unverified fallback.
-
-## ⚙️ Command reference
-
-Run `multisubs --help` for the CLI's complete, authoritative help text.
-
-### Input and processing
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `-i`, `--input-path PATH` | required | Path to one local input video. |
-| `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
-| `--subtitle-file PATH` | off | Burn an existing SRT or ASS file into the video without transcription. |
-| `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
-| `-l`, `--lang CODE` | automatic when exposed | Source-language code supported by the selected ASR. For Parakeet it labels metadata but does not condition transcription; English-only Whisper models use `en`. |
-| `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
-| `-m`, `--model MODEL` | backend default | Model used by the selected ASR. |
-| `-k`, `--keep-transcriptions` | off | Keep JSON, SRT, and ASS in a `subtitles` directory. |
-| `--verbose` | off | Show detailed processing progress and backend logs. |
-| `-v`, `--version` | — | Print the package version. |
-| `-h`, `--help` | — | Show CLI help and backend-dependent support guidance. |
-
-By default, multisubs shows only its own processing stages, relevant subtitle
-warnings, errors, and final output path. Output printed by ASR runtimes and
-native libraries is suppressed during processing, including backend warnings
-and progress bars. Use `--verbose` to show detailed stages and the raw backend
-output when diagnosing a run. If a backend fails, multisubs still reports the
-failed operation; rerun with `--verbose` to inspect the backend diagnostics.
-
-WhisperX models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
-`medium.en`, `medium`, `large`, and `turbo`. Faster-Whisper accepts the same
-small models plus `large-v1`, `large-v2`, `large-v3`, and `large-v3-turbo`.
-Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
-`Qwen/Qwen3-ASR-1.7B-hf`.
-
-### Preview and animation
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `--preview-layout` | off | Render one layout preview PNG without transcription. |
-| `--preview-animation` | off | Render a silent H.264 MP4 with simulated word timing; mutually exclusive with `--preview-layout`. |
-| `--preview-duration DURATION` | `4s` | Animated cue duration from `1s` through `15s`, using whole `ms` or `s`; requires `--preview-animation`. |
-| `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
-| `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
-| `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
-| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit} TYPE` | inherited or `none` | Select one phase on one independent visual track; run `--help` for the animation types valid for each phase. |
-| `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit}-duration DURATION` | phase or template default | Override an enabled phase with `10ms`–`5000ms`, expressed as `150ms` or `0.15s`. |
-| `--disable-cue-animations` | off | Remove all cue text/backdrop animation phases, preserving the static cue backdrop. |
-| `--disable-word-animations` | off | Remove all word text/backdrop animation phases, word highlight, and timed word decoration. |
-| `--animation-word-text-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for word text. |
-| `--animation-word-backdrop-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for the word decoration. |
-| `--animation-word-text-highlight-color COLOR` | `#FFD54F` when enabled | Set the text color used by the `highlight` word emphasis. |
+The two suppression flags operate independently by scope. Every
+`entrance`, `emphasis`, and `exit` phase is an animation. Therefore,
+`--disable-cue-animations` removes all cue text and backdrop animation tracks,
+while preserving the static cue backdrop. `--disable-word-animations` removes
+all word text and backdrop animation tracks, the word backdrop decoration, and
+highlight color. The word backdrop is removed because it depends on aligned-word
+timestamps even when its own phases are neutral.
 
 ### Appearance
 
@@ -732,6 +529,11 @@ Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
 | `--word-backdrop-size LENGTH` | `25%` | Outline thickness or padding for each timed word decoration. |
 | `--shadow-size LENGTH` | `0px` | Shadow size relative to the resolved font size or in pixels. |
 | `--fonts-dir DIR` | — | Additional `.ttf`, `.otf`, or `.ttc` fonts for this run. |
+
+Colors use `#RRGGBB` or `#RRGGBBAA`, where `00` is transparent and `FF` is
+opaque. Font size, spacing, and other lengths require `%` or PlayRes `px`.
+Text case is applied before measurement; retained JSON keeps the original
+transcript and aligned words.
 
 With `--backdrop box`, every nonempty cue uses one continuous measured box
 around the complete text block, regardless of whether it occupies one line or
@@ -829,10 +631,429 @@ while validated alignment records remain the timing units for word effects.
 Text is never truncated. If a source/alignment map is incomplete, the full cue
 keeps its segment timing and word effects are disabled rather than inventing
 timestamps. For translation, six-second backend chunks are tried before the
-layout fallback reduces the effective font size by small steps when the
-translated text cannot fit its measured width or height envelope. SRT and ASS
+layout fallback makes up to three retries, reducing the effective font size
+by 4% per step when translated text cannot fit its measured envelope. SRT and ASS
 share intentional line breaks; JSON retains source text beside rendered
 `display_text` and records requested versus effective rendering values.
+
+## 🎨 Subtitle templates
+
+### Built-in template catalog
+
+Choose a template with `--template NAME`. Omitted selection uses `default`:
+Roboto Regular with white text on a translucent black box.
+
+| Template | Good for | Font | Baseline appearance and animation |
+| --- | --- | --- | --- |
+| `default` | General use | Roboto Regular | 4%, white/original, 100%; box `#00000099`/25%, shadow 0px; max-height 12%; no animation. |
+| `bold-headline` | Short-form hooks | Montserrat ExtraBold | 4.8%, white uppercase; outline `#111827`/7%; pop in, fade out; max-height 9.9%. |
+| `amber-word` | Explanations | Inter SemiBold | 4.65%, white/original; outline `#111827`/5%; active-word amber highlight; max-height 9.7%. |
+| `mint-progress` | Tips and steps | Montserrat Medium | 5.24%, white/original; box `#111827D9`/15%; progressive mint highlight; max-height 11.3%. |
+| `focus-marker` | Accessible captions | Atkinson Hyperlegible Next Bold | 4.99%, white/original; outline `#111827`/4%, word box `#FFD54F`/12%; active-word; max-height 11.8%. |
+| `golden-title` | Topics and chapter titles | Oswald Bold | 5.06%, `#FACC15` uppercase; outline `#111827`/6%; bottom-left; max-height 11.3%; no animation. |
+| `emerald-word` | Word-led explainers | Roboto Bold | 4%, white/original; outline `#111827`/5%, word box `#166534FF`/12%; active-word; max-height 9.9%. |
+| `kinetic-lime` | Fast tutorials | Montserrat Bold | 5.2%, white/original; outline `#111827`/5%, active text `#D9F99D`; slide up 180ms, fade out 120ms; max-height 10.3%. |
+| `coral-marker` | Advice and interviews | Roboto SemiBold | 4%, white/original; outline `#111827`/4%, word box `#FDA4AFFF`/14%, active text `#111827`; fade in 140ms/out 120ms, word fade 70ms; bottom-left, max-height 9.8%. |
+| `editorial-reveal` | Reflective clips | Lora SemiBold Italic | 5.07%, `#FFF8ED`; outline `#111827`/4%; zoom in 200ms, fade out 160ms, progressive word fade 100ms; max-height 11.1%. |
+| `headline-bounce` | Punchlines | Oswald SemiBold | 5.06%, `#FDE68A` uppercase; outline `#111827`/6%; fade in 120ms, slide down 160ms, active-word bounce 420ms; max-height 11.3%. |
+| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | 4.9%, white uppercase; outline `#111827`/5%; active-word `#FBE003` pop 120ms; max-height 9.8%. |
+| `yellow-trace` | Step-by-step clips | Inter Medium | 4.65%, white/original; box `#111827FF`/15%; progressive `#FBE003`; max-height 10.7%. |
+| `neon-lime-marker` | Energetic explainers | Oswald Medium | 5.06%, white; outline `#111827`/4%, word box `#39FF14FF`/12%; active-word, word zoom 100ms/fade 70ms; max-height 11.1%. |
+| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | 4.99%, `#00F5FF`; outline `#111827`/5%; progressive slide-up 120ms; max-height 11.9%. |
+| `neon-magenta-pulse` | Reactions | Roboto Bold | 3.8%, `#FF4FD8` uppercase; outline `#111827`/5%; active-word pulse 400ms; max-height 9.4%. |
+
+Templates use 18% side margins, 0% top margin, 3% bottom margin, 100% maximum
+width, automatic line height, zero letter spacing, full opacity, and no shadow.
+Placement is bottom-center except `golden-title` and `coral-marker`
+(bottom-left). Sizes are optically calibrated; maximum heights target two
+lines. Explicit appearance, layout, and animation flags override only their
+corresponding template fields.
+
+### Define a custom template
+
+Custom templates live in a flat local directory and are selected by the JSON
+name, independently of the filename:
+
+~~~bash
+mkdir -p ./templates
+cat > ./templates/my-yellow-captions.json <<'JSON'
+{
+  "schema_version": 1,
+  "name": "my-yellow-captions",
+  "description": "A compact yellow caption variant.",
+  "base": "yellow-pop",
+  "style": {
+    "typography": {
+      "font_size": "3.6%"
+    }
+  },
+  "layout": {
+    "margins": {
+      "bottom": "15%"
+    }
+  }
+}
+JSON
+
+multisubs -i ./video.mp4 -l pt \
+  --template-dir ./templates \
+  --template my-yellow-captions
+~~~
+
+Only immediate regular JSON files are read. Each uses schema version 1 and a
+unique lowercase kebab-case name; optional fields inherit from a built-in base
+(default: `default`, never another custom file), then explicit CLI options
+override them. Custom names take precedence over built-ins for that invocation.
+Invalid files are reported even when they are not selected. See [internal
+template resources](docs/architecture.md#internal-template-resources) for the
+complete data contract.
+
+## 🔤 Fonts and coverage
+
+### Use a bundled font
+
+multisubs ships 82 static desktop faces from six families. They are available
+offline through `--font` without `--fonts-dir` or global installation:
+
+| Family | Bundled weights | Italic |
+| --- | --- | --- |
+| Roboto | 100–900 | all bundled weights |
+| Inter | 100–900 | all bundled weights |
+| Montserrat | 100–900 | all bundled weights |
+| Oswald | 200–700 | no |
+| Lora | 400–700 | all bundled weights |
+| Atkinson Hyperlegible Next | 200–800 | all bundled weights |
+
+```bash
+multisubs -i ./video.mp4 \
+  --font "Atkinson Hyperlegible Next" \
+  --font-weight bold \
+  --italic
+```
+
+The unmodified static TTF faces are pinned in a package integrity manifest and
+each family includes its OFL license. They work offline; multisubs does not
+download fonts or write the system font cache. All faces add about 13 MB to the
+unpacked package.
+
+### Use a custom font
+
+Put the desired `.ttf`, `.otf`, or `.ttc` files directly in one flat directory.
+The resolver does not search nested directories:
+
+```text
+fonts/
+├── MyFont-Regular.ttf
+├── MyFont-SemiBold.ttf
+├── MyFont-Bold.ttf
+└── MyFont-BoldItalic.ttf
+```
+
+Then point both font measurement and FFmpeg/libass to that directory:
+
+```bash
+multisubs -i ./video.mp4 \
+  --fonts-dir ./fonts \
+  --font "My Font" \
+  --font-weight bold \
+  --italic
+```
+
+`--font` matches family metadata, not filenames. A custom matching family takes
+precedence over its bundled equivalent; bundled fonts precede fontconfig.
+Missing glyphs trigger a bounded search and visible fallback diagnostic. If no
+covering face is found for positioned text, multisubs asks you to choose a
+family or `--fonts-dir`; it never downloads one. Custom fonts are used only for
+this run; ensure you have rights to use and distribute them.
+
+### Coverage and fallback diagnostics
+
+Coverage is checked against displayed text before wrapping. With
+`--keep-transcriptions`, `rendering.text_measurement` reports the requested and
+resolved face and fallback reason. `coverage: "verified"` confirms cmap
+coverage, not complete shaping behavior; `unicode-estimate` denotes an
+unverified fallback.
+
+## 🐍 Python API
+
+Use the package-root APIs to keep source transcription separate from styling
+and rendering. Start with [transcript reuse](#transcribe-once-and-reuse-the-transcript)
+or [template overrides](#compose-subtitle-settings-in-python); full signatures
+and configuration rules follow the examples.
+
+### Transcribe once and reuse the transcript
+
+Use the Python API to transcribe a video once and render subtitles later with
+different templates or video framing. `transcribe_speech()` returns the original
+speech segments and available word times without creating subtitle files.
+`render_transcript()` generates SRT, styled ASS, and a hard-subtitled video using
+the normal subtitle pipeline and the final video's geometry, without another
+ASR call:
+
+```python
+from multisubs import transcribe_speech, render_transcript
+
+speech = transcribe_speech("video.mp4", lang="pt", asr_backend="faster-whisper")
+artifacts = render_transcript(speech, "video.mp4", "output", template="yellow-pop")
+```
+
+Cache `speech.to_dict()` as JSON and pass the restored dictionary directly to
+`render_transcript()`. For a cut, select the content and shift its supplied times
+to the cut's timeline before rendering. Missing word times and unknown language
+keep the normal fallbacks.
+
+Save the source speech data for a later run:
+
+```python
+import json
+from pathlib import Path
+
+Path("speech.json").write_text(
+    json.dumps(speech.to_dict(), ensure_ascii=False), encoding="utf-8"
+)
+```
+
+### Compose subtitle settings in Python
+
+Use `build_subtitle_config()` to combine a built-in or custom template with
+sparse presentation overrides before acquiring media or transcribing. Pass the
+returned immutable `SubtitleConfig` directly to `render_transcript()`.
+This example loads the `speech.json` cache saved above:
+
+```python
+import json
+from pathlib import Path
+
+from multisubs import build_subtitle_config, render_transcript
+
+config = build_subtitle_config(
+    template="yellow-pop",
+    overrides={
+        "position": "bottom-center",
+        "margin_bottom": "8%",
+        "font_size": "4.5%",
+        "italic": False,
+        "animation_word_text_emphasis": "none",
+    },
+)
+speech = json.loads(Path("speech.json").read_text(encoding="utf-8"))
+artifacts = render_transcript(speech, "video.mp4", "output", subtitle_config=config)
+```
+
+See [public functions](#public-functions) for the signatures and
+[subtitle configuration reference](#subtitle-configuration-reference) for all
+override keys, inheritance rules, and errors.
+
+### Public functions
+
+Import these functions from `multisubs`. File and directory paths accept `str`
+or `Path`; arguments after `*` must be passed by name. Where available,
+`progress` accepts a callback that receives a message string, such as
+`progress=print`.
+
+#### transcribe_speech()
+
+Recognize speech in a local video and return source segments and available
+word timestamps as a `SpeechTranscript`.
+
+```text
+transcribe_speech(
+    input_path, lang=None, task="transcribe", model_name=None,
+    *, asr_backend="whisperx", progress=None, verbose=False,
+) -> SpeechTranscript
+```
+
+- `asr_backend` selects `"whisperx"`, `"faster-whisper"`, `"parakeet"`, or
+  `"qwen"`; `model_name=None` uses that backend's default model.
+- `lang=None` uses automatic language detection where the backend exposes it.
+  See [backend and language behavior](#input-and-processing) for the differences.
+- `task` accepts only `"transcribe"` through this API.
+- The result preserves source text, segment/word association, and supplied
+  timestamps, including missing alignment. Subtitle files are created later by
+  `render_transcript()`.
+
+Use `speech.to_dict()` to obtain lossless version-1 data for JSON caching, and
+`SpeechTranscript.from_dict(data)` to validate and restore it. See the
+[source speech contract](docs/architecture.md#deferred-speech-rendering) for
+fields and timing limits.
+
+#### build_subtitle_config()
+
+Combine a selected template with only the presentation settings you supply.
+
+```text
+build_subtitle_config(
+    *, template=None, template_dir=None, overrides=None,
+) -> SubtitleConfig
+```
+
+The returned `SubtitleConfig` is immutable and can be reused across renders.
+Call this function before expensive media work to validate template selection
+and overrides. Pass the result through `render_transcript(subtitle_config=...)`.
+See [configuration rules and supported keys](#subtitle-configuration-reference).
+
+#### render_transcript()
+
+Create SRT, ASS, and a hard-subtitled video from existing speech data using the
+final video's geometry.
+
+```text
+render_transcript(
+    transcript, video_path, output_dir,
+    *, template=None, template_dir=None, subtitle_config=None, progress=None,
+) -> GeneratedSubtitleArtifacts
+```
+
+- `transcript` accepts a `SpeechTranscript` or its version-1 dictionary, such as
+  the result of `json.load()`. Its task must be `"transcribe"`.
+- Segment and word times must already be local to `video_path`. For a cut,
+  select the content and shift the supplied times before calling this function.
+- Choose a template with `template` and optional `template_dir`, or pass a
+  complete `subtitle_config`. These alternatives cannot be combined.
+- Rendering reuses the supplied speech without another ASR call. Missing
+  alignment keeps normal timing fallbacks and reports suppressed word effects
+  through `progress`, or `UserWarning` when no callback is supplied.
+
+The returned `GeneratedSubtitleArtifacts` contains three `Path` attributes:
+`srt_path`, `ass_path`, and `video_path`. All three files use one collision-safe
+stem in `output_dir` and are published after successful rendering.
+
+#### render_subtitle_file()
+
+Burn an existing local SRT or ASS into a new video with copied audio.
+
+```text
+render_subtitle_file(
+    video_path, subtitle_path, output_dir, *, fonts_dir=None,
+) -> Path
+```
+
+`fonts_dir` supplies an optional local font directory. ASS keeps its authored
+styling; SRT uses libass defaults. The returned `Path` points to the
+collision-safe output video. See the
+[existing subtitle recipe](#burn-an-existing-subtitle-file) for an example.
+
+### Subtitle configuration reference
+
+`build_subtitle_config()` supports all 57 CLI presentation settings through
+`overrides`, a `Mapping[str, object]` such as a dictionary. The same composition
+and validation rules apply to Python and the native CLI.
+
+Use long option names with `--` removed and hyphens replaced by underscores:
+`--font-size` becomes `font_size`, and `--disable-word-animations` becomes
+`disable_word_animations`. Values use native CLI units and choices; Boolean
+settings take Python `True` or `False`.
+
+#### Template selection and inheritance
+
+- `template=None` selects the name `default`.
+- `template_dir` accepts `str` or `Path`. Custom names take precedence over
+  built-ins, including `default`, and every discovered JSON file is validated.
+- Only supplied fields replace the selected template's values. Omitted keys
+  and `None` inherit; explicit `False` and valid zero values such as `"0px"`
+  or `"0%"` are preserved.
+- Use `"none"` to clear one inherited effect, or the scope disable flags below
+  to clear related animation features together.
+
+#### Text and fonts
+
+- `font`: family name, such as `"Inter"`. `fonts_dir`: an optional directory
+  supplied as `str` or `Path`.
+- `font_weight`: a weight name such as `"semi-bold"`, a numeric string such as
+  `"600"`, or an integer rank in steps of 100 from 100 through 900.
+- `bold`: Boolean shorthand for weight 700 (`True`) or 400 (`False`). An
+  explicit `font_weight` cannot be combined with `bold`.
+- `italic`: Boolean. `text_case`: `"original"`, `"uppercase"`, or `"lowercase"`.
+- `text_color`: `"#RRGGBB"` or `"#RRGGBBAA"`, such as `"#F8FAFC"`.
+- `font_size` and `letter_spacing`: unit-bearing lengths such as `"4.5%"`
+  and `"1px"`.
+- `line_height`: `"auto"` or a length such as `"125%"` or `"32px"`.
+
+See [appearance](#appearance) for weight names and
+[relative-unit bases](#layout-and-positioning) for how percentages resolve.
+
+#### Backdrops and opacity
+
+- `backdrop` and `word_backdrop`: `"none"`, `"outline"`, or `"box"`.
+- `backdrop_color` and `word_backdrop_color`: hexadecimal colors with optional
+  alpha, using the same syntax as `text_color`.
+- `backdrop_size`, `word_backdrop_size`, and `shadow_size`: unit-bearing lengths
+  such as `"12%"`, `"3px"`, or `"0px"`.
+- `opacity`: a percentage string from `"0%"` through `"100%"`, applied to the
+  complete composition.
+
+#### Placement and dimensions
+
+- `position`: one of the [nine named positions](#layout-and-positioning), such
+  as `"bottom-center"`.
+- `margin_left`, `margin_right`, `margin_top`, and `margin_bottom`: lengths
+  such as `"8%"` or `"24px"`. Only the active vertical margin may be supplied:
+  top positions accept `margin_top`, bottom positions accept `margin_bottom`,
+  and middle positions accept neither, even with a zero value.
+- `max_width` and `max_height`: maximum subtitle dimensions, expressed as
+  percentage or pixel lengths.
+- `position_x`, `position_y`, and `anchor`: explicit coordinates and a named
+  box anchor, such as `"50%"`, `"80%"`, and `"bottom-center"`.
+
+For explicit coordinates, supply `position_x`, `position_y`, `anchor`,
+`max_width`, and `max_height` together in `overrides`. Explicit `position` or
+margin overrides cannot accompany them; inherited template placement does not
+cause a conflict. The complete envelope must fit the final video canvas.
+See [exact coordinates](#exact-coordinates).
+
+#### Animation phases and word effects
+
+Each of the four tracks has independent entrance, emphasis, and exit phases.
+Build an override key with these patterns:
+
+```text
+animation_{scope}_{element}_{phase}
+animation_{scope}_{element}_{phase}_duration
+```
+
+Use `cue` or `word` for `scope`, `text` or `backdrop` for `element`, and
+`entrance`, `emphasis`, or `exit` for `phase`. For example,
+`animation_cue_text_entrance="fade"` selects a cue entrance, and
+`animation_cue_text_entrance_duration="150ms"` sets its duration.
+
+Animation names depend on the track and phase; see the
+[animation reference](#cue-and-word-effects) and `multisubs --help` for valid
+choices. Duration strings accept `"10ms"` through `"5000ms"`, including seconds
+such as `"0.15s"`, and must resolve to whole milliseconds. `"none"` and
+`"highlight"` phases do not accept a duration override.
+
+Additional word and suppression settings:
+
+- `animation_word_text_mode` and `animation_word_backdrop_mode`:
+  `"active-word"` or `"progressive"`.
+- `animation_word_text_highlight_color`: a hexadecimal color; requires
+  `animation_word_text_emphasis="highlight"`. Setting the emphasis to `"none"`
+  also removes its inherited highlight color.
+- `disable_cue_animations=True`: clears every cue text/backdrop phase while
+  preserving the static cue backdrop.
+- `disable_word_animations=True`: clears every word text/backdrop phase,
+  word decoration, and highlight color.
+
+Scope disables apply after override validation. Invalid animation settings
+still raise an error even when their scope is disabled.
+
+#### Errors and validation timing
+
+Import configuration errors from `multisubs`:
+
+- `ValidationError`: unknown override names, invalid values, or conflicting
+  options. Unknown names are rejected even when their value is `None`.
+- `TemplateError`: invalid custom directories/files or packaged templates.
+- `MultisubsError`: the shared base class for both exceptions.
+
+Composition reads configuration resources and checks supplied directories.
+It does not probe media, run FFmpeg or ASR, load font faces, access the network,
+or materialize assets. It leaves caller mappings and template baselines intact.
+
+Relative lengths stay unresolved in the returned configuration. Geometry-dependent
+limits and envelope checks run during rendering against each final video.
+Reuse the same config for different geometries by passing only
+`subtitle_config=config` to `render_transcript()`.
 
 ## 🌍 Supported languages
 
