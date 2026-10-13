@@ -234,6 +234,9 @@ transcribe_speech(input_path, lang=None, task="transcribe", model_name=None,
 render_transcript(transcript, video_path, output_dir, *, template=None,
                   template_dir=None, subtitle_config=None, progress=None)
 # -> GeneratedSubtitleArtifacts(srt_path, ass_path, video_path)
+
+build_subtitle_config(*, template=None, template_dir=None, overrides=None)
+# -> SubtitleConfig
 ```
 
 `render_transcript()` accepts a `SpeechTranscript` or its dictionary; use
@@ -248,6 +251,69 @@ unavailable word effects and reports that limitation through `progress`, or
 ASS, and video under one collision-safe stem. See the
 [source speech contract](docs/architecture.md#deferred-speech-rendering) for the
 version-1 data shape, timing rules, and validation limits.
+
+### Compose subtitle settings in Python
+
+Use `build_subtitle_config()` to combine a built-in or custom template with
+sparse presentation overrides before acquiring media or transcribing. Pass the
+returned immutable `SubtitleConfig` directly to `render_transcript()`:
+
+```python
+from multisubs import build_subtitle_config, render_transcript
+
+config = build_subtitle_config(
+    template="yellow-pop",
+    overrides={
+        "position": "bottom-center",
+        "margin_bottom": "8%",
+        "font_size": "4.5%",
+        "italic": False,
+        "animation_word_text_emphasis": "none",
+    },
+)
+artifacts = render_transcript(
+    speech, "final-clip.mp4", "output", subtitle_config=config
+)
+```
+
+`template=None` selects `default`. `template_dir` accepts `str` or `Path` and
+uses the CLI's custom-name precedence and validation of every discovered JSON
+file. `overrides` accepts a `Mapping[str, object]`; keys are the long
+presentation flags with `--` removed and hyphens replaced by underscores:
+
+| Concern | Supported override keys |
+| --- | --- |
+| Appearance | `font`, `text_color`, `font_weight`, `bold`, `italic`, `backdrop`, `backdrop_color`, `word_backdrop`, `word_backdrop_color`, `opacity`, `text_case`, `fonts_dir` |
+| Relative lengths | `font_size`, `letter_spacing`, `line_height`, `backdrop_size`, `word_backdrop_size`, `shadow_size`, `margin_left`, `margin_right`, `margin_top`, `margin_bottom`, `max_width`, `max_height` |
+| Placement | `position`, `position_x`, `position_y`, `anchor` |
+| Animation phases | `animation_{cue\|word}_{text\|backdrop}_{entrance\|emphasis\|exit}` and each corresponding `_duration` key |
+| Word effects | `animation_word_text_mode`, `animation_word_backdrop_mode`, `animation_word_text_highlight_color` |
+| Animation suppression | `disable_cue_animations`, `disable_word_animations` |
+
+All 57 settings use the native CLI
+[appearance](#appearance), [animation](#preview-and-animation), and
+[layout](#layout-and-positioning) values and rules:
+unit-bearing lengths (`"4.5%"`, `"24px"`), `"auto"` line height, hexadecimal
+colors, percentage opacity, weight names or numeric strings, position/anchor
+names, animation names, and durations such as `"150ms"` or `"0.15s"`. Boolean
+settings take Python `True` or `False`; `fonts_dir` takes `str` or `Path`.
+
+Absent keys and `None` inherit the template; explicit `False` and valid zero
+lengths or `"0%"` opacity survive composition. To remove an inherited effect,
+use `"none"` or a scope disable. Disables apply after override validation:
+cue suppression keeps the static cue backdrop; word suppression also clears
+word decoration and highlighting. Font-weight/bold, placement, margin, and
+animation conflicts follow the CLI's validation rules.
+
+Catch `ValidationError` for unknown keys or invalid values/combinations and
+`TemplateError` for invalid custom directories/files or packaged templates.
+Both are exported from `multisubs` and inherit its public `MultisubsError`.
+The builder reads configuration resources and checks supplied directories;
+it performs no probing, FFmpeg execution, ASR/model/font loading, networking,
+or asset materialization. Geometry-dependent bounds and envelope checks remain
+in rendering, where percentages and pixels resolve against each final video.
+The same config can be reused for multiple geometries without mutation or ASR.
+Pass it without `template`/`template_dir` to `render_transcript()`.
 
 ### Choose an ASR backend
 

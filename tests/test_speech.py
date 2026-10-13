@@ -15,6 +15,7 @@ import pytest
 from multisubs import (
     GeneratedSubtitleArtifacts,
     SpeechTranscript,
+    build_subtitle_config,
     render_transcript,
     subtitler,
     transcribe_speech,
@@ -23,7 +24,7 @@ from multisubs import (
 from multisubs.asr.base import ASRResult
 from multisubs.config import validate_subtitle_config
 from multisubs.errors import ArtifactError, ValidationError
-from multisubs.models import VideoGeometry
+from multisubs.models import RelativeLength, VideoGeometry
 from multisubs.templates import get_subtitle_template
 
 
@@ -242,6 +243,48 @@ def test_deferred_render_equals_normal_srt_and_ass(
         assert [word for cue in cues for word in cue["words"]] == source.segments[0][
             "words"
         ]
+
+
+@pytest.mark.parametrize("case", ["aligned", "partial", "absent-words", "all-points"])
+def test_public_config_is_reusable_across_final_geometries(tmp_path, monkeypatch, case):
+    source = _source(case)
+    speech = SpeechTranscript(
+        source.language,
+        "transcribe",
+        "faster-whisper",
+        "turbo",
+        source.text,
+        source.segments,
+    )
+    before = speech.to_dict()
+    config = build_subtitle_config(
+        template="yellow-pop",
+        overrides={
+            "font_size": "4.5%",
+            "margin_bottom": "8%",
+            "italic": False,
+        },
+    )
+    for dimensions, expected_size in [((1080, 1920), "86"), ((1920, 1080), "49")]:
+        video, _ = _media(tmp_path, monkeypatch, dimensions)
+        messages = []
+        artifacts = render_transcript(
+            speech,
+            video,
+            tmp_path / "output",
+            subtitle_config=config,
+            progress=messages.append,
+        )
+        ass = artifacts.ass_path.read_text()
+        width, height = dimensions
+        assert f"PlayResX: {width}" in ass and f"PlayResY: {height}" in ass
+        style = next(line for line in ass.splitlines() if line.startswith("Style:"))
+        assert style.split(",")[2] == expected_size
+        assert speech.to_dict() == before
+        assert isinstance(config.style.typography.font_size, RelativeLength)
+        assert config.style.typography.font_size.original == "4.5%"
+        if case in {"partial", "absent-words", "all-points"}:
+            assert any("could not safely use" in message for message in messages)
 
 
 def test_cut_local_times_and_explicit_positioning(tmp_path, monkeypatch):
@@ -503,8 +546,16 @@ def test_real_ffmpeg_deferred_render_keeps_geometry_audio_and_visible_text(
     requests = _mock_asr(monkeypatch, source)
     speech = transcribe_speech(video, asr_backend="faster-whisper")
     monkeypatch.setattr(transcriber, "create_adapter", _unexpected_asr)
+    config = build_subtitle_config(
+        template="yellow-pop",
+        overrides={
+            "font_size": "4.5%",
+            "margin_bottom": "8%",
+            "italic": False,
+        },
+    )
     artifacts = render_transcript(
-        speech, video, tmp_path / "output", template="yellow-pop"
+        speech, video, tmp_path / "output", subtitle_config=config
     )
     assert len(requests) == 1
     width, height = size.split("x")

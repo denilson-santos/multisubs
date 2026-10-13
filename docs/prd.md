@@ -67,6 +67,20 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 
 ### Reusable source transcription API
 
+Library consumers must be able to compose a selected built-in/custom template
+with sparse presentation overrides through public `build_subtitle_config()`,
+without copying private resources or importing private validation helpers.
+It returns the immutable public `SubtitleConfig` accepted by
+`render_transcript()`, supports all 57 native presentation options with the same
+validation and suppression precedence as the CLI, and preserves unspecified
+template fields. Missing keys and `None` inherit; explicit `False` and valid
+zero values remain explicit. Unknown keys and invalid inputs raise public
+`ValidationError`; invalid template resources/directories raise public
+`TemplateError`, both under public `MultisubsError`. Composition is shared with
+the CLI and requires no media, models, loaded fonts, network, or materialized
+assets. Geometry-dependent validation remains in rendering. Configuration
+requests do not mutate caller data, templates, or other requests.
+
 Library consumers such as multicuts must be able to call `transcribe_speech()`
 once, retain source segment/word association, text, whitespace, punctuation,
 observed equal timestamps, missing/null word timing, unknown language, and
@@ -187,6 +201,16 @@ unavailable word effects, and leaves no completed files after failure.
 through FFmpeg/libass into a new collision-safe video, and copies the available
 audio. The source video and subtitle file remain unchanged, no transcript
 artifacts are created, and invalid or malformed input publishes nothing.
+
+37. Public `build_subtitle_config()` reproduces each built-in/custom baseline
+with empty overrides, preserves unrelated fields with sparse overrides, supports
+all 57 presentation options with CLI parity, rejects unknown keys and invalid
+combinations before media work, and preserves explicit false/valid zero values.
+Scoped suppression clears inherited highlight and word decoration when required.
+Its immutable result renders through `render_transcript()` for different final
+geometries without ASR, transcript mutation, or changes to missing-alignment
+fallbacks. Package-root imports and composition remain lazy and perform no
+expensive external work.
 
 ## Constraints and risks
 
