@@ -1717,7 +1717,11 @@ def _coerce_fonts_dir(value: object) -> Path | None:
         return None
     if not isinstance(value, (str, Path)):
         raise ValidationError("fonts-dir must be a directory path")
-    path = Path(value).expanduser().resolve(strict=False)
-    if not path.exists() or not path.is_dir():
+    try:
+        path = Path(value).expanduser().resolve(strict=False)
+        is_directory = path.is_dir()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValidationError(f"Could not resolve fonts directory '{value}'") from exc
+    if not is_directory:
         raise ValidationError(f"Fonts directory not found at '{value}'")
     return path

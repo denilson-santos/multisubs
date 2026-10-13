@@ -11,7 +11,7 @@ from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_st
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Annotated, Protocol, TextIO, cast
+from typing import Annotated, Protocol, TextIO
 
 import typer
 from typer import _click as typer_click
@@ -36,14 +36,12 @@ from .config import (
     WORD_ENTRANCE_ANIMATION_CHOICES,
     WORD_EXIT_ANIMATION_CHOICES,
     WORD_TEXT_EMPHASIS_ANIMATION_CHOICES,
-    apply_subtitle_feature_disables,
     parse_line_height,
     parse_opacity,
     parse_relative_length,
     parse_text_case,
-    validate_subtitle_config,
 )
-from .custom_templates import ResolvedSubtitleTemplate, resolve_subtitle_template
+from .custom_templates import ResolvedSubtitleTemplate
 from .errors import ArtifactError, MultisubsError, TemplateError, ValidationError
 from .layout import (
     resolve_cue_placement,
@@ -70,6 +68,7 @@ from .preview import (
     parse_preview_duration,
     parse_preview_timestamp,
 )
+from .subtitle_config import _SUBTITLE_OVERRIDE_NAMES, _resolve_subtitle_config
 from .templates import (
     DEFAULT_SUBTITLE_TEMPLATE,
     TEMPLATE_CHOICES,
@@ -1334,84 +1333,15 @@ def _resolve_request_config(
     parser: _ValidationContext,
 ) -> tuple[ResolvedSubtitleTemplate, SubtitleConfig]:
     """Resolve template and explicit overrides into one typed configuration."""
-    appearance_values = _defined_values(
-        {
-            "font": args.font,
-            "text_color": args.text_color,
-            "font_weight": args.font_weight,
-            "bold": args.bold,
-            "italic": args.italic,
-            "backdrop": args.backdrop,
-            "backdrop_color": args.backdrop_color,
-            "word_backdrop": args.word_backdrop,
-            "word_backdrop_color": args.word_backdrop_color,
-            "opacity": args.opacity,
-            "text_case": args.text_case,
-            "fonts_dir": args.fonts_dir,
-        }
-    )
-    animation_values = _animation_values(args)
-    relative_values = cast(
-        dict[str, RelativeLength | str],
-        _defined_values(
-            {
-                "font_size": args.font_size,
-                "letter_spacing": args.letter_spacing,
-                "line_height": args.line_height,
-                "outline_weight": args.backdrop_size,
-                "word_backdrop_size": args.word_backdrop_size,
-                "shadow_weight": args.shadow_size,
-                "margin_left": args.margin_left,
-                "margin_right": args.margin_right,
-                "margin_top": args.margin_top,
-                "margin_bottom": args.margin_bottom,
-                "max_width": args.max_width,
-                "max_height": args.max_height,
-                "position_x": args.position_x,
-                "position_y": args.position_y,
-            }
-        ),
-    )
     try:
-        selection = resolve_subtitle_template(args.template, args.template_dir)
-        subtitle_config = validate_subtitle_config(
-            None,
-            defaults=selection.template.config,
-            appearance_values=appearance_values,
-            animation_values=animation_values,
-            position=args.position,
-            relative_values=relative_values,
-            anchor=args.anchor,
-        )
-        subtitle_config = apply_subtitle_feature_disables(
-            subtitle_config,
-            disable_cue_animations=args.disable_cue_animations,
-            disable_word_animations=args.disable_word_animations,
+        selection, subtitle_config = _resolve_subtitle_config(
+            template=args.template,
+            template_dir=args.template_dir,
+            overrides={key: getattr(args, key) for key in _SUBTITLE_OVERRIDE_NAMES},
         )
     except (TemplateError, ValidationError) as exc:
         parser.fail(str(exc))
     return selection, subtitle_config
-
-
-def _defined_values(values: dict[str, object | None]) -> dict[str, object]:
-    """Drop omitted CLI values while retaining explicit false and zero values."""
-    return {key: value for key, value in values.items() if value is not None}
-
-
-def _animation_values(args: SimpleNamespace) -> dict[str, object]:
-    values: dict[str, object | None] = {}
-    for scope in ("cue", "word"):
-        for element in ("text", "backdrop"):
-            for phase in ("entrance", "emphasis", "exit"):
-                key = f"{scope}_{element}_{phase}"
-                values[key] = getattr(args, f"animation_{key}")
-                values[f"{key}_duration"] = getattr(args, f"animation_{key}_duration")
-    values.update(
-        word_text_mode=args.animation_word_text_mode,
-        word_backdrop_mode=args.animation_word_backdrop_mode,
-        word_text_highlight_color=args.animation_word_text_highlight_color,
-    )
-    return _defined_values(values)
 
 
 def _validate_normal_request(

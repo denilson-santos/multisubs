@@ -69,7 +69,8 @@ flowchart LR
 | multisubs/render_capabilities.py | Classifies actual display text for bidirectional/contextual shaping and selects positioned word fragments or complete logical-line fallback without using a language allowlist. | assess_renderer_capability(), RendererCapability |
 | multisubs/ass.py | Compiles semantic appearance and cue/word animation into trusted private ASS fields and overrides around safely escaped dialogue text. | write_ass(), rgba_to_ass_color(), allocate_karaoke_durations(), allocate_active_word_intervals() |
 | multisubs/subtitler.py | Probes normalized video geometry, extracts private 16 kHz mono audio for audio-only ASRs, and invokes FFmpeg to burn ASS into the selected video stream or render previews. | probe_video_geometry(), extract_audio_track(), embed_subtitles(), render_subtitle_preview(), render_subtitle_animation_preview() |
-| multisubs/config.py | Defines supported choices and semantic defaults, composes CLI overrides, applies scoped animation/effect suppressions, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config(), apply_subtitle_feature_disables() |
+| multisubs/config.py | Defines supported choices and semantic defaults, composes typed overrides, applies scoped animation/effect suppressions, and validates the typed style/layout/animation configuration. | SUPPORTED_LANGUAGES, MODELS, validate_subtitle_config(), apply_subtitle_feature_disables() |
+| multisubs/subtitle_config.py | Composes a selected built-in/custom template and sparse public presentation overrides through the native validator, shared with the CLI. | build_subtitle_config() |
 | multisubs/templates.py | Strictly loads the deterministic packaged JSON index and sparse built-in style/layout/animation definitions, expands them from semantic defaults, and compiles complete baselines through the normal validator. | SubtitleTemplate, SUBTITLE_TEMPLATES, get_subtitle_template() |
 | multisubs/custom_templates.py | Reads the bounded public schema-1 template directory, validates every discovered file, resolves custom names with built-in-only inheritance, and returns immutable source metadata for one request. | load_custom_template_directory(), resolve_subtitle_template(), ResolvedSubtitleTemplate |
 | multisubs/layout.py | Resolves unit-bearing layout fields, derives wrapping dimensions, validates native or explicit envelopes, and positions measured visual-line fragments on the probed canvas. | resolve_relative_length(), resolve_subtitle_config(), resolve_native_layout_region(), resolve_wrapping_metrics(), resolve_cue_placement(), position_visual_lines() |
@@ -80,7 +81,40 @@ flowchart LR
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, template-catalog, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
 | multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, GeneratedSubtitleArtifacts, RunArtifacts |
-| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions. | __version__, transcribe_speech(), SpeechTranscript, render_transcript(), GeneratedSubtitleArtifacts |
+| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions, semantic configuration, and composition errors. | __version__, transcribe_speech(), SpeechTranscript, render_transcript(), GeneratedSubtitleArtifacts, build_subtitle_config(), SubtitleConfig, MultisubsError, ValidationError, TemplateError |
+
+### Public subtitle configuration
+
+`build_subtitle_config(*, template=None, template_dir=None, overrides=None)`
+returns the existing immutable semantic `SubtitleConfig`. `subtitle_config.py`
+owns the flat presentation option inventory and maps the 57 public CLI-style
+keys to appearance, relative layout, and animation inputs for
+`config.validate_subtitle_config()`. The CLI calls the same composition helper
+and additionally retains the resolved template's source/base identity for its
+request metadata. Template lookup remains in `custom_templates.py` and
+`templates.py`; no independent validation or default set is introduced.
+
+Override keys use underscore-separated long flag names, including public
+`backdrop_size` and `shadow_size`, all phase/duration keys, word modes/highlight,
+and both scoped disables. Values retain native syntax and validation. Missing
+keys and `None` are omitted before composition, while explicit `False` and
+permitted zero survive. Unknown names are rejected even when their value is
+`None`. Custom names take precedence and every discovered custom file is
+validated. Suppression applies after normal validation, preserving static cue
+backdrops while clearing suppressed word decoration/highlight dependencies.
+
+The builder does not mutate input mappings, cached templates, or other requests.
+It reads packaged configuration JSON and supplied custom directories, and checks
+supplied font-directory paths, without loading font faces, materializing assets,
+probing media, running FFmpeg/ASR, or accessing the network. Relative lengths
+remain semantic; geometry-dependent limits, rounding, and canvas envelopes are
+validated by `layout.py` at rendering. Consumers pass the returned config to
+`render_transcript(subtitle_config=...)` without template arguments, and may
+reuse it across final geometries without changing speech data or invoking ASR.
+Package-root imports remain lazy. Public `ValidationError` reports invalid
+overrides/combinations; public `TemplateError` reports invalid template resources
+or directories. Both inherit public `MultisubsError`. See the
+[complete option inventory and example](../README.md#compose-subtitle-settings-in-python).
 
 ### Deferred speech rendering
 
@@ -528,7 +562,9 @@ line height, display case, text color, and optional timed-highlight text color.
 Raw ASS style mappings are rejected. `SubtitleConfig` stores a complete native
 presentation assembled from one built-in or directory-provided template
 baseline and explicit field-level overrides, or a complete explicit-coordinate
-envelope. The
+envelope. Python consumers construct the same semantic baseline plus sparse
+overrides through public `build_subtitle_config()`; the CLI shares its
+composition implementation. The
 packaged `default.json` carries only identity metadata; the loader expands it
 from config.py's authoritative fixed defaults and covers the result with exact
 equivalence tests, so omitted selection and explicit `default` cannot drift
