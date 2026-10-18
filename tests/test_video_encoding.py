@@ -113,7 +113,8 @@ def test_encoding_graph_preserves_filters_audio_and_default_codec(
             GEOMETRY,
             video_encoding=config,
         )
-    command = ffmpeg.compile(graph)
+    # ffmpeg-python uses a Python 2 basestring shim for its inferred argv type.
+    command = cast(list[str], ffmpeg.compile(graph))
     assert "subtitles=" in " ".join(command)
     if preview:
         assert "-an" in command
