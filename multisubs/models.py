@@ -515,6 +515,19 @@ class RunArtifacts:
 
 
 @dataclass(frozen=True)
+class VideoEncodingConfig:
+    """Optional video encoding settings, independent of subtitle presentation.
+
+    An omitted encoder preserves FFmpeg's existing selection. Explicit encoders
+    use their validated preset and quality defaults at the rendering boundary.
+    """
+
+    encoder: str | None = None
+    preset: str | None = None
+    quality: int | None = None
+
+
+@dataclass(frozen=True)
 class RunRequest:
     """Validated CLI request passed through the orchestration layer."""
 
@@ -530,6 +543,7 @@ class RunRequest:
     subtitle_template_resolved: str = "default"
     subtitle_template_source: str = "builtin"
     subtitle_template_base: str | None = None
+    video_encoding: VideoEncodingConfig = field(default_factory=VideoEncodingConfig)
 
 
 @dataclass(frozen=True)
@@ -548,3 +562,4 @@ class PreviewRequest:
     preview_duration_ms: int = 4_000
     subtitle_template_source: str = "builtin"
     subtitle_template_base: str | None = None
+    video_encoding: VideoEncodingConfig = field(default_factory=VideoEncodingConfig)

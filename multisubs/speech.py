@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import ValidationError
-from .models import GeneratedSubtitleArtifacts, SubtitleConfig
+from .models import GeneratedSubtitleArtifacts, SubtitleConfig, VideoEncodingConfig
 
 _LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\Z", re.ASCII)
 _FIELDS = {
@@ -187,6 +187,7 @@ def render_transcript(
     template_dir: str | Path | None = None,
     subtitle_config: SubtitleConfig | None = None,
     progress: Callable[[str], None] | None = None,
+    video_encoding: VideoEncodingConfig | None = None,
 ) -> GeneratedSubtitleArtifacts:
     """Render source speech data on a final video without calling an ASR.
 
@@ -212,7 +213,7 @@ def render_transcript(
         template is not None or template_dir is not None
     ):
         raise ValidationError("Use a template or subtitle_config, not both")
-    from .config import validate_subtitle_config
+    from .config import validate_subtitle_config, validate_video_encoding_config
     from .custom_templates import resolve_subtitle_template
     from .font_catalog import bundled_font_directory
     from .layout import resolve_subtitle_config, resolve_wrapping_metrics
@@ -221,6 +222,7 @@ def render_transcript(
         embed_subtitles,
         probe_video_geometry,
         validate_ffmpeg_support,
+        validate_video_encoding_support,
     )
     from .transcriber import _build_subtitle_segments, write_transcription_artifacts
     from .utils import (
@@ -233,6 +235,7 @@ def render_transcript(
 
     selected = resolve_subtitle_template(template, template_dir)
     config = validate_subtitle_config(subtitle_config or selected.template.config)
+    selected_encoding = validate_video_encoding_config(video_encoding)
     source = Path(video_path).expanduser().resolve(strict=False)
     if not source.is_file():
         raise ValidationError(f"Video file not found at '{video_path}'")
@@ -240,6 +243,7 @@ def render_transcript(
     if destination.exists() and not destination.is_dir():
         raise ValidationError(f"Output path '{output_dir}' is a file")
     validate_ffmpeg_support()
+    validate_video_encoding_support(selected_encoding)
     geometry = probe_video_geometry(source)
     native = TranscriptDocument(
         source_path=source,
@@ -292,6 +296,7 @@ def render_transcript(
                 geometry=geometry,
                 fonts_dir=metrics.text_measurer.info.renderer_fonts_dir,
                 progress=progress,
+                video_encoding=selected_encoding,
             )
             stem = with_language_suffix(source.stem, document.language)
             while True:

@@ -1,4 +1,4 @@
-"""Static CLI and ASS styling configuration."""
+"""Static CLI, video encoding, and ASS styling configuration."""
 
 from __future__ import annotations
 
@@ -34,8 +34,69 @@ from .models import (
     SubtitleWordBackdropStyle,
     SubtitleWordElementAnimation,
     TextCase,
+    VideoEncodingConfig,
     WordAnimationMode,
 )
+
+VIDEO_ENCODER_CHOICES = ("libx264", "h264_nvenc")
+X264_PRESET_CHOICES = (
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+    "placebo",
+)
+NVENC_PRESET_CHOICES = tuple(f"p{index}" for index in range(1, 8))
+DEFAULT_X264_PRESET = "medium"
+DEFAULT_NVENC_PRESET = "p4"
+DEFAULT_X264_QUALITY = 23
+DEFAULT_NVENC_QUALITY = 28
+
+
+def validate_video_encoding_config(
+    config: VideoEncodingConfig | None = None,
+) -> VideoEncodingConfig:
+    """Validate explicit encoding choices without importing or invoking FFmpeg."""
+    if config is None:
+        return VideoEncodingConfig()
+    if not isinstance(config, VideoEncodingConfig):
+        raise ValidationError("video_encoding must be a VideoEncodingConfig")
+    if config.encoder is None:
+        if config.preset is not None or config.quality is not None:
+            raise ValidationError(
+                "--video-preset and --video-quality require --video-encoder "
+                "(libx264 or h264_nvenc)"
+            )
+        return config
+    if (
+        not isinstance(config.encoder, str)
+        or config.encoder not in VIDEO_ENCODER_CHOICES
+    ):
+        raise ValidationError("--video-encoder must be libx264 or h264_nvenc")
+    presets = (
+        X264_PRESET_CHOICES if config.encoder == "libx264" else NVENC_PRESET_CHOICES
+    )
+    default_preset = (
+        DEFAULT_X264_PRESET if config.encoder == "libx264" else DEFAULT_NVENC_PRESET
+    )
+    default_quality = (
+        DEFAULT_X264_QUALITY if config.encoder == "libx264" else DEFAULT_NVENC_QUALITY
+    )
+    preset = config.preset if config.preset is not None else default_preset
+    if not isinstance(preset, str) or preset not in presets:
+        raise ValidationError(
+            f"--video-preset for {config.encoder} must be one of: {', '.join(presets)}"
+        )
+    quality = default_quality if config.quality is None else config.quality
+    if type(quality) is not int or not 0 <= quality <= 51:
+        raise ValidationError("--video-quality must be an integer from 0 through 51")
+    return VideoEncodingConfig(config.encoder, preset, quality)
+
 
 SUPPORTED_LANGUAGES = (
     "ar",
