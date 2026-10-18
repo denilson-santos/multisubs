@@ -1,0 +1,440 @@
+{
+  "warmups": 1,
+  "repetitions": 3,
+  "seed": 20261018,
+  "cases": [
+    {
+      "clip": "animation",
+      "name": "decode",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-ss",
+        "15.0",
+        "-t",
+        "30.0",
+        "-i",
+        "<repo>/multisubs/data/test-horizontal-3.mp4",
+        "-filter_complex",
+        "[0:v]setpts=PTS-STARTPTS[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.6105663599992113,
+          "cpu_seconds": 5.180000000000001,
+          "max_rss_kib": 170764
+        },
+        {
+          "wall_seconds": 0.5895929289999913,
+          "cpu_seconds": 5.152,
+          "max_rss_kib": 169376
+        },
+        {
+          "wall_seconds": 0.591273378000551,
+          "cpu_seconds": 5.297,
+          "max_rss_kib": 162140
+        }
+      ],
+      "wall_seconds": {
+        "samples": [
+          0.6105663599992113,
+          0.5895929289999913,
+          0.591273378000551
+        ],
+        "median": 0.591273378000551,
+        "min": 0.5895929289999913,
+        "max": 0.6105663599992113
+      },
+      "cpu_seconds": {
+        "samples": [
+          5.180000000000001,
+          5.152,
+          5.297
+        ],
+        "median": 5.180000000000001,
+        "min": 5.152,
+        "max": 5.297
+      },
+      "max_rss_kib": {
+        "samples": [
+          170764,
+          169376,
+          162140
+        ],
+        "median": 169376,
+        "min": 162140,
+        "max": 170764
+      }
+    },
+    {
+      "clip": "animation",
+      "name": "decode-and-subtitles",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-ss",
+        "15.0",
+        "-t",
+        "30.0",
+        "-i",
+        "<repo>/multisubs/data/test-horizontal-3.mp4",
+        "-filter_complex",
+        "[0:v]subtitles=filename=<run>/animation/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0];[s0]setpts=PTS-STARTPTS[s1]",
+        "-map",
+        "[s1]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.7026053999998112,
+          "cpu_seconds": 5.4,
+          "max_rss_kib": 192660
+        },
+        {
+          "wall_seconds": 0.7341211620005197,
+          "cpu_seconds": 5.412,
+          "max_rss_kib": 202672
+        },
+        {
+          "wall_seconds": 0.7188884449988109,
+          "cpu_seconds": 5.727,
+          "max_rss_kib": 197712
+        }
+      ],
+      "wall_seconds": {
+        "samples": [
+          0.7026053999998112,
+          0.7341211620005197,
+          0.7188884449988109
+        ],
+        "median": 0.7188884449988109,
+        "min": 0.7026053999998112,
+        "max": 0.7341211620005197
+      },
+      "cpu_seconds": {
+        "samples": [
+          5.4,
+          5.412,
+          5.727
+        ],
+        "median": 5.412,
+        "min": 5.4,
+        "max": 5.727
+      },
+      "max_rss_kib": {
+        "samples": [
+          192660,
+          202672,
+          197712
+        ],
+        "median": 197712,
+        "min": 192660,
+        "max": 202672
+      }
+    },
+    {
+      "clip": "screen",
+      "name": "decode",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-ss",
+        "60.0",
+        "-t",
+        "30.0",
+        "-i",
+        "<repo>/multisubs/data/test-horizontal-5.mp4",
+        "-filter_complex",
+        "[0:v]setpts=PTS-STARTPTS[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.4145791409991944,
+          "cpu_seconds": 15.178999999999998,
+          "max_rss_kib": 143960
+        },
+        {
+          "wall_seconds": 2.2773837829990953,
+          "cpu_seconds": 14.02,
+          "max_rss_kib": 140624
+        },
+        {
+          "wall_seconds": 2.4057146909999574,
+          "cpu_seconds": 14.719,
+          "max_rss_kib": 138444
+        }
+      ],
+      "wall_seconds": {
+        "samples": [
+          2.4145791409991944,
+          2.2773837829990953,
+          2.4057146909999574
+        ],
+        "median": 2.4057146909999574,
+        "min": 2.2773837829990953,
+        "max": 2.4145791409991944
+      },
+      "cpu_seconds": {
+        "samples": [
+          15.178999999999998,
+          14.02,
+          14.719
+        ],
+        "median": 14.719,
+        "min": 14.02,
+        "max": 15.178999999999998
+      },
+      "max_rss_kib": {
+        "samples": [
+          143960,
+          140624,
+          138444
+        ],
+        "median": 140624,
+        "min": 138444,
+        "max": 143960
+      }
+    },
+    {
+      "clip": "screen",
+      "name": "decode-and-subtitles",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-ss",
+        "60.0",
+        "-t",
+        "30.0",
+        "-i",
+        "<repo>/multisubs/data/test-horizontal-5.mp4",
+        "-filter_complex",
+        "[0:v]subtitles=filename=<run>/screen/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0];[s0]setpts=PTS-STARTPTS[s1]",
+        "-map",
+        "[s1]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.7513249699986773,
+          "cpu_seconds": 16.869999999999997,
+          "max_rss_kib": 187792
+        },
+        {
+          "wall_seconds": 2.9708626399988134,
+          "cpu_seconds": 18.317999999999998,
+          "max_rss_kib": 187548
+        },
+        {
+          "wall_seconds": 2.8314237400009006,
+          "cpu_seconds": 17.446,
+          "max_rss_kib": 189276
+        }
+      ],
+      "wall_seconds": {
+        "samples": [
+          2.7513249699986773,
+          2.9708626399988134,
+          2.8314237400009006
+        ],
+        "median": 2.8314237400009006,
+        "min": 2.7513249699986773,
+        "max": 2.9708626399988134
+      },
+      "cpu_seconds": {
+        "samples": [
+          16.869999999999997,
+          18.317999999999998,
+          17.446
+        ],
+        "median": 17.446,
+        "min": 16.869999999999997,
+        "max": 18.317999999999998
+      },
+      "max_rss_kib": {
+        "samples": [
+          187792,
+          187548,
+          189276
+        ],
+        "median": 187792,
+        "min": 187548,
+        "max": 189276
+      }
+    },
+    {
+      "clip": "talking-head",
+      "name": "decode",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-ss",
+        "610.0",
+        "-t",
+        "30.0",
+        "-i",
+        "<repo>/multisubs/data/test-horizontal-5.mp4",
+        "-filter_complex",
+        "[0:v]setpts=PTS-STARTPTS[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.6865641179992963,
+          "cpu_seconds": 18.34,
+          "max_rss_kib": 137460
+        },
+        {
+          "wall_seconds": 2.6243991299998015,
+          "cpu_seconds": 17.593,
+          "max_rss_kib": 130400
+        },
+        {
+          "wall_seconds": 2.622293864000312,
+          "cpu_seconds": 17.88,
+          "max_rss_kib": 133708
+        }
+      ],
+      "wall_seconds": {
+        "samples": [
+          2.6865641179992963,
+          2.6243991299998015,
+          2.622293864000312
+        ],
+        "median": 2.6243991299998015,
+        "min": 2.622293864000312,
+        "max": 2.6865641179992963
+      },
+      "cpu_seconds": {
+        "samples": [
+          18.34,
+          17.593,
+          17.88
+        ],
+        "median": 17.88,
+        "min": 17.593,
+        "max": 18.34
+      },
+      "max_rss_kib": {
+        "samples": [
+          137460,
+          130400,
+          133708
+        ],
+        "median": 133708,
+        "min": 130400,
+        "max": 137460
+      }
+    },
+    {
+      "clip": "talking-head",
+      "name": "decode-and-subtitles",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-ss",
+        "610.0",
+        "-t",
+        "30.0",
+        "-i",
+        "<repo>/multisubs/data/test-horizontal-5.mp4",
+        "-filter_complex",
+        "[0:v]subtitles=filename=<run>/talking-head/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0];[s0]setpts=PTS-STARTPTS[s1]",
+        "-map",
+        "[s1]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 3.0502293959998497,
+          "cpu_seconds": 20.829,
+          "max_rss_kib": 182012
+        },
+        {
+          "wall_seconds": 3.130942182000581,
+          "cpu_seconds": 21.421,
+          "max_rss_kib": 191024
+        },
+        {
+          "wall_seconds": 3.2027679440016072,
+          "cpu_seconds": 21.383,
+          "max_rss_kib": 194368
+        }
+      ],
+      "wall_seconds": {
+        "samples": [
+          3.0502293959998497,
+          3.130942182000581,
+          3.2027679440016072
+        ],
+        "median": 3.130942182000581,
+        "min": 3.0502293959998497,
+        "max": 3.2027679440016072
+      },
+      "cpu_seconds": {
+        "samples": [
+          20.829,
+          21.421,
+          21.383
+        ],
+        "median": 21.383,
+        "min": 20.829,
+        "max": 21.421
+      },
+      "max_rss_kib": {
+        "samples": [
+          182012,
+          191024,
+          194368
+        ],
+        "median": 191024,
+        "min": 182012,
+        "max": 194368
+      }
+    }
+  ],
+  "note": "Video-only null sink; separate runs are not additive stage timings."
+}

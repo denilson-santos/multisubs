@@ -1,0 +1,1297 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-18T14:49:11.938080+00:00",
+  "git_sha": "55a86e352a77157ee2e43957319bba4aa1d6f966",
+  "multisubs": "5.1.0",
+  "python": "3.10.12",
+  "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "logical_cpus": 16,
+  "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+  "ffmpeg": "ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2000-2021 the FFmpeg developers\nbuilt with gcc 11 (Ubuntu 11.2.0-19ubuntu1)\nconfiguration: --prefix=/usr --extra-version=0ubuntu0.22.04.1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --enable-pocketsphinx --enable-librsvg --enable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-shared\nlibavutil      56. 70.100 / 56. 70.100\nlibavcodec     58.134.100 / 58.134.100\nlibavformat    58. 76.100 / 58. 76.100\nlibavdevice    58. 13.100 / 58. 13.100\nlibavfilter     7.110.100 /  7.110.100\nlibswscale      5.  9.100 /  5.  9.100\nlibswresample   3.  9.100 /  3.  9.100\nlibpostproc    55.  9.100 / 55.  9.100\n",
+  "ffprobe": "ffprobe version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2007-2021 the FFmpeg developers",
+  "packages": {
+    "Pillow": "12.3.0",
+    "ffmpeg-python": "0.2.0",
+    "fonttools": "4.63.0",
+    "uniseg": "0.10.1"
+  },
+  "parameters": {
+    "duration": 12.0,
+    "fps": 30,
+    "repetitions": 3,
+    "sizes": [
+      "1080x1920"
+    ],
+    "warmups": 1,
+    "seed": 20261018,
+    "quality": true
+  },
+  "preparation": [
+    {
+      "size": "1080x1920",
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.013698034999833908,
+          0.016761920000135433,
+          0.012648446000184776
+        ],
+        "median": 0.013698034999833908,
+        "min": 0.012648446000184776,
+        "max": 0.016761920000135433
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.14236499099979483,
+          0.14060638499995548,
+          0.14211781699987114
+        ],
+        "median": 0.14211781699987114,
+        "min": 0.14060638499995548,
+        "max": 0.14236499099979483
+      },
+      "ass_bytes": 4266,
+      "ass_dialogues": 28,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Regular",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 64,
+        "requested_weight_name": "regular",
+        "requested_weight": 400,
+        "requested_weight_input": "regular",
+        "requested_weight_input_form": "default",
+        "resolved_weight_name": "regular",
+        "resolved_weight": 400,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.011920290000034583,
+          0.011666048000279261,
+          0.011864719999721274
+        ],
+        "median": 0.011864719999721274,
+        "min": 0.011666048000279261,
+        "max": 0.011920290000034583
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.09385764199987534,
+          0.09502951599961307,
+          0.09550731400031509
+        ],
+        "median": 0.09502951599961307,
+        "min": 0.09385764199987534,
+        "max": 0.09550731400031509
+      },
+      "ass_bytes": 1512,
+      "ass_dialogues": 12,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.013677665999694,
+          0.011876251000103366,
+          0.012008815000172035
+        ],
+        "median": 0.012008815000172035,
+        "min": 0.011876251000103366,
+        "max": 0.013677665999694
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.11053161700010605,
+          0.1121128940003473,
+          0.11166009299995494
+        ],
+        "median": 0.11166009299995494,
+        "min": 0.11053161700010605,
+        "max": 0.1121128940003473
+      },
+      "ass_bytes": 33017,
+      "ass_dialogues": 232,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.012968911999905686,
+          0.01167992700038667,
+          0.01152477400000862
+        ],
+        "median": 0.01167992700038667,
+        "min": 0.01152477400000862,
+        "max": 0.012968911999905686
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.10199126399993474,
+          0.11251369799992972,
+          0.10161701100014398
+        ],
+        "median": 0.10199126399993474,
+        "min": 0.10161701100014398,
+        "max": 0.11251369799992972
+      },
+      "ass_bytes": 28593,
+      "ass_dialogues": 208,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Bold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 61,
+        "requested_weight_name": "bold",
+        "requested_weight": 700,
+        "requested_weight_input": "bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "bold",
+        "resolved_weight": 700,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "size": "1080x1920",
+      "name": "decode",
+      "kind": "null",
+      "style": null,
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-map",
+        "0:0",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.2755302720001964,
+          "cpu_seconds": 2.315,
+          "max_rss_kib": 179628
+        },
+        {
+          "wall_seconds": 0.2964249460001156,
+          "cpu_seconds": 2.391,
+          "max_rss_kib": 179560
+        },
+        {
+          "wall_seconds": 0.3085165729999062,
+          "cpu_seconds": 2.376,
+          "max_rss_kib": 180116
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          0.2755302720001964,
+          0.2964249460001156,
+          0.3085165729999062
+        ],
+        "median": 0.2964249460001156,
+        "min": 0.2755302720001964,
+        "max": 0.3085165729999062
+      },
+      "speed_realtime": 40.48242282549094,
+      "fps": 1214.4726847647282
+    },
+    {
+      "size": "1080x1920",
+      "name": "filter-default",
+      "kind": "null",
+      "style": "default",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/default-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/roboto:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.49254857999994783,
+          "cpu_seconds": 2.029,
+          "max_rss_kib": 210280
+        },
+        {
+          "wall_seconds": 0.522986248000052,
+          "cpu_seconds": 2.068,
+          "max_rss_kib": 192924
+        },
+        {
+          "wall_seconds": 0.49200602099972457,
+          "cpu_seconds": 2.005,
+          "max_rss_kib": 192616
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          0.49254857999994783,
+          0.522986248000052,
+          0.49200602099972457
+        ],
+        "median": 0.49254857999994783,
+        "min": 0.49200602099972457,
+        "max": 0.522986248000052
+      },
+      "speed_realtime": 24.36307906927936,
+      "fps": 730.8923720783808
+    },
+    {
+      "size": "1080x1920",
+      "name": "filter-yellow-static",
+      "kind": "null",
+      "style": "yellow-static",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-static-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.5020431299999473,
+          "cpu_seconds": 2.114,
+          "max_rss_kib": 193760
+        },
+        {
+          "wall_seconds": 0.49323669800014613,
+          "cpu_seconds": 2.069,
+          "max_rss_kib": 193912
+        },
+        {
+          "wall_seconds": 0.5519978720003564,
+          "cpu_seconds": 2.253,
+          "max_rss_kib": 193792
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          0.5020431299999473,
+          0.49323669800014613,
+          0.5519978720003564
+        ],
+        "median": 0.5020431299999473,
+        "min": 0.49323669800014613,
+        "max": 0.5519978720003564
+      },
+      "speed_realtime": 23.902328869635685,
+      "fps": 717.0698660890705
+    },
+    {
+      "size": "1080x1920",
+      "name": "filter-yellow-pop",
+      "kind": "null",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.5226112669997747,
+          "cpu_seconds": 2.504,
+          "max_rss_kib": 196808
+        },
+        {
+          "wall_seconds": 0.4965008169997418,
+          "cpu_seconds": 2.301,
+          "max_rss_kib": 196852
+        },
+        {
+          "wall_seconds": 0.4311113700000533,
+          "cpu_seconds": 2.1,
+          "max_rss_kib": 197316
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          0.5226112669997747,
+          0.4965008169997418,
+          0.4311113700000533
+        ],
+        "median": 0.4965008169997418,
+        "min": 0.4311113700000533,
+        "max": 0.5226112669997747
+      },
+      "speed_realtime": 24.169144519265192,
+      "fps": 725.0743355779558
+    },
+    {
+      "size": "1080x1920",
+      "name": "filter-neon-magenta-pulse",
+      "kind": "null",
+      "style": "neon-magenta-pulse",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/neon-magenta-pulse-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/roboto:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-f",
+        "null",
+        "-vcodec",
+        "wrapped_avframe",
+        "-"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.484211053999843,
+          "cpu_seconds": 1.999,
+          "max_rss_kib": 199684
+        },
+        {
+          "wall_seconds": 0.48651029999973616,
+          "cpu_seconds": 2.056,
+          "max_rss_kib": 200020
+        },
+        {
+          "wall_seconds": 0.4895901039999444,
+          "cpu_seconds": 2.085,
+          "max_rss_kib": 199864
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          0.484211053999843,
+          0.48651029999973616,
+          0.4895901039999444
+        ],
+        "median": 0.48651029999973616,
+        "min": 0.484211053999843,
+        "max": 0.4895901039999444
+      },
+      "speed_realtime": 24.66545929244768,
+      "fps": 739.9637787734304
+    },
+    {
+      "size": "1080x1920",
+      "name": "encode-no-subs",
+      "kind": "encode",
+      "style": null,
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-map",
+        "0:0",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "<run>/1080x1920-encode-no-subs.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.0243905779998386,
+          "cpu_seconds": 19.776000000000003,
+          "max_rss_kib": 1184744
+        },
+        {
+          "wall_seconds": 1.9873424800002795,
+          "cpu_seconds": 19.511,
+          "max_rss_kib": 1183268
+        },
+        {
+          "wall_seconds": 2.349575578999975,
+          "cpu_seconds": 21.665,
+          "max_rss_kib": 1174780
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.0243905779998386,
+          1.9873424800002795,
+          2.349575578999975
+        ],
+        "median": 2.0243905779998386,
+        "min": 1.9873424800002795,
+        "max": 2.349575578999975
+      },
+      "speed_realtime": 5.927709865087585,
+      "fps": 177.83129595262753,
+      "output": {
+        "bytes": 8694252,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "current-default",
+      "kind": "encode",
+      "style": "default",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/default-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/roboto:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "<run>/1080x1920-current-default.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.425626896999802,
+          "cpu_seconds": 22.363999999999997,
+          "max_rss_kib": 1187756
+        },
+        {
+          "wall_seconds": 2.502944323000065,
+          "cpu_seconds": 23.688,
+          "max_rss_kib": 1187612
+        },
+        {
+          "wall_seconds": 2.332453342000008,
+          "cpu_seconds": 21.732,
+          "max_rss_kib": 1187332
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.425626896999802,
+          2.502944323000065,
+          2.332453342000008
+        ],
+        "median": 2.425626896999802,
+        "min": 2.332453342000008,
+        "max": 2.502944323000065
+      },
+      "speed_realtime": 4.947174693207147,
+      "fps": 148.41524079621442,
+      "output": {
+        "bytes": 8758452,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "current-yellow-static",
+      "kind": "encode",
+      "style": "yellow-static",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-static-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "<run>/1080x1920-current-yellow-static.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.1982574559997374,
+          "cpu_seconds": 21.220000000000002,
+          "max_rss_kib": 1189932
+        },
+        {
+          "wall_seconds": 2.1686707750000096,
+          "cpu_seconds": 20.949,
+          "max_rss_kib": 1192040
+        },
+        {
+          "wall_seconds": 2.228941776999818,
+          "cpu_seconds": 21.113,
+          "max_rss_kib": 1189972
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.1982574559997374,
+          2.1686707750000096,
+          2.228941776999818
+        ],
+        "median": 2.1982574559997374,
+        "min": 2.1686707750000096,
+        "max": 2.228941776999818
+      },
+      "speed_realtime": 5.458869236289051,
+      "fps": 163.76607708867155,
+      "output": {
+        "bytes": 8809472,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "current-yellow-pop",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "<run>/1080x1920-current-yellow-pop.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.342878510999981,
+          "cpu_seconds": 21.921,
+          "max_rss_kib": 1195640
+        },
+        {
+          "wall_seconds": 2.18263011199997,
+          "cpu_seconds": 20.764,
+          "max_rss_kib": 1221284
+        },
+        {
+          "wall_seconds": 2.331166521999876,
+          "cpu_seconds": 21.487000000000002,
+          "max_rss_kib": 1195044
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.342878510999981,
+          2.18263011199997,
+          2.331166521999876
+        ],
+        "median": 2.331166521999876,
+        "min": 2.18263011199997,
+        "max": 2.342878510999981
+      },
+      "speed_realtime": 5.147637411035469,
+      "fps": 154.42912233106406,
+      "output": {
+        "bytes": 9023192,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.995397,
+        "ssim_bottom35pct": 0.989474
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "current-neon-magenta-pulse",
+      "kind": "encode",
+      "style": "neon-magenta-pulse",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/neon-magenta-pulse-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/roboto:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "<run>/1080x1920-current-neon-magenta-pulse.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.4406527450000794,
+          "cpu_seconds": 22.564,
+          "max_rss_kib": 1195772
+        },
+        {
+          "wall_seconds": 2.2436635549997845,
+          "cpu_seconds": 21.520000000000003,
+          "max_rss_kib": 1195740
+        },
+        {
+          "wall_seconds": 2.3617798079999375,
+          "cpu_seconds": 22.292,
+          "max_rss_kib": 1204324
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.4406527450000794,
+          2.2436635549997845,
+          2.3617798079999375
+        ],
+        "median": 2.3617798079999375,
+        "min": 2.2436635549997845,
+        "max": 2.4406527450000794
+      },
+      "speed_realtime": 5.080913961307064,
+      "fps": 152.42741883921192,
+      "output": {
+        "bytes": 9084981,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "x264-fast",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "<run>/1080x1920-x264-fast.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.257072194000102,
+          "cpu_seconds": 20.79,
+          "max_rss_kib": 1070408
+        },
+        {
+          "wall_seconds": 2.0983197069999733,
+          "cpu_seconds": 19.634,
+          "max_rss_kib": 1075640
+        },
+        {
+          "wall_seconds": 2.112059837000288,
+          "cpu_seconds": 20.524,
+          "max_rss_kib": 1072472
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.257072194000102,
+          2.0983197069999733,
+          2.112059837000288
+        ],
+        "median": 2.112059837000288,
+        "min": 2.0983197069999733,
+        "max": 2.257072194000102
+      },
+      "speed_realtime": 5.6816572096003375,
+      "fps": 170.4497162880101,
+      "output": {
+        "bytes": 9040993,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.995263,
+        "ssim_bottom35pct": 0.989173
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "x264-veryfast",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "<run>/1080x1920-x264-veryfast.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 1.637020709999888,
+          "cpu_seconds": 10.795,
+          "max_rss_kib": 929312
+        },
+        {
+          "wall_seconds": 1.6820594719997644,
+          "cpu_seconds": 11.136,
+          "max_rss_kib": 932412
+        },
+        {
+          "wall_seconds": 1.672296352000103,
+          "cpu_seconds": 11.27,
+          "max_rss_kib": 928084
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          1.637020709999888,
+          1.6820594719997644,
+          1.672296352000103
+        ],
+        "median": 1.672296352000103,
+        "min": 1.637020709999888,
+        "max": 1.6820594719997644
+      },
+      "speed_realtime": 7.175761631990489,
+      "fps": 215.27284895971465,
+      "output": {
+        "bytes": 7831300,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.993855,
+        "ssim_bottom35pct": 0.985991
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "x264-ultrafast",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "23",
+        "<run>/1080x1920-x264-ultrafast.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.9329487350000818,
+          "cpu_seconds": 5.168,
+          "max_rss_kib": 525404
+        },
+        {
+          "wall_seconds": 0.8764105610002844,
+          "cpu_seconds": 5.008,
+          "max_rss_kib": 525260
+        },
+        {
+          "wall_seconds": 0.9366539829998146,
+          "cpu_seconds": 5.202,
+          "max_rss_kib": 525444
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          0.9329487350000818,
+          0.8764105610002844,
+          0.9366539829998146
+        ],
+        "median": 0.9329487350000818,
+        "min": 0.8764105610002844,
+        "max": 0.9366539829998146
+      },
+      "speed_realtime": 12.862443079467756,
+      "fps": 385.8732923840327,
+      "output": {
+        "bytes": 22417148,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.998348,
+        "ssim_bottom35pct": 0.996821
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "x264-threads8-filter1",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-filter_complex_threads",
+        "1",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "23",
+        "-threads",
+        "8",
+        "<run>/1080x1920-x264-threads8-filter1.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 3.4519517379999343,
+          "cpu_seconds": 16.119,
+          "max_rss_kib": 786180
+        },
+        {
+          "wall_seconds": 3.541453909000211,
+          "cpu_seconds": 16.353,
+          "max_rss_kib": 786636
+        },
+        {
+          "wall_seconds": 3.348565036999844,
+          "cpu_seconds": 15.725,
+          "max_rss_kib": 786972
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          3.4519517379999343,
+          3.541453909000211,
+          3.348565036999844
+        ],
+        "median": 3.4519517379999343,
+        "min": 3.348565036999844,
+        "max": 3.541453909000211
+      },
+      "speed_realtime": 3.4762942563480963,
+      "fps": 104.28882769044289,
+      "output": {
+        "bytes": 9035231,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.995301,
+        "ssim_bottom35pct": 0.98923
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "nvenc-p4",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p4",
+        "-rc",
+        "vbr",
+        "-cq",
+        "23",
+        "-b:v",
+        "0",
+        "<run>/1080x1920-nvenc-p4.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 1.5337225410003157,
+          "cpu_seconds": 2.275,
+          "max_rss_kib": 397808
+        },
+        {
+          "wall_seconds": 1.5432335530003911,
+          "cpu_seconds": 2.372,
+          "max_rss_kib": 398232
+        },
+        {
+          "wall_seconds": 1.526811670999905,
+          "cpu_seconds": 2.278,
+          "max_rss_kib": 397408
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          1.5337225410003157,
+          1.5432335530003911,
+          1.526811670999905
+        ],
+        "median": 1.5337225410003157,
+        "min": 1.526811670999905,
+        "max": 1.5432335530003911
+      },
+      "speed_realtime": 7.82410095646989,
+      "fps": 234.7230286940967,
+      "output": {
+        "bytes": 17502846,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.998375,
+        "ssim_bottom35pct": 0.996634
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "nvenc-p7",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p7",
+        "-rc",
+        "vbr",
+        "-cq",
+        "23",
+        "-b:v",
+        "0",
+        "<run>/1080x1920-nvenc-p7.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 2.378323817999899,
+          "cpu_seconds": 2.339,
+          "max_rss_kib": 527720
+        },
+        {
+          "wall_seconds": 2.41313221900009,
+          "cpu_seconds": 2.744,
+          "max_rss_kib": 527076
+        },
+        {
+          "wall_seconds": 2.379383285000131,
+          "cpu_seconds": 2.451,
+          "max_rss_kib": 527636
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          2.378323817999899,
+          2.41313221900009,
+          2.379383285000131
+        ],
+        "median": 2.379383285000131,
+        "min": 2.378323817999899,
+        "max": 2.41313221900009
+      },
+      "speed_realtime": 5.0433236526663,
+      "fps": 151.299709579989,
+      "output": {
+        "bytes": 17835388,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.998572,
+        "ssim_bottom35pct": 0.997138
+      }
+    }
+  ],
+  "gpu": "NVIDIA GeForce RTX 3070, 560.94, 8192 MiB",
+  "sources": {
+    "1080x1920": {
+      "codec_name": "h264",
+      "width": 1080,
+      "height": 1920,
+      "nb_frames": "360",
+      "pix_fmt": "yuv420p",
+      "duration": "12.000000"
+    }
+  },
+  "evidence_note": "Portable selection of raw observations; container tags and generated transcript metadata omitted. RSS recovered from the same per-run FFmpeg log when the older build used the kB label."
+}

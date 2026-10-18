@@ -37,7 +37,11 @@ the selected ASR must download model assets that are not already cached.
 - Python 3.10 through 3.13.
 - FFmpeg and ffprobe available on `PATH`.
 - An FFmpeg build with the `subtitles` filter and libass support; animated
-  previews additionally require the `libx264` H.264 encoder.
+  previews additionally require `libx264` by default, or the explicitly selected
+  H.264 encoder.
+- Optional `h264_nvenc` rendering requires an NVIDIA GPU and a driver compatible
+  with the NVENC API used to compile FFmpeg. A working ASR CUDA runtime alone
+  does not establish NVENC compatibility.
 - Enough CPU or GPU memory for the selected ASR model.
 
 ## 📦 Installation
@@ -369,7 +373,8 @@ multisubs -i ./video.mp4 -o ./output \
 
 The result is a collision-safe `video-subtitled.mp4` copy with hard subtitles
 and copied audio. ASS keeps its authored styling; SRT uses libass defaults.
-This mode accepts input, output, `--fonts-dir`, and `--verbose`; transcription,
+This mode accepts input, output, `--fonts-dir`, `--verbose`, and the
+[video encoding options](#video-encoding); transcription,
 template, styling, animation, preview, and `--keep-transcriptions` options
 are rejected. Python callers can use `render_subtitle_file()`;
 see [public functions](#public-functions).
@@ -416,6 +421,72 @@ WhisperX models: `tiny.en`, `tiny`, `base.en`, `base`, `small.en`, `small`,
 small models plus `large-v1`, `large-v2`, `large-v3`, and `large-v3-turbo`.
 Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
 `Qwen/Qwen3-ASR-1.7B-hf`.
+
+### Video encoding
+
+#### Defaults
+
+For normal rendering, omitting `--video-encoder` leaves encoder selection,
+preset, and quality to FFmpeg. In the tested MP4 runs, FFmpeg selected
+`libx264 / medium / CRF 23`. NVIDIA encoding is enabled only when explicitly
+selected; using a GPU for transcription does not enable it for rendering.
+
+| `--video-encoder` | Default preset | Default quality |
+| --- | --- | --- |
+| omitted | FFmpeg default | FFmpeg default |
+| `libx264` (CPU) | `medium` | CRF `23` |
+| `h264_nvenc` (NVIDIA) | `p4` | CQ `28`, VBR without a target bitrate |
+
+#### Examples
+
+Use NVIDIA with the recommended defaults (`p4 / CQ 28`):
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output --video-encoder h264_nvenc
+```
+
+Use CPU with explicit defaults (`medium / CRF 23`):
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output --video-encoder libx264
+```
+
+For faster CPU rendering, select `veryfast`. Quality remains CRF 23, but fine
+details can be softer than with `medium`:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --video-encoder libx264 --video-preset veryfast
+```
+
+For higher NVIDIA fidelity and larger files, add `--video-quality 23` to the
+NVIDIA command. CQ 23 and CQ 28 had similar encoding times in the
+[real-footage benchmarks](docs/benchmarks/2026-10-18-real-rendering.md);
+CQ 23 produced files 64–84% larger. Detailed speed/quality/size comparisons,
+including earlier 4K tests, are in the
+[rendering investigation](docs/benchmarks/2026-10-18-rendering.md).
+
+#### Options and compatibility
+
+`--video-preset` and `--video-quality` require `--video-encoder`.
+
+- **Preset:** controls the speed/compression tradeoff. x264 accepts `ultrafast`,
+  `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, `veryslow`,
+  and `placebo`. NVENC accepts `p1` through `p7`, from fastest to slowest.
+- **Quality:** integer `0`–`51`, using CRF for x264 and CQ for NVENC. Lower values
+  generally preserve more detail and produce larger files. CRF and CQ numbers
+  are not equivalent. NVENC CQ `0` requests automatic quality selection.
+
+These options work with normal rendering, `--subtitle-file`, and
+`--preview-animation`; PNG `--preview-layout` rejects them. Animated previews
+use `libx264` when no encoder is selected and remain silent; normal rendering
+copies audio. Encoding settings are independent of subtitle templates.
+
+Both explicit encoders produce H.264. The output keeps the input extension,
+so its container must support H.264. NVENC requires a compatible NVIDIA GPU,
+driver, and FFmpeg build. Encoder initialization errors stop processing before
+transcription; the requested encoder is never silently replaced. Decoding and
+subtitle filtering continue to use the CPU.
 
 ### Preview and animation
 
@@ -901,6 +972,7 @@ final video's geometry.
 render_transcript(
     transcript, video_path, output_dir,
     *, template=None, template_dir=None, subtitle_config=None, progress=None,
+    video_encoding=None,
 ) -> GeneratedSubtitleArtifacts
 ```
 
@@ -913,6 +985,30 @@ render_transcript(
 - Rendering reuses the supplied speech without another ASR call. Missing
   alignment keeps normal timing fallbacks and reports suppressed word effects
   through `progress`, or `UserWarning` when no callback is supplied.
+- `video_encoding` accepts the immutable `VideoEncodingConfig` exported from
+  `multisubs`, separately from `subtitle_config` and its template overrides.
+
+```python
+from multisubs import VideoEncodingConfig, render_transcript
+
+artifacts = render_transcript(
+    speech,
+    "video.mp4",
+    "output",
+    template="yellow-pop",
+    video_encoding=VideoEncodingConfig(
+        encoder="h264_nvenc",
+        preset="p4",
+        quality=28,
+    ),
+)
+```
+
+`VideoEncodingConfig(encoder=None, preset=None, quality=None)` preserves existing
+FFmpeg selection. Explicit encoders inherit the defaults in
+[video encoding](#video-encoding). The same keyword is supported by
+`render_subtitle_file()` and `embed_subtitles()`; `build_subtitle_config()`
+continues to accept only presentation settings.
 
 The returned `GeneratedSubtitleArtifacts` contains three `Path` attributes:
 `srt_path`, `ass_path`, and `video_path`. All three files use one collision-safe
@@ -924,7 +1020,7 @@ Burn an existing local SRT or ASS into a new video with copied audio.
 
 ```text
 render_subtitle_file(
-    video_path, subtitle_path, output_dir, *, fonts_dir=None,
+    video_path, subtitle_path, output_dir, *, fonts_dir=None, video_encoding=None,
 ) -> Path
 ```
 
@@ -1163,11 +1259,24 @@ The default test suite is hermetic and excludes tests marked `integration`.
 Avoid a full transcription as a routine smoke test because model loading can
 download large assets and consume significant CPU, GPU, memory, and time.
 
+To require the NVIDIA encoder checks on a compatible local GPU, run
+`MULTISUBS_TEST_NVENC=1 python -m pytest -m integration tests/test_video_encoding_integration.py`.
+These checks use synthetic media through the CLI and public rendering APIs;
+they do not load an ASR model.
+
 For local debugging, `python -m scripts.replay_subtitle_layout retained.json`
 rebuilds collision-safe JSON/SRT/ASS without loading speech models. `--render`
 uses a synthetic background; `--uncaptioned-video` explicitly selects a clean
 video. Replay cannot recover text or boundaries discarded by earlier
 processing. See the [regression instructions](docs/plans/multilingual-subtitles/00-regressions-and-decisions.md).
+
+For local rendering benchmarks on Linux, run
+`python -m scripts.benchmark_rendering --output-dir data/benchmarks --quality`.
+This uses synthetic media without ASR and records repeated preparation,
+decode/filter, and encode measurements in a fresh ignored directory. Optional
+`--nvenc` cases require a compatible NVIDIA GPU, driver, and FFmpeg build.
+See the [method, results, and optimization candidates](docs/benchmarks/2026-10-18-rendering.md)
+before interpreting throughput or quality comparisons.
 
 The CLI exits with status `0` on success, `2` for invalid arguments or paths,
 and `1` for dependency, transcription, artifact, or FFmpeg failures.

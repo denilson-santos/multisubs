@@ -329,6 +329,12 @@ segmentation:
   If a display cue cannot be mapped to every record in order, it remains plain
   and contributes to one aggregate effect fallback warning; a visual line
   break inside a group is not itself a fallback condition.
+- Timed cue layout computes display units once for each semantic cue. When
+  subdividing it, linguistic-group reconstruction reuses the already partitioned
+  units' original source offsets, independent of transformed display casing.
+  It does not repeat full-source Unicode line breaking for every subdivision.
+  These units remain local to cue processing; no transcript-keyed global cache,
+  persisted text cache, or replacement Unicode algorithm is introduced.
 - Before ASS serialization, the shared renderer-capability boundary examines
   actual display characters. Bidirectional classes, contextual-shaping script
   ranges, and joining controls disable both word tracks because measured
@@ -895,6 +901,39 @@ selects the recorded stream index, retains FFmpeg's enabled-by-default
 autorotation, uses the render dimensions as libass original_size, and requests
 copying of any available audio streams. Probe and FFmpeg failures preserve their
 original cause behind an actionable project error.
+
+`models.VideoEncodingConfig` holds optional encoder, preset, and integer
+quality independently of `SubtitleConfig`, templates, and retained subtitle
+JSON. `config.validate_video_encoding_config()` is the pure validation boundary:
+no encoder means no preset/quality and no new FFmpeg flags. Explicit `libx264`
+uses medium/CRF 23 defaults and the standard named presets; explicit
+`h264_nvenc` uses p4/CQ 28 defaults and presets p1 through p7. Both quality
+ranges are integer 0 through 51; NVENC CQ 0 retains FFmpeg's automatic meaning.
+`RunRequest` and `PreviewRequest` carry the immutable normalized settings.
+The CLI exposes `--video-encoder`, `--video-preset`, and `--video-quality`,
+accepts them for external subtitles and animated previews, and rejects them
+for PNG previews. Python rendering APIs take the optional `video_encoding`
+keyword; `VideoEncodingConfig` is lazily exported from the package root.
+
+`subtitler.validate_video_encoding_support()` initializes an explicitly selected
+encoder on one synthetic 320×180 yuv420p frame to a null sink, with a 30 second
+timeout and bounded diagnostics. High-level normal CLI, source-transcript,
+and external-subtitle paths call it before ASR/artifact creation. The animated
+preview renderer calls it before capturing the frozen frame. Default selection
+does not start a preflight process. No hardware availability cache or automatic
+encoder fallback is used. Media-specific format, size, and runtime resource
+constraints remain the responsibility of the real encode.
+
+Only `subtitler.py` maps validated settings to FFmpeg options. Explicit x264
+sets video codec, preset, and CRF; NVENC sets video codec, preset, VBR/CQ and
+zero target bitrate. Source decoding and libass filtering remain on the
+existing software graph. Main rendering retains copied audio, input-derived
+geometry and output extension; an explicitly selected encoder must be supported
+by that container. Animated previews retain their existing H.264/libx264 default,
+30 fps, silent MP4, duration, geometry, and pixel-format policy, with an explicit
+encoder overriding only the encoding settings. Lower-level `embed_subtitles()`
+validates settings and reports initialization failures from the real render,
+avoiding a repeated preflight when called from a validated pipeline.
 
 All source-video render and preview graphs omit an explicit `autorotate`
 argument. FFmpeg 4.4 requires a separate boolean value, while FFmpeg 9.0

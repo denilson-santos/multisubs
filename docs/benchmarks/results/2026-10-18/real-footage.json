@@ -1,0 +1,1455 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-18T17:39:22.090518+00:00",
+  "git_sha": "55a86e352a77157ee2e43957319bba4aa1d6f966",
+  "working_tree_dirty": true,
+  "code_sha256": {
+    "multisubs/subtitler.py": "31db27b7219ce2402479a7a913d6248fb8ac48a35467ce238661cb3515464d02",
+    "multisubs/config.py": "1cdb796181f87868370851d21d214cbe4ef203f3501f0e41633fa6cb9597d225",
+    "scripts/benchmark_real_rendering.py": "b342ab7652442d07894d0feed63c0b5a6de9fd9629c16cd946965c55f7fe26f6"
+  },
+  "ffmpeg": "ffmpeg version n9.0.2-17-g2a571b6068-20260930 Copyright (c) 2000-2026 the FFmpeg developers",
+  "ffprobe": "ffprobe version n9.0.2-17-g2a571b6068-20260930 Copyright (c) 2007-2026 the FFmpeg developers",
+  "python": "3.10.12",
+  "parameters": {
+    "duration": 30.0,
+    "repetitions": 3,
+    "warmups": 1,
+    "seed": 20261018
+  },
+  "encoder_preflight_seconds": {
+    "x264-medium": 0.01617001500017068,
+    "x264-veryfast": 0.01570832900051755,
+    "nvenc-p4-cq28": 0.5562705439997444,
+    "nvenc-p4-cq23": 0.5064411039993502
+  },
+  "clips": [
+    {
+      "label": "animation",
+      "source": "test-horizontal-3.mp4",
+      "source_sha256": "42bce48f1b78b58eff531cc8da873449cafa301f23790af2dfb550ff412c0abf",
+      "ass_sha256": "f052386b1bc3d88fa578781cb5f0ac0e74e79d3a89b4b33081adce70ed4db583",
+      "start_seconds": 15.0,
+      "duration_seconds": 30.0,
+      "ass_dialogues": 140,
+      "source_video": {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "avg_frame_rate": "24000/1001"
+      },
+      "audio_streams": 1,
+      "cases": [
+        {
+          "name": "x264-medium",
+          "encoder": "libx264",
+          "preset": "medium",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "15.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-3.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/animation/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-crf",
+            "23",
+            "-preset",
+            "medium",
+            "-vcodec",
+            "libx264",
+            "<run>/animation/x264-medium.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 9.616743853000116,
+              "cpu_seconds": 106.593,
+              "max_rss_kib": 1191584
+            },
+            {
+              "wall_seconds": 10.108331272999749,
+              "cpu_seconds": 111.727,
+              "max_rss_kib": 1193456
+            },
+            {
+              "wall_seconds": 9.748780046999855,
+              "cpu_seconds": 107.465,
+              "max_rss_kib": 1197696
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              9.616743853000116,
+              10.108331272999749,
+              9.748780046999855
+            ],
+            "median": 9.748780046999855,
+            "min": 9.616743853000116,
+            "max": 10.108331272999749
+          },
+          "cpu_seconds": {
+            "samples": [
+              106.593,
+              111.727,
+              107.465
+            ],
+            "median": 107.465,
+            "min": 106.593,
+            "max": 111.727
+          },
+          "max_rss_kib": {
+            "samples": [
+              1191584,
+              1193456,
+              1197696
+            ],
+            "median": 1193456,
+            "min": 1191584,
+            "max": 1197696
+          },
+          "output": {
+            "bytes": 13711840,
+            "frames": 720,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1508,
+              "source_first_packet_seconds": 14.841,
+              "source_last_packet_seconds": 44.981,
+              "output_first_packet_seconds": -0.159,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "24000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.995358,
+            "ssim_full_frames": 720,
+            "ssim_full_min": 0.988607,
+            "ssim_full_p05": 0.993098,
+            "ssim_bottom35pct": 0.99565,
+            "ssim_bottom35pct_frames": 720,
+            "ssim_bottom35pct_min": 0.989207,
+            "ssim_bottom35pct_p05": 0.992241
+          },
+          "status": "ok"
+        },
+        {
+          "name": "x264-veryfast",
+          "encoder": "libx264",
+          "preset": "veryfast",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "15.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-3.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/animation/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-crf",
+            "23",
+            "-preset",
+            "veryfast",
+            "-vcodec",
+            "libx264",
+            "<run>/animation/x264-veryfast.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 5.3704145790006805,
+              "cpu_seconds": 43.098,
+              "max_rss_kib": 926416
+            },
+            {
+              "wall_seconds": 5.298638967000443,
+              "cpu_seconds": 42.122,
+              "max_rss_kib": 925472
+            },
+            {
+              "wall_seconds": 4.997370490999856,
+              "cpu_seconds": 39.599999999999994,
+              "max_rss_kib": 926956
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              5.3704145790006805,
+              5.298638967000443,
+              4.997370490999856
+            ],
+            "median": 5.298638967000443,
+            "min": 4.997370490999856,
+            "max": 5.3704145790006805
+          },
+          "cpu_seconds": {
+            "samples": [
+              43.098,
+              42.122,
+              39.599999999999994
+            ],
+            "median": 42.122,
+            "min": 39.599999999999994,
+            "max": 43.098
+          },
+          "max_rss_kib": {
+            "samples": [
+              926416,
+              925472,
+              926956
+            ],
+            "median": 926416,
+            "min": 925472,
+            "max": 926956
+          },
+          "output": {
+            "bytes": 13886009,
+            "frames": 720,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1508,
+              "source_first_packet_seconds": 14.841,
+              "source_last_packet_seconds": 44.981,
+              "output_first_packet_seconds": -0.159,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "24000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.994313,
+            "ssim_full_frames": 720,
+            "ssim_full_min": 0.987698,
+            "ssim_full_p05": 0.991053,
+            "ssim_bottom35pct": 0.994574,
+            "ssim_bottom35pct_frames": 720,
+            "ssim_bottom35pct_min": 0.986177,
+            "ssim_bottom35pct_p05": 0.990268
+          },
+          "status": "ok"
+        },
+        {
+          "name": "nvenc-p4-cq28",
+          "encoder": "h264_nvenc",
+          "preset": "p4",
+          "quality_value": 28,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "15.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-3.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/animation/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-b:v",
+            "0",
+            "-cq",
+            "28",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-vcodec",
+            "h264_nvenc",
+            "<run>/animation/nvenc-p4-cq28.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 2.5426134760000423,
+              "cpu_seconds": 4.833,
+              "max_rss_kib": 377480
+            },
+            {
+              "wall_seconds": 2.4521756829999504,
+              "cpu_seconds": 4.662,
+              "max_rss_kib": 375740
+            },
+            {
+              "wall_seconds": 2.437093551999169,
+              "cpu_seconds": 5.073,
+              "max_rss_kib": 372072
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              2.5426134760000423,
+              2.4521756829999504,
+              2.437093551999169
+            ],
+            "median": 2.4521756829999504,
+            "min": 2.437093551999169,
+            "max": 2.5426134760000423
+          },
+          "cpu_seconds": {
+            "samples": [
+              4.833,
+              4.662,
+              5.073
+            ],
+            "median": 4.833,
+            "min": 4.662,
+            "max": 5.073
+          },
+          "max_rss_kib": {
+            "samples": [
+              377480,
+              375740,
+              372072
+            ],
+            "median": 375740,
+            "min": 372072,
+            "max": 377480
+          },
+          "output": {
+            "bytes": 12739540,
+            "frames": 720,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1508,
+              "source_first_packet_seconds": 14.841,
+              "source_last_packet_seconds": 44.981,
+              "output_first_packet_seconds": -0.159,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "24000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.994658,
+            "ssim_full_frames": 720,
+            "ssim_full_min": 0.987799,
+            "ssim_full_p05": 0.991119,
+            "ssim_bottom35pct": 0.994823,
+            "ssim_bottom35pct_frames": 720,
+            "ssim_bottom35pct_min": 0.985043,
+            "ssim_bottom35pct_p05": 0.990235
+          },
+          "status": "ok"
+        },
+        {
+          "name": "nvenc-p4-cq23",
+          "encoder": "h264_nvenc",
+          "preset": "p4",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "15.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-3.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/animation/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-b:v",
+            "0",
+            "-cq",
+            "23",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-vcodec",
+            "h264_nvenc",
+            "<run>/animation/nvenc-p4-cq23.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 2.449052848000065,
+              "cpu_seconds": 4.941999999999999,
+              "max_rss_kib": 372204
+            },
+            {
+              "wall_seconds": 2.437184657999751,
+              "cpu_seconds": 4.885999999999999,
+              "max_rss_kib": 377932
+            },
+            {
+              "wall_seconds": 2.536344533999909,
+              "cpu_seconds": 4.987,
+              "max_rss_kib": 377844
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              2.449052848000065,
+              2.437184657999751,
+              2.536344533999909
+            ],
+            "median": 2.449052848000065,
+            "min": 2.437184657999751,
+            "max": 2.536344533999909
+          },
+          "cpu_seconds": {
+            "samples": [
+              4.941999999999999,
+              4.885999999999999,
+              4.987
+            ],
+            "median": 4.941999999999999,
+            "min": 4.885999999999999,
+            "max": 4.987
+          },
+          "max_rss_kib": {
+            "samples": [
+              372204,
+              377932,
+              377844
+            ],
+            "median": 377844,
+            "min": 372204,
+            "max": 377932
+          },
+          "output": {
+            "bytes": 20851454,
+            "frames": 720,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1508,
+              "source_first_packet_seconds": 14.841,
+              "source_last_packet_seconds": 44.981,
+              "output_first_packet_seconds": -0.159,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "24000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.996567,
+            "ssim_full_frames": 720,
+            "ssim_full_min": 0.993411,
+            "ssim_full_p05": 0.994841,
+            "ssim_bottom35pct": 0.996734,
+            "ssim_bottom35pct_frames": 720,
+            "ssim_bottom35pct_min": 0.991896,
+            "ssim_bottom35pct_p05": 0.994136
+          },
+          "status": "ok"
+        }
+      ],
+      "reference_frames": 720
+    },
+    {
+      "label": "screen",
+      "source": "test-horizontal-5.mp4",
+      "source_sha256": "ca8c363b1bdf7ca11092f3eb68cbe4c9718028ffd3983a719e059deb6cef0009",
+      "ass_sha256": "d9a51b6cacac7d5ed37ee9b53328df82e373ac1d24d2545d757f8e44dbab2caf",
+      "start_seconds": 60.0,
+      "duration_seconds": 30.0,
+      "ass_dialogues": 800,
+      "source_video": {
+        "codec_name": "av1",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "avg_frame_rate": "60000/1001"
+      },
+      "audio_streams": 1,
+      "cases": [
+        {
+          "name": "x264-medium",
+          "encoder": "libx264",
+          "preset": "medium",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "60.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/screen/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-crf",
+            "23",
+            "-preset",
+            "medium",
+            "-vcodec",
+            "libx264",
+            "<run>/screen/x264-medium.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 9.828153200000088,
+              "cpu_seconds": 95.625,
+              "max_rss_kib": 1195140
+            },
+            {
+              "wall_seconds": 9.541534546000548,
+              "cpu_seconds": 92.126,
+              "max_rss_kib": 1192832
+            },
+            {
+              "wall_seconds": 9.799184956998943,
+              "cpu_seconds": 96.132,
+              "max_rss_kib": 1200776
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              9.828153200000088,
+              9.541534546000548,
+              9.799184956998943
+            ],
+            "median": 9.799184956998943,
+            "min": 9.541534546000548,
+            "max": 9.828153200000088
+          },
+          "cpu_seconds": {
+            "samples": [
+              95.625,
+              92.126,
+              96.132
+            ],
+            "median": 95.625,
+            "min": 92.126,
+            "max": 96.132
+          },
+          "max_rss_kib": {
+            "samples": [
+              1195140,
+              1192832,
+              1200776
+            ],
+            "median": 1195140,
+            "min": 1192832,
+            "max": 1200776
+          },
+          "output": {
+            "bytes": 5648155,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 58.981,
+              "source_last_packet_seconds": 89.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.995623,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.988265,
+            "ssim_full_p05": 0.992631,
+            "ssim_bottom35pct": 0.995883,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.988363,
+            "ssim_bottom35pct_p05": 0.992175
+          },
+          "status": "ok"
+        },
+        {
+          "name": "x264-veryfast",
+          "encoder": "libx264",
+          "preset": "veryfast",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "60.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/screen/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-crf",
+            "23",
+            "-preset",
+            "veryfast",
+            "-vcodec",
+            "libx264",
+            "<run>/screen/x264-veryfast.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 8.278633836998779,
+              "cpu_seconds": 60.594,
+              "max_rss_kib": 927264
+            },
+            {
+              "wall_seconds": 7.892357815999276,
+              "cpu_seconds": 57.927,
+              "max_rss_kib": 930888
+            },
+            {
+              "wall_seconds": 7.718583887999557,
+              "cpu_seconds": 56.345,
+              "max_rss_kib": 931296
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              8.278633836998779,
+              7.892357815999276,
+              7.718583887999557
+            ],
+            "median": 7.892357815999276,
+            "min": 7.718583887999557,
+            "max": 8.278633836998779
+          },
+          "cpu_seconds": {
+            "samples": [
+              60.594,
+              57.927,
+              56.345
+            ],
+            "median": 57.927,
+            "min": 56.345,
+            "max": 60.594
+          },
+          "max_rss_kib": {
+            "samples": [
+              927264,
+              930888,
+              931296
+            ],
+            "median": 930888,
+            "min": 927264,
+            "max": 931296
+          },
+          "output": {
+            "bytes": 4910330,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 58.981,
+              "source_last_packet_seconds": 89.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.993249,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.986003,
+            "ssim_full_p05": 0.988516,
+            "ssim_bottom35pct": 0.993079,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.984168,
+            "ssim_bottom35pct_p05": 0.987755
+          },
+          "status": "ok"
+        },
+        {
+          "name": "nvenc-p4-cq28",
+          "encoder": "h264_nvenc",
+          "preset": "p4",
+          "quality_value": 28,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "60.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/screen/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-b:v",
+            "0",
+            "-cq",
+            "28",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-vcodec",
+            "h264_nvenc",
+            "<run>/screen/nvenc-p4-cq28.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 5.727693758999521,
+              "cpu_seconds": 26.526,
+              "max_rss_kib": 376100
+            },
+            {
+              "wall_seconds": 5.575887937000516,
+              "cpu_seconds": 20.867,
+              "max_rss_kib": 374004
+            },
+            {
+              "wall_seconds": 5.595055543999479,
+              "cpu_seconds": 22.232,
+              "max_rss_kib": 372876
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              5.727693758999521,
+              5.575887937000516,
+              5.595055543999479
+            ],
+            "median": 5.595055543999479,
+            "min": 5.575887937000516,
+            "max": 5.727693758999521
+          },
+          "cpu_seconds": {
+            "samples": [
+              26.526,
+              20.867,
+              22.232
+            ],
+            "median": 22.232,
+            "min": 20.867,
+            "max": 26.526
+          },
+          "max_rss_kib": {
+            "samples": [
+              376100,
+              374004,
+              372876
+            ],
+            "median": 374004,
+            "min": 372876,
+            "max": 376100
+          },
+          "output": {
+            "bytes": 9972565,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 58.981,
+              "source_last_packet_seconds": 89.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.996728,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.993224,
+            "ssim_full_p05": 0.9939,
+            "ssim_bottom35pct": 0.997132,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.992876,
+            "ssim_bottom35pct_p05": 0.994186
+          },
+          "status": "ok"
+        },
+        {
+          "name": "nvenc-p4-cq23",
+          "encoder": "h264_nvenc",
+          "preset": "p4",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "60.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/screen/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-b:v",
+            "0",
+            "-cq",
+            "23",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-vcodec",
+            "h264_nvenc",
+            "<run>/screen/nvenc-p4-cq23.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 5.5767230929996,
+              "cpu_seconds": 20.95,
+              "max_rss_kib": 377812
+            },
+            {
+              "wall_seconds": 5.515220426999804,
+              "cpu_seconds": 21.665,
+              "max_rss_kib": 374524
+            },
+            {
+              "wall_seconds": 5.6406760980007675,
+              "cpu_seconds": 21.628999999999998,
+              "max_rss_kib": 371176
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              5.5767230929996,
+              5.515220426999804,
+              5.6406760980007675
+            ],
+            "median": 5.5767230929996,
+            "min": 5.515220426999804,
+            "max": 5.6406760980007675
+          },
+          "cpu_seconds": {
+            "samples": [
+              20.95,
+              21.665,
+              21.628999999999998
+            ],
+            "median": 21.628999999999998,
+            "min": 20.95,
+            "max": 21.665
+          },
+          "max_rss_kib": {
+            "samples": [
+              377812,
+              374524,
+              371176
+            ],
+            "median": 374524,
+            "min": 371176,
+            "max": 377812
+          },
+          "output": {
+            "bytes": 16477638,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 58.981,
+              "source_last_packet_seconds": 89.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.998193,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.996224,
+            "ssim_full_p05": 0.996559,
+            "ssim_bottom35pct": 0.998592,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.996509,
+            "ssim_bottom35pct_p05": 0.996879
+          },
+          "status": "ok"
+        }
+      ],
+      "reference_frames": 1799
+    },
+    {
+      "label": "talking-head",
+      "source": "test-horizontal-5.mp4",
+      "source_sha256": "ca8c363b1bdf7ca11092f3eb68cbe4c9718028ffd3983a719e059deb6cef0009",
+      "ass_sha256": "d9a51b6cacac7d5ed37ee9b53328df82e373ac1d24d2545d757f8e44dbab2caf",
+      "start_seconds": 610.0,
+      "duration_seconds": 30.0,
+      "ass_dialogues": 862,
+      "source_video": {
+        "codec_name": "av1",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "avg_frame_rate": "60000/1001"
+      },
+      "audio_streams": 1,
+      "cases": [
+        {
+          "name": "x264-medium",
+          "encoder": "libx264",
+          "preset": "medium",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "610.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/talking-head/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-crf",
+            "23",
+            "-preset",
+            "medium",
+            "-vcodec",
+            "libx264",
+            "<run>/talking-head/x264-medium.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 15.075357816998803,
+              "cpu_seconds": 169.248,
+              "max_rss_kib": 1186224
+            },
+            {
+              "wall_seconds": 14.69437509599993,
+              "cpu_seconds": 165.85600000000002,
+              "max_rss_kib": 1195704
+            },
+            {
+              "wall_seconds": 14.716465532999791,
+              "cpu_seconds": 166.476,
+              "max_rss_kib": 1185804
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              15.075357816998803,
+              14.69437509599993,
+              14.716465532999791
+            ],
+            "median": 14.716465532999791,
+            "min": 14.69437509599993,
+            "max": 15.075357816998803
+          },
+          "cpu_seconds": {
+            "samples": [
+              169.248,
+              165.85600000000002,
+              166.476
+            ],
+            "median": 166.476,
+            "min": 165.85600000000002,
+            "max": 169.248
+          },
+          "max_rss_kib": {
+            "samples": [
+              1186224,
+              1195704,
+              1185804
+            ],
+            "median": 1186224,
+            "min": 1185804,
+            "max": 1195704
+          },
+          "output": {
+            "bytes": 11719998,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 608.981,
+              "source_last_packet_seconds": 639.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.990507,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.986469,
+            "ssim_full_p05": 0.9891,
+            "ssim_bottom35pct": 0.991131,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.986799,
+            "ssim_bottom35pct_p05": 0.98906
+          },
+          "status": "ok"
+        },
+        {
+          "name": "x264-veryfast",
+          "encoder": "libx264",
+          "preset": "veryfast",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "610.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/talking-head/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-crf",
+            "23",
+            "-preset",
+            "veryfast",
+            "-vcodec",
+            "libx264",
+            "<run>/talking-head/x264-veryfast.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 9.257160567000028,
+              "cpu_seconds": 76.602,
+              "max_rss_kib": 921140
+            },
+            {
+              "wall_seconds": 9.30066071299916,
+              "cpu_seconds": 75.62700000000001,
+              "max_rss_kib": 919116
+            },
+            {
+              "wall_seconds": 10.09956089499974,
+              "cpu_seconds": 81.39399999999999,
+              "max_rss_kib": 926888
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              9.257160567000028,
+              9.30066071299916,
+              10.09956089499974
+            ],
+            "median": 9.30066071299916,
+            "min": 9.257160567000028,
+            "max": 10.09956089499974
+          },
+          "cpu_seconds": {
+            "samples": [
+              76.602,
+              75.62700000000001,
+              81.39399999999999
+            ],
+            "median": 76.602,
+            "min": 75.62700000000001,
+            "max": 81.39399999999999
+          },
+          "max_rss_kib": {
+            "samples": [
+              921140,
+              919116,
+              926888
+            ],
+            "median": 921140,
+            "min": 919116,
+            "max": 926888
+          },
+          "output": {
+            "bytes": 8759768,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 608.981,
+              "source_last_packet_seconds": 639.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.987011,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.982626,
+            "ssim_full_p05": 0.984912,
+            "ssim_bottom35pct": 0.987758,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.980273,
+            "ssim_bottom35pct_p05": 0.983061
+          },
+          "status": "ok"
+        },
+        {
+          "name": "nvenc-p4-cq28",
+          "encoder": "h264_nvenc",
+          "preset": "p4",
+          "quality_value": 28,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "610.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/talking-head/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-b:v",
+            "0",
+            "-cq",
+            "28",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-vcodec",
+            "h264_nvenc",
+            "<run>/talking-head/nvenc-p4-cq28.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 5.467785250999441,
+              "cpu_seconds": 25.346999999999998,
+              "max_rss_kib": 378736
+            },
+            {
+              "wall_seconds": 5.34845911299999,
+              "cpu_seconds": 26.189,
+              "max_rss_kib": 376712
+            },
+            {
+              "wall_seconds": 5.355793714999891,
+              "cpu_seconds": 26.098,
+              "max_rss_kib": 374492
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              5.467785250999441,
+              5.34845911299999,
+              5.355793714999891
+            ],
+            "median": 5.355793714999891,
+            "min": 5.34845911299999,
+            "max": 5.467785250999441
+          },
+          "cpu_seconds": {
+            "samples": [
+              25.346999999999998,
+              26.189,
+              26.098
+            ],
+            "median": 26.098,
+            "min": 25.346999999999998,
+            "max": 26.189
+          },
+          "max_rss_kib": {
+            "samples": [
+              378736,
+              376712,
+              374492
+            ],
+            "median": 376712,
+            "min": 374492,
+            "max": 378736
+          },
+          "output": {
+            "bytes": 15915447,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 608.981,
+              "source_last_packet_seconds": 639.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.992054,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.989707,
+            "ssim_full_p05": 0.991006,
+            "ssim_bottom35pct": 0.992547,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.989987,
+            "ssim_bottom35pct_p05": 0.991275
+          },
+          "status": "ok"
+        },
+        {
+          "name": "nvenc-p4-cq23",
+          "encoder": "h264_nvenc",
+          "preset": "p4",
+          "quality_value": 23,
+          "command": [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-benchmark",
+            "-y",
+            "-ss",
+            "610.0",
+            "-t",
+            "30.0",
+            "-i",
+            "<repo>/multisubs/data/test-horizontal-5.mp4",
+            "-filter_complex",
+            "[0:0]subtitles=filename=<run>/talking-head/clip.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1920x1080[s0]",
+            "-map",
+            "[s0]",
+            "-map",
+            "0:a?",
+            "-acodec",
+            "copy",
+            "-b:v",
+            "0",
+            "-cq",
+            "23",
+            "-preset",
+            "p4",
+            "-rc",
+            "vbr",
+            "-vcodec",
+            "h264_nvenc",
+            "<run>/talking-head/nvenc-p4-cq23.mp4"
+          ],
+          "samples": [
+            {
+              "wall_seconds": 5.396186068001043,
+              "cpu_seconds": 26.115000000000002,
+              "max_rss_kib": 374676
+            },
+            {
+              "wall_seconds": 5.316899161998663,
+              "cpu_seconds": 24.578,
+              "max_rss_kib": 372652
+            },
+            {
+              "wall_seconds": 5.469269637000252,
+              "cpu_seconds": 28.628,
+              "max_rss_kib": 374088
+            }
+          ],
+          "wall_seconds": {
+            "samples": [
+              5.396186068001043,
+              5.316899161998663,
+              5.469269637000252
+            ],
+            "median": 5.396186068001043,
+            "min": 5.316899161998663,
+            "max": 5.469269637000252
+          },
+          "cpu_seconds": {
+            "samples": [
+              26.115000000000002,
+              24.578,
+              28.628
+            ],
+            "median": 26.115000000000002,
+            "min": 24.578,
+            "max": 28.628
+          },
+          "max_rss_kib": {
+            "samples": [
+              374676,
+              372652,
+              374088
+            ],
+            "median": 374088,
+            "min": 372652,
+            "max": 374676
+          },
+          "output": {
+            "bytes": 29235686,
+            "frames": 1799,
+            "width": 1920,
+            "height": 1080,
+            "duration": 30.03,
+            "pixel_format": "yuv420p",
+            "audio_bitstream_identical": true,
+            "audio_validation": {
+              "compressed_payload_identical": true,
+              "contiguous_source_sequence": true,
+              "packet_count": 1551,
+              "source_first_packet_seconds": 608.981,
+              "source_last_packet_seconds": 639.981,
+              "output_first_packet_seconds": -1.019,
+              "output_last_packet_seconds": 29.981
+            },
+            "avg_frame_rate": "60000/1001"
+          },
+          "quality": {
+            "ssim_full": 0.994574,
+            "ssim_full_frames": 1799,
+            "ssim_full_min": 0.993544,
+            "ssim_full_p05": 0.994136,
+            "ssim_bottom35pct": 0.994908,
+            "ssim_bottom35pct_frames": 1799,
+            "ssim_bottom35pct_min": 0.993597,
+            "ssim_bottom35pct_p05": 0.994347
+          },
+          "status": "ok"
+        }
+      ],
+      "reference_frames": 1799
+    }
+  ],
+  "notes": [
+    "No ASR; existing ASS retimed to each clip and shared by all profiles.",
+    "Timed commands use the production graph and VideoEncodingConfig.",
+    "Timings include seeking/decoding, libass, encoding, audio copy, muxing.",
+    "Timings exclude preflight, artifact preparation, quality checks, images.",
+    "One FFmpeg process at a time; one warmup per profile; shuffled rounds.",
+    "SSIM references the same decoded source with the same ASS burn.",
+    "SSIM and screenshots do not establish perceptual equivalence in motion.",
+    "Audio packet payloads must be an identical contiguous source sequence; negative-timestamp Opus preroll is retained by stream copy."
+  ],
+  "gpu_at_start": "NVIDIA GeForce RTX 3070, 617.42, 8192 MiB, 32 %"
+}

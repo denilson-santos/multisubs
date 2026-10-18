@@ -1,0 +1,41 @@
+         19985594 function calls (19842387 primitive calls) in 6.913 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1253 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.001    0.001    6.989    6.989 transcriber.py:353(write_transcription_artifacts)
+        1    0.000    0.000    6.152    6.152 transcriber.py:447(_layout_artifacts_with_translation_fallback)
+        1    0.001    0.001    6.086    6.086 transcriber.py:1043(layout_subtitle_cues)
+      100    0.005    0.000    6.039    0.060 transcriber.py:1178(_append_timed_display_cues)
+      400    0.017    0.000    5.704    0.014 text_segmentation.py:778(display_units_for_records)
+      400    0.001    0.000    5.677    0.014 text_segmentation.py:98(line_break_boundaries)
+      400    0.001    0.000    5.658    0.014 linebreak.py:534(line_break_boundaries)
+      400    0.727    0.002    5.657    0.014 linebreak.py:225(line_break_breakables)
+      300    0.007    0.000    4.311    0.014 transcriber.py:1375(_display_groups_for_records)
+   245584    0.090    0.000    2.622    0.000 breaking.py:383(is_following)
+   245584    0.281    0.000    2.532    0.000 breaking.py:316(is_continuing)
+  1397488    0.680    0.000    1.799    0.000 breaking.py:231(attr)
+   245584    0.442    0.000    1.680    0.000 copy.py:66(copy)
+  1723008    1.079    0.000    1.332    0.000 breaking.py:202(_calc_position)
+   763312    0.174    0.000    1.248    0.000 breaking.py:121(prev)
+   245584    0.551    0.000    0.863    0.000 copy.py:259(_reconstruct)
+        1    0.000    0.000    0.669    0.669 ass.py:143(write_ass)
+      300    0.002    0.000    0.553    0.002 ass.py:389(_append_segment_events)
+   441264    0.102    0.000    0.523    0.000 breaking.py:107(curr)
+      300    0.000    0.000    0.519    0.002 ass.py:481(_append_positioned_segment_events)
+     3700    0.008    0.000    0.407    0.000 ass.py:412(append_event)
+   236448    0.159    0.000    0.391    0.000 breaking.py:269(walk)
+     3700    0.055    0.000    0.391    0.000 ass.py:1270(_append_dialogue_event)
+      300    0.001    0.000    0.318    0.001 ass.py:611(_append_positioned_text_events)
+      300    0.011    0.000    0.316    0.001 ass.py:818(_append_word_animation_events)
+      100    0.001    0.000    0.243    0.002 wrapping.py:132(split_display_units_for_layout)
+     1800    0.005    0.000    0.242    0.000 wrapping.py:184(_layout_display_units)
+     1000    0.003    0.000    0.209    0.000 wrapping.py:829(_partition_text_unit_ranges)
+   245584    0.209    0.000    0.209    0.000 {method '__reduce_ex__' of 'object' objects}
+      300    0.001    0.000    0.201    0.001 ass.py:524(_append_positioned_backdrop_events)
+3257710/3257599    0.200    0.000    0.200    0.000 {built-in method builtins.len}
+      300    0.004    0.000    0.200    0.001 ass.py:972(_append_fragmented_cue_outline_events)
+     1000    0.004    0.000    0.196    0.000 wrapping.py:874(_exhaustive_partition_text_unit_ranges)
+  2983609    0.176    0.000    0.176    0.000 {built-in method builtins.abs}
+      800    0.002    0.000    0.167    0.000 ass.py:934(_append_cue_outline_event)
