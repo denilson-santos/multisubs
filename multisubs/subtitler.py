@@ -13,8 +13,9 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from .config import validate_video_encoding_config
 from .errors import ArtifactError, DependencyError, RenderingError, ValidationError
-from .models import VideoGeometry
+from .models import VideoEncodingConfig, VideoGeometry
 from .utils import (
     create_work_dir,
     find_unique_stem,
@@ -30,6 +31,79 @@ FFPROBE_TIMEOUT_SECONDS = 30
 MAX_PREVIEW_TIMESTAMP_SECONDS = 86_400.0
 MIN_ANIMATION_PREVIEW_DURATION_MS = 1_000
 MAX_ANIMATION_PREVIEW_DURATION_MS = 15_000
+ENCODER_PREFLIGHT_TIMEOUT_SECONDS = 30
+
+
+def _video_encoding_options(
+    config: VideoEncodingConfig | None,
+) -> dict[str, Any]:
+    selected = validate_video_encoding_config(config)
+    if selected.encoder is None:
+        return {}
+    options = {"vcodec": selected.encoder, "preset": selected.preset}
+    if selected.encoder == "libx264":
+        options["crf"] = selected.quality
+    else:
+        options.update(rc="vbr", cq=selected.quality, **{"b:v": 0})
+    return options
+
+
+def validate_video_encoding_support(config: VideoEncodingConfig | None) -> None:
+    """Initialize an explicitly selected encoder on one synthetic frame.
+
+    Run once before ASR or artifact generation in high-level entry points.
+    The real encode still owns media-specific validation and safe publication.
+    No capability cache or silent fallback hides changes in device availability.
+    """
+    selected = validate_video_encoding_config(config)
+    if selected.encoder is None:
+        return
+    executable = shutil.which("ffmpeg")
+    if executable is None:
+        raise DependencyError("FFmpeg is required for the selected video encoder")
+    options = _video_encoding_options(selected)
+    command = [
+        executable,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=320x180:r=1",
+        "-frames:v",
+        "1",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
+    ]
+    for key, value in options.items():
+        command.extend((f"-{key}", str(value)))
+    command.extend(("-f", "null", "-"))
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=ENCODER_PREFLIGHT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DependencyError(
+            f"Could not initialize video encoder '{selected.encoder}': {exc}"
+        ) from exc
+    if completed.returncode:
+        remedy = (
+            "Check FFmpeg NVENC support and the NVIDIA GPU/driver compatibility."
+            if selected.encoder == "h264_nvenc"
+            else "Install an FFmpeg build with libx264 support."
+        )
+        details = _short_output(completed.stderr or completed.stdout)
+        raise DependencyError(
+            f"FFmpeg could not initialize video encoder '{selected.encoder}'. "
+            f"{remedy} {details}"
+        )
 
 
 def extract_audio_track(input_path: str | Path, output_path: str | Path) -> Path:
@@ -370,8 +444,10 @@ def render_subtitle_file(
     output_dir: str | Path,
     *,
     fonts_dir: str | Path | None = None,
+    video_encoding: VideoEncodingConfig | None = None,
 ) -> Path:
     """Burn a supplied SRT or ASS file into a collision-safe copy of a video."""
+    selected_encoding = validate_video_encoding_config(video_encoding)
     source = _require_file(video_path, "Input video")
     subtitles = _require_file(subtitle_path, "Subtitle file")
     if subtitles.suffix.lower() not in {".srt", ".ass"}:
@@ -391,6 +467,7 @@ def render_subtitle_file(
             f"Output path '{output_dir}' is a file; provide a directory instead"
         )
     validate_ffmpeg_support()
+    validate_video_encoding_support(selected_encoding)
     geometry = probe_video_geometry(source)
     work_dir = create_work_dir(destination)
     try:
@@ -404,11 +481,12 @@ def render_subtitle_file(
                 output_path=private_video,
                 geometry=geometry,
                 fonts_dir=selected_fonts,
+                video_encoding=selected_encoding,
             )
         except RenderingError as exc:
             raise RenderingError(
                 f"FFmpeg could not render subtitle file '{subtitle_path}'; "
-                "check that it is a valid SRT or ASS file."
+                f"check the subtitle file and selected video encoder. {exc}"
             ) from exc
         while True:
             stem = find_unique_stem(
@@ -434,12 +512,14 @@ def embed_subtitles(
     geometry: VideoGeometry | None = None,
     fonts_dir: str | Path | None = None,
     progress: ProgressReporter = None,
+    video_encoding: VideoEncodingConfig | None = None,
 ) -> str:
     """Render an ASS subtitle file into a copied video and return its path.
 
     The established positional interface is unchanged. ``output_path`` is an
     internal-friendly optional override used by the CLI's private work folder.
     """
+    selected_encoding = validate_video_encoding_config(video_encoding)
     source_path = _require_file(input_path, "Input video")
     subtitle_path = _require_file(ass_path, "ASS subtitle file")
     resolved_geometry = geometry or probe_video_geometry(source_path)
@@ -459,6 +539,7 @@ def embed_subtitles(
                 temporary_path,
                 resolved_geometry,
                 resolved_fonts_dir,
+                video_encoding=selected_encoding,
             )
             output_stream.run(
                 overwrite_output=True, capture_stdout=True, capture_stderr=True
@@ -571,14 +652,17 @@ def render_subtitle_animation_preview(
     geometry: VideoGeometry | None = None,
     fonts_dir: str | Path | None = None,
     progress: ProgressReporter = None,
+    video_encoding: VideoEncodingConfig | None = None,
 ) -> str:
     """Render one frozen-background, silent animated subtitle preview clip."""
+    selected_encoding = validate_video_encoding_config(video_encoding)
     source_path = _require_file(input_path, "Input video")
     subtitle_path = _require_file(ass_path, "ASS subtitle file")
     _validate_animation_preview_duration(duration_ms)
     resolved_geometry = geometry or probe_video_geometry(source_path)
     _validate_preview_timestamp(timestamp, resolved_geometry)
     resolved_fonts_dir = _require_directory(fonts_dir, "Fonts directory")
+    validate_video_encoding_support(selected_encoding)
     destination_dir = _normalise_output_dir(output_dir)
     final_path = Path(
         get_unique_path(
@@ -643,6 +727,7 @@ def render_subtitle_animation_preview(
                     resolved_geometry,
                     total_duration_seconds,
                     resolved_fonts_dir,
+                    video_encoding=selected_encoding,
                 )
                 output_stream.run(
                     overwrite_output=True,
@@ -797,6 +882,7 @@ def _build_output_stream(
     output_path: Path,
     geometry: VideoGeometry,
     fonts_dir: Path | None = None,
+    video_encoding: VideoEncodingConfig | None = None,
 ) -> Any:
     """Build an autorotated graph using the stream and canvas selected by probe."""
     # Autorotation defaults to enabled in both legacy and current FFmpeg.
@@ -812,7 +898,13 @@ def _build_output_stream(
         "subtitles", **filter_options
     )
     audio_stream = input_stream["a?"]
-    return ffmpeg.output(video_stream, audio_stream, str(output_path), acodec="copy")
+    return ffmpeg.output(
+        video_stream,
+        audio_stream,
+        str(output_path),
+        acodec="copy",
+        **_video_encoding_options(video_encoding),
+    )
 
 
 def _build_preview_stream(
@@ -870,6 +962,7 @@ def _build_animation_preview_stream(
     geometry: VideoGeometry,
     duration_seconds: float,
     fonts_dir: Path | None = None,
+    video_encoding: VideoEncodingConfig | None = None,
 ) -> Any:
     """Build a repeated-frame graph with the normal ASS subtitle renderer."""
     input_stream = ffmpeg.input(
@@ -890,11 +983,12 @@ def _build_animation_preview_stream(
         if geometry.render_width % 2 == 0 and geometry.render_height % 2 == 0
         else "yuv444p"
     )
+    encoding_options = {"vcodec": "libx264", **_video_encoding_options(video_encoding)}
     return ffmpeg.output(
         video_stream,
         str(output_path),
         format="mp4",
-        vcodec="libx264",
+        **encoding_options,
         pix_fmt=pixel_format,
         r=30,
         t=duration_seconds,

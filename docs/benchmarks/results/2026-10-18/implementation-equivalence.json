@@ -1,0 +1,342 @@
+{
+  "strategy": "reuse partitioned display units",
+  "byte_identical_file_checks": [
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "ass",
+      "sha256": "2ba49eb800d5dbb8d25705753eaf53c796286bae294003db7cde27b19d406287"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "srt",
+      "sha256": "942dd3472dc07ecdb7c6cf5bc5fbef0066dfeedfdf48f75f67347567a9518da9"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "ass",
+      "sha256": "2ba49eb800d5dbb8d25705753eaf53c796286bae294003db7cde27b19d406287"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "srt",
+      "sha256": "942dd3472dc07ecdb7c6cf5bc5fbef0066dfeedfdf48f75f67347567a9518da9"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "ass",
+      "sha256": "2ba49eb800d5dbb8d25705753eaf53c796286bae294003db7cde27b19d406287"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "srt",
+      "sha256": "942dd3472dc07ecdb7c6cf5bc5fbef0066dfeedfdf48f75f67347567a9518da9"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "ass",
+      "sha256": "2ba49eb800d5dbb8d25705753eaf53c796286bae294003db7cde27b19d406287"
+    },
+    {
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "srt",
+      "sha256": "942dd3472dc07ecdb7c6cf5bc5fbef0066dfeedfdf48f75f67347567a9518da9"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "ass",
+      "sha256": "4bdd1670d96ae8f417e2821f325db283c56fd34f8cc133b7daa29978b094f639"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "ass",
+      "sha256": "4bdd1670d96ae8f417e2821f325db283c56fd34f8cc133b7daa29978b094f639"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "ass",
+      "sha256": "4bdd1670d96ae8f417e2821f325db283c56fd34f8cc133b7daa29978b094f639"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "ass",
+      "sha256": "4bdd1670d96ae8f417e2821f325db283c56fd34f8cc133b7daa29978b094f639"
+    },
+    {
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "ass",
+      "sha256": "2cf5d6c17b400bb95f44d5f394eb0dfcb0994399e2da81f5bdccf32fd0e36f4d"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "ass",
+      "sha256": "2cf5d6c17b400bb95f44d5f394eb0dfcb0994399e2da81f5bdccf32fd0e36f4d"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "ass",
+      "sha256": "2cf5d6c17b400bb95f44d5f394eb0dfcb0994399e2da81f5bdccf32fd0e36f4d"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "ass",
+      "sha256": "2cf5d6c17b400bb95f44d5f394eb0dfcb0994399e2da81f5bdccf32fd0e36f4d"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "ass",
+      "sha256": "cc7830674de37eaee1c0d4426fce35e81917556a1d514c2a3726cf693261d4de"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 0,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "ass",
+      "sha256": "cc7830674de37eaee1c0d4426fce35e81917556a1d514c2a3726cf693261d4de"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 1,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "ass",
+      "sha256": "cc7830674de37eaee1c0d4426fce35e81917556a1d514c2a3726cf693261d4de"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 2,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "ass",
+      "sha256": "cc7830674de37eaee1c0d4426fce35e81917556a1d514c2a3726cf693261d4de"
+    },
+    {
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "iteration": 3,
+      "format": "srt",
+      "sha256": "856cb94c251f3449102b1292a0975879996ced04e5669e7fa70f402cad6399b7"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 0,
+      "format": "ass",
+      "sha256": "e7feefd504690b20075f7abfef33385ca2ec1387362e819d1e097a06b48f2cdd"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 0,
+      "format": "srt",
+      "sha256": "1e4ae80dce13a3fad53aab27e5f97488106d599797656b18776ed980d1406873"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 1,
+      "format": "ass",
+      "sha256": "e7feefd504690b20075f7abfef33385ca2ec1387362e819d1e097a06b48f2cdd"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 1,
+      "format": "srt",
+      "sha256": "1e4ae80dce13a3fad53aab27e5f97488106d599797656b18776ed980d1406873"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 2,
+      "format": "ass",
+      "sha256": "e7feefd504690b20075f7abfef33385ca2ec1387362e819d1e097a06b48f2cdd"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 2,
+      "format": "srt",
+      "sha256": "1e4ae80dce13a3fad53aab27e5f97488106d599797656b18776ed980d1406873"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 3,
+      "format": "ass",
+      "sha256": "e7feefd504690b20075f7abfef33385ca2ec1387362e819d1e097a06b48f2cdd"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "iteration": 3,
+      "format": "srt",
+      "sha256": "1e4ae80dce13a3fad53aab27e5f97488106d599797656b18776ed980d1406873"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 0,
+      "format": "ass",
+      "sha256": "b7d66c938d5e9a771a9abdb18e85fea7c28726e0c1e7ac200db4f9aa319fad9e"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 0,
+      "format": "srt",
+      "sha256": "d34088828f06265cc89d611cde235c3d4857c45d27f0391f40868a6e522337fc"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 1,
+      "format": "ass",
+      "sha256": "b7d66c938d5e9a771a9abdb18e85fea7c28726e0c1e7ac200db4f9aa319fad9e"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 1,
+      "format": "srt",
+      "sha256": "d34088828f06265cc89d611cde235c3d4857c45d27f0391f40868a6e522337fc"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 2,
+      "format": "ass",
+      "sha256": "b7d66c938d5e9a771a9abdb18e85fea7c28726e0c1e7ac200db4f9aa319fad9e"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 2,
+      "format": "srt",
+      "sha256": "d34088828f06265cc89d611cde235c3d4857c45d27f0391f40868a6e522337fc"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 3,
+      "format": "ass",
+      "sha256": "b7d66c938d5e9a771a9abdb18e85fea7c28726e0c1e7ac200db4f9aa319fad9e"
+    },
+    {
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "iteration": 3,
+      "format": "srt",
+      "sha256": "d34088828f06265cc89d611cde235c3d4857c45d27f0391f40868a6e522337fc"
+    }
+  ],
+  "equal_json_pairs_excluding_timestamp_and_source_path": 24
+}

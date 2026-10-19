@@ -31,6 +31,7 @@ from .config import (
     CUE_ENTRANCE_ANIMATION_CHOICES,
     CUE_EXIT_ANIMATION_CHOICES,
     POSITION_CHOICES,
+    VIDEO_ENCODER_CHOICES,
     WORD_ANIMATION_MODE_CHOICES,
     WORD_BACKDROP_EMPHASIS_ANIMATION_CHOICES,
     WORD_ENTRANCE_ANIMATION_CHOICES,
@@ -40,6 +41,7 @@ from .config import (
     parse_opacity,
     parse_relative_length,
     parse_text_case,
+    validate_video_encoding_config,
 )
 from .custom_templates import ResolvedSubtitleTemplate
 from .errors import ArtifactError, MultisubsError, TemplateError, ValidationError
@@ -61,6 +63,7 @@ from .models import (
     SubtitleOpacity,
     TextCase,
     TranscriptionPaths,
+    VideoEncodingConfig,
 )
 from .preview import (
     DEFAULT_PREVIEW_DURATION_MS,
@@ -328,6 +331,37 @@ def _cli_command(
             "--subtitle-file",
             metavar="PATH",
             help="Burn an existing SRT or ASS file into a copy of the video.",
+            show_default=False,
+        ),
+    ] = None,
+    video_encoder: Annotated[
+        str | None,
+        typer.Option(
+            "--video-encoder",
+            metavar="ENCODER",
+            parser=_choice_parser(VIDEO_ENCODER_CHOICES),
+            rich_help_panel="Video encoding",
+            help="libx264 or h264_nvenc; omitted preserves FFmpeg selection.",
+            show_default=False,
+        ),
+    ] = None,
+    video_preset: Annotated[
+        str | None,
+        typer.Option(
+            "--video-preset",
+            metavar="PRESET",
+            rich_help_panel="Video encoding",
+            help="Requires --video-encoder; default medium for x264, p4 for NVENC.",
+            show_default=False,
+        ),
+    ] = None,
+    video_quality: Annotated[
+        int | None,
+        typer.Option(
+            "--video-quality",
+            metavar="0-51",
+            rich_help_panel="Video encoding",
+            help="Requires --video-encoder; x264 CRF default 23, NVENC CQ default 28.",
             show_default=False,
         ),
     ] = None,
@@ -1175,7 +1209,11 @@ def _cli_command(
                 from .subtitler import render_subtitle_file
 
                 rendered = render_subtitle_file(
-                    video, subtitle_file, destination, fonts_dir=fonts_dir
+                    video,
+                    subtitle_file,
+                    destination,
+                    fonts_dir=fonts_dir,
+                    video_encoding=_resolve_video_encoding(args, ctx),
                 )
                 print(f"Video saved to: {rendered}")
                 return 0
@@ -1225,6 +1263,9 @@ def _validate_external_subtitle_options(
         "verbose",
         "subtitle_file",
         "fonts_dir",
+        "video_encoder",
+        "video_preset",
+        "video_quality",
     }
     for name in vars(args):
         if name in allowed:
@@ -1265,6 +1306,9 @@ def _build_request(
 ) -> RunRequest | PreviewRequest:
     preview_mode_requested = args.preview_layout or args.preview_animation
     _validate_preview_options(args, parser, preview_mode_requested)
+    video_encoding = _resolve_video_encoding(args, parser)
+    if args.preview_layout and video_encoding.encoder is not None:
+        parser.fail("Video encoding options cannot be used with --preview-layout (PNG)")
     selection, subtitle_config = _resolve_request_config(args, parser)
 
     language = args.lang
@@ -1277,12 +1321,15 @@ def _build_request(
 
     input_path, output_dir = _resolve_request_paths(args, parser)
     if preview_mode_requested:
-        return _build_preview_request(
-            args,
-            input_path,
-            output_dir,
-            subtitle_config,
-            selection,
+        return replace(
+            _build_preview_request(
+                args,
+                input_path,
+                output_dir,
+                subtitle_config,
+                selection,
+            ),
+            video_encoding=video_encoding,
         )
     return RunRequest(
         input_path=input_path,
@@ -1297,7 +1344,25 @@ def _build_request(
         subtitle_template_resolved=selection.template.name,
         subtitle_template_source=selection.source,
         subtitle_template_base=selection.base,
+        video_encoding=video_encoding,
     )
+
+
+def _resolve_video_encoding(
+    args: SimpleNamespace,
+    parser: _ValidationContext,
+) -> VideoEncodingConfig:
+    try:
+        return validate_video_encoding_config(
+            VideoEncodingConfig(
+                encoder=getattr(args, "video_encoder", None),
+                preset=getattr(args, "video_preset", None),
+                quality=getattr(args, "video_quality", None),
+            )
+        )
+    except ValidationError as exc:
+        parser.fail(str(exc))
+        raise AssertionError("parser.fail() must terminate validation") from exc
 
 
 def _validate_preview_options(
@@ -1541,11 +1606,13 @@ def _run_request_with_fonts(
         embed_subtitles,
         probe_video_geometry,
         validate_ffmpeg_support,
+        validate_video_encoding_support,
     )
     from .transcriber import transcribe_video, write_transcription_artifacts
     from .wrapping import transform_display_text
 
     validate_ffmpeg_support()
+    validate_video_encoding_support(request.video_encoding)
     geometry = probe_video_geometry(request.input_path)
     resolved_subtitle_config = resolve_subtitle_config(
         request.subtitle_config,
@@ -1642,6 +1709,7 @@ def _run_request_with_fonts(
                 geometry=geometry,
                 fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
                 progress=progress,
+                video_encoding=request.video_encoding,
             )
         )
         artifacts = RunArtifacts(work_dir, transcripts, rendered_path)
@@ -1684,7 +1752,10 @@ def _run_preview_request(
     from .wrapping import transform_display_text
 
     validate_ffmpeg_support()
-    if request.preview_mode is PreviewMode.ANIMATION:
+    if (
+        request.preview_mode is PreviewMode.ANIMATION
+        and request.video_encoding.encoder is None
+    ):
         validate_animation_preview_support()
     geometry = probe_video_geometry(request.input_path)
     timestamp = resolve_preview_timestamp(request.preview_at, geometry)
@@ -1759,6 +1830,7 @@ def _run_preview_request(
                     geometry=geometry,
                     fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
                     progress=progress,
+                    video_encoding=request.video_encoding,
                 )
             )
 

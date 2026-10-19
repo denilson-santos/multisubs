@@ -64,6 +64,7 @@ multisubs reduces that workflow to one command while retaining subtitle files wh
 | FR-19 | The CLI must expose `--asr` with `whisperx`, `faster-whisper`, `parakeet`, and `qwen`; WhisperX remains the default. Omitted `--model` must resolve per backend while preserving `whisperx` plus `turbo` for existing commands and selecting `Qwen/Qwen3-ASR-1.7B-hf` for Qwen. Every ASR runtime must be an optional lazy import so the core package and Faster-Whisper CPU path do not require PyTorch or CUDA packages. Every adapter must normalize text, an optional reported language, segments, and real available word timestamps into one internal contract; unavailable word timing must use the existing visible coarse-segment fallback and must never be fabricated. WhisperX and Faster-Whisper translation must use equivalent six-second inference chunks, followed by the shared measured-font fallback when translated layout exceeds its envelope. Qwen must split long audio at nearby low-energy boundaries with source offsets intact, release its ASR model before loading the aligner, select BF16 when supported with an FP16 CUDA fallback, and pass an automatically detected aligner-supported language to its forced aligner. Retained JSON must identify the selected ASR and model. |
 | FR-20 | Library callers must be able to transcribe once into source speech data, cache it losslessly, and generate SRT, ASS, and a hard-subtitled video for a final template and geometry without another ASR call. `transcribe_speech()` and `render_transcript()` share the normal transcription pipeline and use one version-1 source-speech interchange contract, preserving source segment/word association, text, available times, unknown language, and backend/model metadata. Only transcription is supported by these APIs; unavailable word alignment retains normal coarse timing and reports suppressed word effects. All three outputs use one collision-safe stem and are published only after successful rendering. |
 | FR-21 | A caller may provide a readable, nonempty local SRT or ASS file and video to render one hard-subtitled copy without ASR or rewriting the subtitle file. ASS is passed through with authored styling; SRT receives FFmpeg/libass default styling. Optional local fonts may be supplied. The CLI rejects transcription, template, appearance, animation, and preview options in this mode; failures publish no video, and collisions add a suffix. |
+| FR-22 | Users may explicitly select `libx264` or `h264_nvenc`, a compatible preset, and integer quality from 0 through 51 for normal rendering, external SRT/ASS rendering, and animated previews. Omission preserves existing encoder selection and flags. Explicit defaults are medium/CRF 23 for x264 and p4/VBR/CQ 28 without a target bitrate for NVENC. Preset and quality require an explicit encoder; PNG previews reject encoding options. Typed Python `VideoEncodingConfig` is independent of subtitle templates and is accepted by the public rendering APIs. Explicit encoders receive a bounded synthetic initialization check before ASR or deferred artifact generation; failures are actionable and never silently fall back to a different encoder. Existing audio-copy, geometry, collision, and publication behavior remains intact. |
 
 ### Reusable source transcription API
 
@@ -211,6 +212,16 @@ Its immutable result renders through `render_transcript()` for different final
 geometries without ASR, transcript mutation, or changes to missing-alignment
 fallbacks. Package-root imports and composition remain lazy and perform no
 expensive external work.
+
+38. Rendering controls are available from the CLI and Python APIs without
+changing existing default FFmpeg graphs. Encoder-specific validation rejects
+unsupported presets, invalid quality values, and PNG/encoding conflicts before
+processing. A failed explicit encoder initialization prevents ASR and artifact
+generation. Real encodes preserve audio streams, canvas dimensions, timing,
+and collision-safe publication in CPU and opt-in NVIDIA checks. Layout reuses
+already mapped units at cue subdivision, preserving source offsets, Unicode
+break rules, casing transformations, and multilingual layout results without
+retaining transcript data in a global cache.
 
 ## Constraints and risks
 

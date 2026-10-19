@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-18T16:02:27.163818+00:00",
+  "git_sha": "55a86e352a77157ee2e43957319bba4aa1d6f966",
+  "multisubs": "5.1.0",
+  "python": "3.10.12",
+  "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "logical_cpus": 16,
+  "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+  "ffmpeg": "ffmpeg version n9.0.2-17-g2a571b6068-20260930 Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with gcc 16.2.0 (crosstool-NG 1.29.0.7_b1a94f6)\nconfiguration: --prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-ffbuild-linux-gnu- --arch=x86_64 --target-os=linux --enable-gpl --enable-version3 --disable-debug --enable-iconv --enable-zlib --enable-libxml2 --enable-libsoxr --enable-openssl --enable-libvmaf --enable-libxcb --enable-xlib --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libdav1d --enable-libvorbis --enable-librav1e --enable-librsvg --enable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-avisynth --enable-chromaprint --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribb24 --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librubberband --disable-schannel --enable-sdl2 --enable-libsnappy --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --enable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs='-lgomp -ldl' --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-ffbuild-linux-gnu-gcc --cxx=x86_64-ffbuild-linux-gnu-g++ --ar=x86_64-ffbuild-linux-gnu-gcc-ar --ranlib=x86_64-ffbuild-linux-gnu-gcc-ranlib --nm=x86_64-ffbuild-linux-gnu-gcc-nm --extra-version=20260930\nlibavutil      61.  1.102 / 61.  1.102\nlibavcodec     63.  1.102 / 63.  1.102\nlibavformat    63.  1.102 / 63.  1.102\nlibavdevice    63.  1.102 / 63.  1.102\nlibavfilter    12.  1.102 / 12.  1.102\nlibswscale     10.  1.102 / 10.  1.102\nlibswresample   7.  1.102 /  7.  1.102\n\nExiting with exit code 0\n",
+  "ffprobe": "ffprobe version n9.0.2-17-g2a571b6068-20260930 Copyright (c) 2007-2026 the FFmpeg developers",
+  "packages": {
+    "Pillow": "12.3.0",
+    "ffmpeg-python": "0.2.0",
+    "fonttools": "4.63.0",
+    "uniseg": "0.10.1"
+  },
+  "parameters": {
+    "duration": 12.0,
+    "fps": 30,
+    "repetitions": 3,
+    "sizes": [
+      "1080x1920"
+    ],
+    "warmups": 1,
+    "seed": 20261018,
+    "quality": false,
+    "cases": null,
+    "preparation_only": true,
+    "experimental_line_break_cache": false
+  },
+  "preparation": [
+    {
+      "size": "1080x1920",
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.02128145000006043,
+          0.02102015400032542,
+          0.02330706500015367
+        ],
+        "median": 0.02128145000006043,
+        "min": 0.02102015400032542,
+        "max": 0.02330706500015367
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.11440634100017633,
+          0.1145826480001233,
+          0.1167292320001252
+        ],
+        "median": 0.1145826480001233,
+        "min": 0.11440634100017633,
+        "max": 0.1167292320001252
+      },
+      "ass_bytes": 4266,
+      "ass_dialogues": 28,
+      "experimental_line_break_cache": false,
+      "last_cache_counts": null,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Regular",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 64,
+        "requested_weight_name": "regular",
+        "requested_weight": 400,
+        "requested_weight_input": "regular",
+        "requested_weight_input_form": "default",
+        "resolved_weight_name": "regular",
+        "resolved_weight": 400,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.021714527999847633,
+          0.02098712399993019,
+          0.02227739299996756
+        ],
+        "median": 0.021714527999847633,
+        "min": 0.02098712399993019,
+        "max": 0.02227739299996756
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.07235555199986266,
+          0.07503861999975925,
+          0.07189141599974391
+        ],
+        "median": 0.07235555199986266,
+        "min": 0.07189141599974391,
+        "max": 0.07503861999975925
+      },
+      "ass_bytes": 1512,
+      "ass_dialogues": 12,
+      "experimental_line_break_cache": false,
+      "last_cache_counts": null,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.020988164999835135,
+          0.02105389500002275,
+          0.02248165999981211
+        ],
+        "median": 0.02105389500002275,
+        "min": 0.020988164999835135,
+        "max": 0.02248165999981211
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.08972585700030322,
+          0.09221628800014514,
+          0.0936939639996126
+        ],
+        "median": 0.09221628800014514,
+        "min": 0.08972585700030322,
+        "max": 0.0936939639996126
+      },
+      "ass_bytes": 33017,
+      "ass_dialogues": 232,
+      "experimental_line_break_cache": false,
+      "last_cache_counts": null,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.021021254000061163,
+          0.026138270999581437,
+          0.02109177299962539
+        ],
+        "median": 0.02109177299962539,
+        "min": 0.021021254000061163,
+        "max": 0.026138270999581437
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.08038662500030114,
+          0.08159757500015985,
+          0.08498165799983326
+        ],
+        "median": 0.08159757500015985,
+        "min": 0.08038662500030114,
+        "max": 0.08498165799983326
+      },
+      "ass_bytes": 28593,
+      "ass_dialogues": 208,
+      "experimental_line_break_cache": false,
+      "last_cache_counts": null,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Bold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 61,
+        "requested_weight_name": "bold",
+        "requested_weight": 700,
+        "requested_weight_input": "bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "bold",
+        "resolved_weight": 700,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "source_segments": 20,
+      "semantic_cues": 20,
+      "semantic_seconds": {
+        "samples": [
+          0.10945944199966107,
+          0.10784757600004014,
+          0.11070319200007361
+        ],
+        "median": 0.10945944199966107,
+        "min": 0.10784757600004014,
+        "max": 0.11070319200007361
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.3139068099999349,
+          0.31384663700009696,
+          0.33573721099992326
+        ],
+        "median": 0.3139068099999349,
+        "min": 0.31384663700009696,
+        "max": 0.33573721099992326
+      },
+      "ass_bytes": 162299,
+      "ass_dialogues": 1160,
+      "experimental_line_break_cache": false,
+      "last_cache_counts": null,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 60,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 60
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "source_segments": 100,
+      "semantic_cues": 100,
+      "semantic_seconds": {
+        "samples": [
+          0.5517374830001245,
+          0.5738455580003574,
+          0.5560095689997979
+        ],
+        "median": 0.5560095689997979,
+        "min": 0.5517374830001245,
+        "max": 0.5738455580003574
+      },
+      "artifact_seconds": {
+        "samples": [
+          1.4499859279999328,
+          1.448782879999726,
+          1.4223881379998602
+        ],
+        "median": 1.448782879999726,
+        "min": 1.4223881379998602,
+        "max": 1.4499859279999328
+      },
+      "ass_bytes": 808865,
+      "ass_dialogues": 5800,
+      "experimental_line_break_cache": false,
+      "last_cache_counts": null,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 300,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 300
+        }
+      }
+    }
+  ],
+  "cases": [],
+  "gpu": "Failed to initialize NVML: GPU access blocked by the operating system\nFailed to properly shut down NVML: GPU access blocked by the operating system",
+  "sources": {
+    "1080x1920": {
+      "width": 1080,
+      "height": 1920,
+      "frames": 360,
+      "duration": 12
+    }
+  },
+  "implementation": {
+    "state": "local uncommitted implementation",
+    "strategy": "reuse partitioned display units; no Unicode cache enabled",
+    "source_sha256": {
+      "multisubs/transcriber.py": "70f6cbbbf241402c4272cd89f5fbd4db8ab9d1682f5c20bdf4cbe61e90666ce4",
+      "multisubs/models.py": "a3f379c0df5f451f0c6f70513ffda4d7c83ff35a360f406aac5605793aeaa0b8",
+      "multisubs/config.py": "1cdb796181f87868370851d21d214cbe4ef203f3501f0e41633fa6cb9597d225",
+      "multisubs/subtitler.py": "31db27b7219ce2402479a7a913d6248fb8ac48a35467ce238661cb3515464d02",
+      "multisubs/speech.py": "9d83e57158648f64dedf0bb2421eb4f2f93a7b10875b595ced2afd68a014bde5",
+      "multisubs/cli.py": "217955e846f1787044a4b550215aa116eda8d50c076424c1147c532bff8b745a"
+    }
+  },
+  "evidence_note": "Post-implementation preparation timings with the existing harness. Compared against the initial primary-build preparation matrix; all ASS/SRT bytes and normalized JSON preserved."
+}

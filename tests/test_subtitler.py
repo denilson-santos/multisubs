@@ -209,7 +209,7 @@ def test_render_animation_preview_publishes_collision_safe_mp4_and_cleans_temp(
     )
     monkeypatch.setattr(
         "multisubs.subtitler._build_animation_preview_stream",
-        lambda _ffmpeg, _frame, _subtitle, output_path, *_args: FakeOutput(
+        lambda _ffmpeg, _frame, _subtitle, output_path, *_args, **_kw: FakeOutput(
             output_path, b"mp4"
         ),
     )
@@ -562,7 +562,7 @@ def test_render_failure_removes_temporary_media(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("multisubs.subtitler._load_ffmpeg_python", lambda: fake_ffmpeg)
     monkeypatch.setattr(
         "multisubs.subtitler._build_output_stream",
-        lambda *args: FakeOutput(),
+        lambda *args, **kwargs: FakeOutput(),
     )
 
     with pytest.raises(RenderingError):

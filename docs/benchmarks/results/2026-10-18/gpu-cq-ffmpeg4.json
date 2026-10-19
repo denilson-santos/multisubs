@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-18T14:53:13.860771+00:00",
+  "git_sha": "55a86e352a77157ee2e43957319bba4aa1d6f966",
+  "multisubs": "5.1.0",
+  "python": "3.10.12",
+  "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "logical_cpus": 16,
+  "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+  "ffmpeg": "ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2000-2021 the FFmpeg developers\nbuilt with gcc 11 (Ubuntu 11.2.0-19ubuntu1)\nconfiguration: --prefix=/usr --extra-version=0ubuntu0.22.04.1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --enable-pocketsphinx --enable-librsvg --enable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-shared\nlibavutil      56. 70.100 / 56. 70.100\nlibavcodec     58.134.100 / 58.134.100\nlibavformat    58. 76.100 / 58. 76.100\nlibavdevice    58. 13.100 / 58. 13.100\nlibavfilter     7.110.100 /  7.110.100\nlibswscale      5.  9.100 /  5.  9.100\nlibswresample   3.  9.100 /  3.  9.100\nlibpostproc    55.  9.100 / 55.  9.100\n",
+  "ffprobe": "ffprobe version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2007-2021 the FFmpeg developers",
+  "packages": {
+    "Pillow": "12.3.0",
+    "ffmpeg-python": "0.2.0",
+    "fonttools": "4.63.0",
+    "uniseg": "0.10.1"
+  },
+  "parameters": {
+    "duration": 12.0,
+    "fps": 30,
+    "repetitions": 3,
+    "sizes": [
+      "1080x1920"
+    ],
+    "warmups": 1,
+    "seed": 20261018,
+    "quality": true,
+    "cases": [
+      "nvenc-p4-cq28",
+      "nvenc-p4-cq30"
+    ]
+  },
+  "preparation": [
+    {
+      "size": "1080x1920",
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.011884194999765896,
+          0.012209152999730577,
+          0.011679075999836641
+        ],
+        "median": 0.011884194999765896,
+        "min": 0.011679075999836641,
+        "max": 0.012209152999730577
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.12773881400016762,
+          0.12831333899976016,
+          0.1332842410001831
+        ],
+        "median": 0.12831333899976016,
+        "min": 0.12773881400016762,
+        "max": 0.1332842410001831
+      },
+      "ass_bytes": 4266,
+      "ass_dialogues": 28,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Regular",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 64,
+        "requested_weight_name": "regular",
+        "requested_weight": 400,
+        "requested_weight_input": "regular",
+        "requested_weight_input_form": "default",
+        "resolved_weight_name": "regular",
+        "resolved_weight": 400,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.011778536000292661,
+          0.011660054999993008,
+          0.011888833999819326
+        ],
+        "median": 0.011778536000292661,
+        "min": 0.011660054999993008,
+        "max": 0.011888833999819326
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.10148424199996953,
+          0.09312579300012658,
+          0.09449892999964504
+        ],
+        "median": 0.09449892999964504,
+        "min": 0.09312579300012658,
+        "max": 0.10148424199996953
+      },
+      "ass_bytes": 1512,
+      "ass_dialogues": 12,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.012199517000226479,
+          0.012912666999909561,
+          0.011993375000201922
+        ],
+        "median": 0.012199517000226479,
+        "min": 0.011993375000201922,
+        "max": 0.012912666999909561
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.11520187700034512,
+          0.10881361699966874,
+          0.10648160500022641
+        ],
+        "median": 0.10881361699966874,
+        "min": 0.10648160500022641,
+        "max": 0.11520187700034512
+      },
+      "ass_bytes": 33017,
+      "ass_dialogues": 232,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.011568907000309991,
+          0.011482902999887301,
+          0.011318818999825453
+        ],
+        "median": 0.011482902999887301,
+        "min": 0.011318818999825453,
+        "max": 0.011568907000309991
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.09739507399990543,
+          0.09935206800037122,
+          0.09762312700013354
+        ],
+        "median": 0.09762312700013354,
+        "min": 0.09739507399990543,
+        "max": 0.09935206800037122
+      },
+      "ass_bytes": 28593,
+      "ass_dialogues": 208,
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Bold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 61,
+        "requested_weight_name": "bold",
+        "requested_weight": 700,
+        "requested_weight_input": "bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "bold",
+        "resolved_weight": 700,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "size": "1080x1920",
+      "name": "nvenc-p4-cq28",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p4",
+        "-rc",
+        "vbr",
+        "-cq",
+        "28",
+        "-b:v",
+        "0",
+        "<run>/1080x1920-nvenc-p4-cq28.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 1.5508506329997545,
+          "cpu_seconds": 2.508,
+          "max_rss_kib": 397424
+        },
+        {
+          "wall_seconds": 1.4776360470000327,
+          "cpu_seconds": 2.329,
+          "max_rss_kib": 397660
+        },
+        {
+          "wall_seconds": 1.5009921159999067,
+          "cpu_seconds": 2.29,
+          "max_rss_kib": 397716
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          1.5508506329997545,
+          1.4776360470000327,
+          1.5009921159999067
+        ],
+        "median": 1.5009921159999067,
+        "min": 1.4776360470000327,
+        "max": 1.5508506329997545
+      },
+      "speed_realtime": 7.994712212066506,
+      "fps": 239.8413663619952,
+      "output": {
+        "bytes": 10708586,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.995219,
+        "ssim_bottom35pct": 0.989589
+      }
+    },
+    {
+      "size": "1080x1920",
+      "name": "nvenc-p4-cq30",
+      "kind": "encode",
+      "style": "yellow-pop",
+      "command": [
+        "/usr/bin/ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-benchmark",
+        "-y",
+        "-i",
+        "<run>/source-1080x1920.mp4",
+        "-filter_complex",
+        "[0:0]subtitles=filename=<run>/yellow-pop-12-3/source-1080x1920-pt.ass:fontsdir=<repo>/multisubs/assets/fonts/montserrat:original_size=1080x1920[s0]",
+        "-map",
+        "[s0]",
+        "-map",
+        "0:a?",
+        "-acodec",
+        "copy",
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p4",
+        "-rc",
+        "vbr",
+        "-cq",
+        "30",
+        "-b:v",
+        "0",
+        "<run>/1080x1920-nvenc-p4-cq30.mp4"
+      ],
+      "samples": [
+        {
+          "wall_seconds": 1.4867180539999936,
+          "cpu_seconds": 2.2720000000000002,
+          "max_rss_kib": 397576
+        },
+        {
+          "wall_seconds": 1.4673979539998072,
+          "cpu_seconds": 2.299,
+          "max_rss_kib": 397784
+        },
+        {
+          "wall_seconds": 1.4376605780003047,
+          "cpu_seconds": 2.201,
+          "max_rss_kib": 397188
+        }
+      ],
+      "status": "ok",
+      "wall_seconds": {
+        "samples": [
+          1.4867180539999936,
+          1.4673979539998072,
+          1.4376605780003047
+        ],
+        "median": 1.4673979539998072,
+        "min": 1.4376605780003047,
+        "max": 1.4867180539999936
+      },
+      "speed_realtime": 8.177740719407856,
+      "fps": 245.3322215822357,
+      "output": {
+        "bytes": 8120214,
+        "codec": "h264",
+        "width": 1080,
+        "height": 1920,
+        "frames": 360,
+        "pixel_format": "yuv420p",
+        "duration": 12.0,
+        "audio_bitstream_identical": true
+      },
+      "quality": {
+        "ssim_full": 0.992162,
+        "ssim_bottom35pct": 0.982445
+      }
+    }
+  ],
+  "gpu": "NVIDIA GeForce RTX 3070, 560.94, 8192 MiB",
+  "sources": {
+    "1080x1920": {
+      "codec_name": "h264",
+      "width": 1080,
+      "height": 1920,
+      "nb_frames": "360",
+      "pix_fmt": "yuv420p",
+      "duration": "12.000000"
+    }
+  },
+  "evidence_note": "Portable selection of raw observations; container tags and generated transcript metadata omitted. RSS recovered from the same per-run FFmpeg log when the older build used the kB label."
+}

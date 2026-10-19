@@ -41,6 +41,9 @@ Update a higher-level document when a proposed change intentionally modifies the
 ### Packaging
 
 - Must keep runtime dependencies and the multisubs console-script entry point in pyproject.toml.
+- Package discovery is restricted to regular `multisubs` Python packages.
+  Non-code assets are included only through the explicit package-data inventory;
+  ignored benchmark/media directories must stay outside wheel and sdist contents.
 - Must use PEP 621 project metadata rather than introducing a second packaging configuration unless there is a compelling limitation.
 - Should keep release metadata complete: description, README reference, license, classifiers, project URLs, and supported Python versions.
 - Must use one authoritative package version. `multisubs.__version__` is the source of truth and `pyproject.toml` derives its version dynamically.

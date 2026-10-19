@@ -55,6 +55,7 @@ from .models import (
     SubtitleConfig,
     SubtitleDisplayFragment,
     SubtitleDisplayGroup,
+    SubtitleDisplayUnit,
     SubtitleElementAnimation,
     SubtitlePlacementMode,
     SubtitlePosition,
@@ -1223,6 +1224,7 @@ def _append_timed_display_cues(
             group_indexes,
             prepared.source_map,
             prepared.words_by_record,
+            group,
         )
         # Linguistic groups choose preferred cue/line boundaries, but every
         # original alignment record remains an effect unit. A group can occupy
@@ -1377,12 +1379,12 @@ def _display_groups_for_records(
     record_indexes: Sequence[int],
     source_map: SubtitleSourceMap,
     words_by_record: Mapping[int, Mapping[str, Any]],
+    units: Sequence[SubtitleDisplayUnit],
 ) -> tuple[SubtitleDisplayGroup, ...]:
+    # Source offsets are independent of display casing. Reuse the already
+    # partitioned units instead of repeating Unicode breaking for every group.
     selected = set(record_indexes)
-    units_by_record = {
-        unit.record_index: unit
-        for unit in display_units_for_records(source_map, record_indexes)
-    }
+    units_by_record = {unit.record_index: unit for unit in units}
     result: list[SubtitleDisplayGroup] = []
     for display_group in display_groups:
         retained = tuple(

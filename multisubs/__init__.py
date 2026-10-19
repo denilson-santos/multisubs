@@ -17,6 +17,7 @@ __all__ = (
     "render_subtitle_file",
     "build_subtitle_config",
     "SubtitleConfig",
+    "VideoEncodingConfig",
     "MultisubsError",
     "ValidationError",
     "TemplateError",
@@ -24,7 +25,7 @@ __all__ = (
 
 if TYPE_CHECKING:
     from .errors import MultisubsError, TemplateError, ValidationError
-    from .models import GeneratedSubtitleArtifacts, SubtitleConfig
+    from .models import GeneratedSubtitleArtifacts, SubtitleConfig, VideoEncodingConfig
     from .speech import SpeechTranscript, render_transcript
     from .subtitle_config import build_subtitle_config
     from .subtitler import embed_subtitles, render_subtitle_file
@@ -45,7 +46,7 @@ def __getattr__(name: str):
         from . import subtitler
 
         return getattr(subtitler, name)
-    if name in ("GeneratedSubtitleArtifacts", "SubtitleConfig"):
+    if name in ("GeneratedSubtitleArtifacts", "SubtitleConfig", "VideoEncodingConfig"):
         from . import models
 
         return getattr(models, name)

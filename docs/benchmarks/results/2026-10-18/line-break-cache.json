@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-18T14:55:07.616652+00:00",
+  "git_sha": "55a86e352a77157ee2e43957319bba4aa1d6f966",
+  "multisubs": "5.1.0",
+  "python": "3.10.12",
+  "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "logical_cpus": 16,
+  "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+  "ffmpeg": "ffmpeg version n9.0.2-17-g2a571b6068-20260930 Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with gcc 16.2.0 (crosstool-NG 1.29.0.7_b1a94f6)\nconfiguration: --prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-ffbuild-linux-gnu- --arch=x86_64 --target-os=linux --enable-gpl --enable-version3 --disable-debug --enable-iconv --enable-zlib --enable-libxml2 --enable-libsoxr --enable-openssl --enable-libvmaf --enable-libxcb --enable-xlib --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libdav1d --enable-libvorbis --enable-librav1e --enable-librsvg --enable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-avisynth --enable-chromaprint --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribb24 --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librubberband --disable-schannel --enable-sdl2 --enable-libsnappy --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --enable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs='-lgomp -ldl' --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-ffbuild-linux-gnu-gcc --cxx=x86_64-ffbuild-linux-gnu-g++ --ar=x86_64-ffbuild-linux-gnu-gcc-ar --ranlib=x86_64-ffbuild-linux-gnu-gcc-ranlib --nm=x86_64-ffbuild-linux-gnu-gcc-nm --extra-version=20260930\nlibavutil      61.  1.102 / 61.  1.102\nlibavcodec     63.  1.102 / 63.  1.102\nlibavformat    63.  1.102 / 63.  1.102\nlibavdevice    63.  1.102 / 63.  1.102\nlibavfilter    12.  1.102 / 12.  1.102\nlibswscale     10.  1.102 / 10.  1.102\nlibswresample   7.  1.102 /  7.  1.102\n\nExiting with exit code 0\n",
+  "ffprobe": "ffprobe version n9.0.2-17-g2a571b6068-20260930 Copyright (c) 2007-2026 the FFmpeg developers",
+  "packages": {
+    "Pillow": "12.3.0",
+    "ffmpeg-python": "0.2.0",
+    "fonttools": "4.63.0",
+    "uniseg": "0.10.1"
+  },
+  "parameters": {
+    "duration": 12.0,
+    "fps": 30,
+    "repetitions": 3,
+    "sizes": [
+      "1080x1920"
+    ],
+    "warmups": 1,
+    "seed": 20261018,
+    "quality": false,
+    "cases": null,
+    "preparation_only": true,
+    "experimental_line_break_cache": true
+  },
+  "preparation": [
+    {
+      "size": "1080x1920",
+      "style": "default",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.020879200999843306,
+          0.023397450000175013,
+          0.020737007000207086
+        ],
+        "median": 0.020879200999843306,
+        "min": 0.020737007000207086,
+        "max": 0.023397450000175013
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.10925200900010168,
+          0.11744371399981901,
+          0.1111684359998435
+        ],
+        "median": 0.1111684359998435,
+        "min": 0.10925200900010168,
+        "max": 0.11744371399981901
+      },
+      "ass_bytes": 4266,
+      "ass_dialogues": 28,
+      "experimental_line_break_cache": true,
+      "last_cache_counts": {
+        "hits": 12,
+        "misses": 4,
+        "maxsize": 4096,
+        "currsize": 4
+      },
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Regular",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 64,
+        "requested_weight_name": "regular",
+        "requested_weight": 400,
+        "requested_weight_input": "regular",
+        "requested_weight_input_form": "default",
+        "resolved_weight_name": "regular",
+        "resolved_weight": 400,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-static",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.02119325800003935,
+          0.02081310499988831,
+          0.0206821960000525
+        ],
+        "median": 0.02081310499988831,
+        "min": 0.0206821960000525,
+        "max": 0.02119325800003935
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.06828319500027646,
+          0.06741731600004641,
+          0.0688296690000243
+        ],
+        "median": 0.06828319500027646,
+        "min": 0.06741731600004641,
+        "max": 0.0688296690000243
+      },
+      "ass_bytes": 1512,
+      "ass_dialogues": 12,
+      "experimental_line_break_cache": true,
+      "last_cache_counts": {
+        "hits": 12,
+        "misses": 4,
+        "maxsize": 4096,
+        "currsize": 4
+      },
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.02050444799988327,
+          0.020566848999806098,
+          0.020578397999997833
+        ],
+        "median": 0.020566848999806098,
+        "min": 0.02050444799988327,
+        "max": 0.020578397999997833
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.0894856280001477,
+          0.0896172990001105,
+          0.09079968700007157
+        ],
+        "median": 0.0896172990001105,
+        "min": 0.0894856280001477,
+        "max": 0.09079968700007157
+      },
+      "ass_bytes": 33017,
+      "ass_dialogues": 232,
+      "experimental_line_break_cache": true,
+      "last_cache_counts": {
+        "hits": 12,
+        "misses": 4,
+        "maxsize": 4096,
+        "currsize": 4
+      },
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "neon-magenta-pulse",
+      "timeline_seconds": 12.0,
+      "source_segments": 4,
+      "semantic_cues": 4,
+      "semantic_seconds": {
+        "samples": [
+          0.021334820999982185,
+          0.02111305700009325,
+          0.021741347999977734
+        ],
+        "median": 0.021334820999982185,
+        "min": 0.02111305700009325,
+        "max": 0.021741347999977734
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.09203114199999618,
+          0.0799152900003719,
+          0.09773745000029521
+        ],
+        "median": 0.09203114199999618,
+        "min": 0.0799152900003719,
+        "max": 0.09773745000029521
+      },
+      "ass_bytes": 28593,
+      "ass_dialogues": 208,
+      "experimental_line_break_cache": true,
+      "last_cache_counts": {
+        "hits": 12,
+        "misses": 4,
+        "maxsize": 4096,
+        "currsize": 4
+      },
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Roboto",
+        "resolved_font": "Roboto",
+        "resolved_style": "Bold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 61,
+        "requested_weight_name": "bold",
+        "requested_weight": 700,
+        "requested_weight_input": "bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "bold",
+        "resolved_weight": 700,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 12,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 12
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 60.0,
+      "source_segments": 20,
+      "semantic_cues": 20,
+      "semantic_seconds": {
+        "samples": [
+          0.10508321099996465,
+          0.10528336699962892,
+          0.10332194400007211
+        ],
+        "median": 0.10508321099996465,
+        "min": 0.10332194400007211,
+        "max": 0.10528336699962892
+      },
+      "artifact_seconds": {
+        "samples": [
+          0.3057794950000243,
+          0.2993283010000596,
+          0.31176138999990144
+        ],
+        "median": 0.3057794950000243,
+        "min": 0.2993283010000596,
+        "max": 0.31176138999990144
+      },
+      "ass_bytes": 162299,
+      "ass_dialogues": 1160,
+      "experimental_line_break_cache": true,
+      "last_cache_counts": {
+        "hits": 60,
+        "misses": 20,
+        "maxsize": 4096,
+        "currsize": 20
+      },
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 60,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 60
+        }
+      }
+    },
+    {
+      "size": "1080x1920",
+      "style": "yellow-pop",
+      "timeline_seconds": 300.0,
+      "source_segments": 100,
+      "semantic_cues": 100,
+      "semantic_seconds": {
+        "samples": [
+          0.5407275429997753,
+          0.5397087860001193,
+          0.5352955339999426
+        ],
+        "median": 0.5397087860001193,
+        "min": 0.5352955339999426,
+        "max": 0.5407275429997753
+      },
+      "artifact_seconds": {
+        "samples": [
+          1.421697998000127,
+          1.4069732959997054,
+          1.390489855999931
+        ],
+        "median": 1.4069732959997054,
+        "min": 1.390489855999931,
+        "max": 1.421697998000127
+      },
+      "ass_bytes": 808865,
+      "ass_dialogues": 5800,
+      "experimental_line_break_cache": true,
+      "last_cache_counts": {
+        "hits": 300,
+        "misses": 100,
+        "maxsize": 4096,
+        "currsize": 100
+      },
+      "font_measurement": {
+        "mode": "font-metrics",
+        "requested_font": "Montserrat",
+        "resolved_font": "Montserrat",
+        "resolved_style": "ExtraBold",
+        "font_source": "bundled",
+        "shaping": "raqm",
+        "metric_size": 60,
+        "requested_weight_name": "extra-bold",
+        "requested_weight": 800,
+        "requested_weight_input": "extra-bold",
+        "requested_weight_input_form": "name",
+        "resolved_weight_name": "extra-bold",
+        "resolved_weight": 800,
+        "weight_substituted": false,
+        "coverage": "verified",
+        "fallback_reason": null
+      },
+      "word_effects": {
+        "units": "alignment-records",
+        "cues": 300,
+        "fallback_cues": 0,
+        "reasons": {},
+        "renderer_strategies": {
+          "positioned-fragments": 300
+        }
+      }
+    }
+  ],
+  "cases": [],
+  "gpu": "Failed to initialize NVML: GPU access blocked by the operating system\nFailed to properly shut down NVML: GPU access blocked by the operating system",
+  "sources": {
+    "1080x1920": {
+      "codec_name": "h264",
+      "width": 1080,
+      "height": 1920,
+      "nb_frames": "360",
+      "pix_fmt": "yuv420p",
+      "duration": "12.000000"
+    }
+  },
+  "evidence_note": "Portable selection of raw observations; container tags and generated transcript metadata omitted. RSS recovered from the same per-run FFmpeg log when the older build used the kB label."
+}
