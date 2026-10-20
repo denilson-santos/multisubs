@@ -1,8 +1,8 @@
 # Generate subtitle files without video encoding
 
-Status: In review
+Status: Done
 
-Delivery: `feat/reusable-subtitle-runs`
+Delivery: [PR #115](https://github.com/denilson-santos/multisubs/pull/115)
 
 Depends on: [Plan 0](00-source-speech-cache.md) for source reuse and the
 existing schema-3/SRT/ASS artifact compiler.

@@ -1,8 +1,8 @@
 # Persist source speech independently of presentation
 
-Status: In review
+Status: Done
 
-Delivery: `feat/reusable-subtitle-runs`
+Delivery: [PR #115](https://github.com/denilson-santos/multisubs/pull/115)
 
 Depends on: the existing [source-speech contract](../../architecture.md#deferred-speech-rendering)
 and static backend/model/language validation.
