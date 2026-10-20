@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .pyright/
+.multisubs-cache/
 .coverage
 .coverage.*
 htmlcov/
