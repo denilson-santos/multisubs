@@ -390,6 +390,14 @@ Do not run a command from this list merely because it appears here if the corres
 - Must avoid shell execution with interpolated user-controlled values.
 - Must not send media, transcripts, telemetry, or model credentials to third parties without an explicit user-facing feature and consent model.
 - Should provide a documented data-retention policy before adding caches, logs, telemetry, batch histories, or cloud features.
+- CLI transcription persists source speech in `<output-dir>/.multisubs-cache`
+  by default; `--cache-dir DIR` overrides the location. Translation, sample
+  previews, external subtitles, and Python rendering APIs must not acquire
+  automatic speech persistence. Use bounded/validated JSON, owner-only files
+  where supported, and atomic writes.
+  It must remain independent of generated artifact retention and model caches.
+  Document indefinite retention until user deletion, refresh semantics, content
+  identity, and compatibility limits; never store media or runtime objects.
 - Must keep tokens, private package indexes, Hugging Face credentials, and local configuration outside the repository. Use environment variables or a user-specific secure configuration mechanism.
 - Should set practical limits or warnings for enormous files, excessive duration, malformed media, and resource-intensive model selections before exposing the tool to untrusted batch inputs.
 - Must review package provenance, hashes or locks where available, and release artifacts before publishing.

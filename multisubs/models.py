@@ -544,6 +544,12 @@ class RunRequest:
     subtitle_template_source: str = "builtin"
     subtitle_template_base: str | None = None
     video_encoding: VideoEncodingConfig = field(default_factory=VideoEncodingConfig)
+    cache_dir: Path | None = None
+    refresh_cache: bool = False
+    subtitles_only: bool = False
+    preview_clip: bool = False
+    preview_at: float = 0.0
+    preview_duration_ms: int = 10_000
 
 
 @dataclass(frozen=True)

@@ -209,7 +209,7 @@ def validate_animation_preview_support() -> None:
     encoders = f"{completed.stdout}\n{completed.stderr}"
     if not any("libx264" in line.split() for line in encoders.splitlines()):
         raise DependencyError(
-            "FFmpeg does not provide the libx264 encoder required for animated "
+            "FFmpeg does not provide the libx264 encoder required for subtitle "
             "previews; install an FFmpeg build with H.264 encoding support."
         )
 
@@ -577,6 +577,112 @@ def embed_subtitles(
                 pass
 
 
+def validate_clip_range(
+    start: float, duration: float, geometry: VideoGeometry
+) -> float:
+    """Validate a real preview before ASR; return its end-bounded duration."""
+    if (
+        type(start) not in (int, float)
+        or not math.isfinite(start)
+        or not 0 <= start <= MAX_PREVIEW_TIMESTAMP_SECONDS
+        or type(duration) not in (int, float)
+        or not math.isfinite(duration)
+        or not 1 <= duration <= 15
+    ):
+        raise ValidationError(
+            "Clip start must be nonnegative; duration must be 1s through 15s"
+        )
+    end = geometry.duration_seconds
+    if end is None or not math.isfinite(end) or start >= end:
+        raise ValidationError(
+            "Real previews require a known video duration and a start before its end"
+        )
+    return min(duration, end - start)
+
+
+def render_subtitle_clip(
+    input_path: Path,
+    ass_path: Path,
+    output_path: Path,
+    *,
+    geometry: VideoGeometry,
+    start: float,
+    duration: float,
+    fonts_dir: Path | None = None,
+    progress: ProgressReporter = None,
+    video_encoding: VideoEncodingConfig | None = None,
+) -> Path:
+    """Render a moving excerpt using full-timeline ASS and original source audio.
+
+    Accurate input seeking bounds decoding. Restore source time before libass
+    so a cue crossing the clip boundary retains its original animation phase.
+    Source audio is re-encoded as AAC to support cuts between compressed packets.
+    """
+    source = _require_file(input_path, "Input video")
+    subtitles = _require_file(ass_path, "ASS subtitle file")
+    fonts = _require_directory(fonts_dir, "Fonts directory")
+    selected = validate_video_encoding_config(video_encoding)
+    bounded_duration = validate_clip_range(start, duration, geometry)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = _temporary_media_path(output_path)
+    try:
+        ffmpeg = _load_ffmpeg_python()
+        _report(
+            progress,
+            f"Rendering real video excerpt at {start:g}s for {bounded_duration:g}s...",
+        )
+        stream = ffmpeg.input(str(source), ss=start)
+        options = {"filename": str(subtitles), "original_size": geometry.original_size}
+        if fonts is not None:
+            options["fontsdir"] = str(fonts)
+        video = (
+            stream[str(geometry.stream_index)]
+            .filter("setpts", f"PTS+{start:.6f}/TB")
+            .filter("subtitles", **options)
+            .filter("setpts", f"PTS-{start:.6f}/TB")
+        )
+        encoding = {"vcodec": "libx264", **_video_encoding_options(selected)}
+        pixel_format = (
+            "yuv420p"
+            if geometry.render_width % 2 == 0 and geometry.render_height % 2 == 0
+            else "yuv444p"
+        )
+        try:
+            ffmpeg.output(
+                video,
+                stream["a?"],
+                str(temporary),
+                format="mp4",
+                **encoding,
+                acodec="aac",
+                pix_fmt=pixel_format,
+                t=bounded_duration,
+                movflags="+faststart",
+            ).global_args("-nostdin").run(
+                overwrite_output=True, capture_stdout=True, capture_stderr=True
+            )
+        except ffmpeg.Error as exc:
+            raise RenderingError(
+                "FFmpeg could not render the video excerpt: "
+                f"{_short_output(_error_output(exc))}"
+            ) from exc
+        except OSError as exc:
+            raise RenderingError(f"Could not render the video excerpt: {exc}") from exc
+        try:
+            publish_files({temporary: output_path})
+        except FileExistsError as exc:
+            raise ArtifactError(
+                f"Refusing to overwrite existing output '{output_path}'"
+            ) from exc
+        _report(progress, "Real video excerpt rendered successfully.")
+        return output_path
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def render_subtitle_preview(
     input_path: str | Path,
     ass_path: str | Path,
@@ -647,7 +753,7 @@ def render_subtitle_animation_preview(
     ass_path: str | Path,
     output_dir: str | Path,
     *,
-    timestamp: float,
+    timestamp: float = 0.0,
     duration_ms: int,
     geometry: VideoGeometry | None = None,
     fonts_dir: str | Path | None = None,

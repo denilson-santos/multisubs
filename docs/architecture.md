@@ -63,6 +63,7 @@ flowchart LR
 | multisubs/cli.py | Defines the Typer console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | app, main() |
 | multisubs/asr/ | Defines backend capabilities and normalizes WhisperX, Faster-Whisper, Parakeet/NeMo, and Qwen3-ASR results into one language/text/segments contract without importing unselected runtimes. | ASRBackend, ASRRequest, ASRResult, create_adapter() |
 | multisubs/speech.py | Validates lossless source-speech interchange and renders it through the normal transcription pipeline without ASR. | SpeechTranscript, render_transcript() |
+| multisubs/speech_cache.py | Owns content/request identity, bounded source-speech validation, runtime compatibility, and atomic local persistence before presentation. | get_cached_speech() |
 | multisubs/transcriber.py | Selects an ASR adapter, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_speech(), transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, generates deterministic simulated word timing for animated previews, and generates optional native or explicit ASS guide events. | build_preview_ass(), build_animation_preview_ass(), build_simulated_karaoke_cue(), resolve_preview_timestamp() |
 | multisubs/animation.py | Normalizes cue and aligned-word phases with configured durations inside quantized bounds and samples relative opacity, movement, and scale state without I/O. | normalize_cue_animation(), normalize_word_animation(), animation_boundaries(), word_animation_boundaries(), sample_cue_animation(), sample_word_animation() |
@@ -195,6 +196,82 @@ in the interchange data; cropping, source selection, and shifting observed times
 to an edit's timeline are the consumer's responsibility. See the
 [Python API reference](../README.md#transcribe-once-and-reuse-the-transcript).
 
+### CLI speech reuse and visual iteration
+
+`RunRequest` carries `cache_dir`, `refresh_cache`, `subtitles_only`,
+`preview_clip`, `preview_at`, and `preview_duration_ms`. These options are validated
+before filesystem/model work and are separate from `PreviewRequest`, whose
+sample PNG/frozen animation modes remain transcription-free. The new CLI
+workflows support transcription only and do not alter the public speech schema.
+The CLI assigns `<output-dir>/.multisubs-cache` by default for transcription,
+including subtitle exports and real clips; `--cache-dir DIR` overrides it.
+The location follows the resolved requested output root (the current directory
+when `-o` is omitted), not a collision-safe retained-run subdirectory. Validate
+the cache path without creating it before media/model work. Translation,
+external subtitles, and sample previews do not access the default cache;
+explicit cache options remain invalid in these modes. Python speech/rendering
+APIs do not acquire automatic persistence.
+
+All three preview mode selectors and shared controls occupy one `Subtitle preview`
+help panel. `--preview-at` is an optional background-frame selection for PNG and
+simulated animation, defaulting to the first frame at 0 seconds, and the required
+source start for real clips. Its CLI notation is `HH:MM:SS`, with two ASCII digits
+per field and whole seconds. Internal rendering APIs continue accepting precise
+numeric seconds. `--preview-duration` supplies whole milliseconds for
+animation cue duration (default 4 seconds) or real clip duration (default 10
+seconds), bounded from 1 through 15 seconds. PNG rejects a duration. Sample text
+and guides apply only to PNG/animation; mode selectors are mutually exclusive.
+`--refresh-cache` uses the default or custom directory, bypasses reuse, and
+replaces the matching source-speech entry after recognition succeeds.
+
+`speech_cache.get_cached_speech()` streams SHA-256 over the complete media and
+combines it with canonical backend/model, normalized requested language (null
+for automatic), task, and an explicit recognition revision. Filename, geometry,
+presentation, output path, and encoding do not identify speech. The recognition
+revision must change when adapter semantics change incompatibly. Runtime package
+versions are read through distribution metadata without importing those runtimes;
+installed differences invalidate a hit, while absent packages allow reuse.
+Mutable model weights under an unchanged name require explicit refresh.
+
+Entries below the chosen directory's `transcriptions/v1` child wrap source-speech
+schema 1 with cache version, identity, and runtime provenance. Reads are bounded
+to 16 MiB and reject duplicate keys, incompatible identity/version, invalid source
+data, and symbolic-link entries. Unusable data triggers visible recognition;
+filesystem errors fail with an actionable path. Source stat changes during
+hashing/recognition prevent saving. Owner-only directories and temporary files,
+atomic replacement, and validation prevent partial entries from becoming hits.
+Concurrent writers may do duplicate recognition; each publishes a complete entry.
+If the current entry is absent, lookup also accepts the legacy
+`speech-v1/<key>.json` entry through the same bounded validation. Current entries
+take precedence. Refresh bypasses both locations and writes only to
+`transcriptions/v1`, preserving any legacy files even after a failed refresh.
+Directory naming does not change the identity or JSON format version.
+
+Persist source speech immediately after recognition, before
+`_build_subtitle_segments()` and layout. Rebuild semantic cues with the normal
+compiler for every presentation and bind metadata to the current input path.
+Cache retention is automatic for CLI transcription, indefinite until user
+deletion, independent of `--keep-transcriptions`, and survives downstream
+failure. It does not persist Unicode segmentation caches or model instances.
+
+`--subtitles-only` probes geometry and runs normal artifact preparation, then
+publishes only SRT/ASS under one collision-safe stem. It skips rendering/filter
+capability and encoder preflight; ffprobe and any ASR-specific audio preparation
+remain prerequisites. Its schema-3 JSON is transient. Reject `-k`, encoding,
+external subtitles, and preview combinations before processing.
+
+`--preview-clip` validates its required `--preview-at` and 1–15 second
+`--preview-duration` (default 10 seconds) against known media duration before
+recognition, and bounds
+the end to that duration. A cache miss recognizes the full source. Generate ASS
+on the complete original timeline. `subtitler.render_subtitle_clip()` uses
+accurate input seeking, restores the requested source-time offset before libass,
+then removes that offset for the output clock. Cues crossing the clip start retain
+their original text/timing/animation phase. Encode H.264 with libx264 or the
+explicit encoder; retain autorotation and compatible pixel format. Optional audio
+is AAC-encoded for arbitrary packet-boundary cuts. Silent inputs remain silent.
+The CLI publishes only the collision-safe MP4 after FFmpeg succeeds.
+
 ### External SRT and ASS input
 
 `render_subtitle_file()` in `subtitler.py` validates the local video and
@@ -215,7 +292,8 @@ remains unchanged.
 1. The console script calls `cli.main()`. Typer parses options and their custom values; the CLI validates combinations, paths, and built-in or custom template defaults plus explicit overrides before probing. Scoped disable flags are then applied to the resolved typed configuration: each scope-level animation flag removes every phase from text and backdrop tracks; cue suppression preserves its static backdrop, while word suppression also removes the dependent word decoration fields. During a default processing run, the CLI routes its own progress to standard output and discards external runtimes' Python and native stdout/stderr writes through the platform's null device. Exceptions still become multisubs errors after normal streams are restored. `--verbose` leaves runtime output visible and includes detailed progress. See [internal template resources](#internal-template-resources) and the [functional requirements](prd.md#functional-requirements).
 2. Both paths validate FFmpeg/ffprobe and probe the lowest-index usable stream, checking coded dimensions, rotation, sample/display aspect ratios, and container duration in one `VideoGeometry`. Autorotation keeps coded axes at 0°/180° and swaps render and sample-aspect-ratio axes at 90°/270°; legacy rotate-tag signs are normalized, and contradictory metadata fails. This precedes normal work-directory creation and model loading. The normal path resolves layout and wrapping and validates a decorated line can fit before model loading. See [FFmpeg](#ffmpeg), [design constraints](#design-constraints), and [FR-15](prd.md#functional-requirements).
 3. The normal path resolves `--asr` and a backend-specific default model before
-   loading any runtime. The selected adapter owns device selection, inference,
+   loading any runtime. A compatible speech-cache hit skips the
+   adapter; otherwise the selected adapter owns device selection, inference,
    language resolution, and available word alignment, then returns normalized
    text and timed segments. WhisperX and Faster-Whisper support English
    translation with non-Turbo multilingual models; translated words are not
@@ -224,7 +302,7 @@ remains unchanged.
    transient connection failures up to three times. See [local ASR adapters](#local-asr-adapters)
    and [FR-3–FR-5, FR-14, FR-19](prd.md#functional-requirements).
 4. `transcriber.py` maps aligned records to source text, constructs timed cues, and rebuilds wrapping metrics for the subtitle language and display-cased sample. Incomplete mappings retain complete source text at coarse segment timing instead of fabricated word times. Translation has a second, layout-level safeguard: after the six-second backend chunking stage, the artifact writer validates the measured ASS envelope and retries up to three times with the effective font size reduced by 4% per step when width or height still overflows. It then serializes JSON, SRT, and ASS from the same successful cue/config/metric set. See [subtitle-cue construction](#subtitle-cue-construction) and [Unicode segmentation and source mapping](#unicode-segmentation-and-source-mapping) for the detailed rules.
-5. The artifact writer validates timestamps and atomically writes JSON/SRT; `ass.py` compiles the same resolved configuration and cues. Both preview modes bypass transcription and reuse layout, ASS, and FFmpeg without publishing subtitle artifacts. See [JSON](#json), [SRT and ASS](#srt-and-ass), and [FR-16–FR-18](prd.md#functional-requirements) for their contracts.
+5. The artifact writer validates timestamps and atomically writes JSON/SRT; `ass.py` compiles the same resolved configuration and cues. Both sample preview modes bypass transcription and reuse layout, ASS, and FFmpeg without publishing subtitle artifacts. Subtitle-only mode publishes SRT/ASS at this point. See [JSON](#json), [SRT and ASS](#srt-and-ass), and [FR-16–FR-18](prd.md#functional-requirements) for their contracts.
 6. Normal rendering burns ASS into the selected stream with autorotation and copies available audio; preview rendering produces its still or clip without transcription artifacts. After a successful normal render, the CLI publishes collision-safe outputs and removes its private work directory; failed normal runs retain that directory for diagnosis. Preview runs remove temporary ASS/frame files and partial media. See [FFmpeg](#ffmpeg), [output layouts](#output-layouts), and [design constraints](#design-constraints).
 
 ## Subtitle-cue construction
@@ -827,6 +905,15 @@ For video.mp4, language pt, and an output directory named output:
 | --keep-transcriptions | output/video/video-pt.mp4 | output/video/subtitles/video-pt.json, video-pt.srt, and video-pt.ass |
 | --preview-layout | output/video-subtitle-preview.png | No JSON, SRT, ASS, rendered video, or transcription directory is published; the temporary ASS is removed. |
 | --preview-animation | output/video-subtitle-animation-preview.mp4 | No JSON, SRT, ASS, audio, rendered transcription video, or transcription directory is published; the temporary ASS and frozen frame are removed. |
+| --subtitles-only | None | output/video-pt.srt and output/video-pt.ass; shared collision-safe stem; transient JSON removed after successful publication. |
+| --preview-clip | output/video-subtitle-clip-preview.mp4 | No published JSON/SRT/ASS; real source audio is included when available. |
+
+CLI transcription also retains source speech under
+`output/.multisubs-cache/transcriptions/v1` by default, shared by full renders,
+subtitle exports, real clips, and retained runs in that output root.
+`--cache-dir DIR` places these entries in `DIR/transcriptions/v1` instead.
+The separate cache remains after successful cleanup or later failures;
+translation and transcription-free modes do not create it.
 
 get_unique_path() and get_unique_dir_path() append (1), (2), and so on when a target already exists. Retained JSON/SRT/ASS/video outputs reserve one shared stem so a collision cannot split a run across different suffixes; the default mode reserves only the published video name.
 
@@ -910,10 +997,14 @@ uses medium/CRF 23 defaults and the standard named presets; explicit
 `h264_nvenc` uses p4/CQ 28 defaults and presets p1 through p7. Both quality
 ranges are integer 0 through 51; NVENC CQ 0 retains FFmpeg's automatic meaning.
 `RunRequest` and `PreviewRequest` carry the immutable normalized settings.
-The CLI exposes `--video-encoder`, `--video-preset`, and `--video-quality`,
-accepts them for external subtitles and animated previews, and rejects them
-for PNG previews. Python rendering APIs take the optional `video_encoding`
-keyword; `VideoEncodingConfig` is lazily exported from the package root.
+The CLI exposes `--video-encoder`, `--video-preset`, and `--video-quality`
+for normal rendering, external subtitles, animated previews, and real excerpts.
+PNG previews accept the same validated settings but do not pass them to the
+PNG renderer or initialize a video encoder. Preset and quality still require
+a compatible explicit encoder, allowing valid video commands to be reused
+with `--preview-layout`. Python rendering APIs take the optional
+`video_encoding` keyword; `VideoEncodingConfig` is lazily exported from the
+package root.
 
 `subtitler.validate_video_encoding_support()` initializes an explicitly selected
 encoder on one synthetic 320×180 yuv420p frame to a null sink, with a 30 second
@@ -1045,7 +1136,11 @@ source string, but the production mapped path does not use that heuristic.
   Faster-Whisper with a multilingual non-Turbo model.
 - Source languages and word-timestamp availability follow the selected ASR;
   missing word timing uses the visible coarse-segment fallback.
-- Completed transcription artifacts are cleaned only after subtitle rendering returns successfully; partial renderer media is cleaned on both success and failure.
+- For video-producing transcription runs, completed transcription artifacts are
+  cleaned only after rendering succeeds; partial renderer media is cleaned on
+  both success and failure.
+- Subtitle-only mode publishes its SRT/ASS pair without video rendering. Reusable
+  source-speech cache entries have an independent documented retention policy.
 - File collision avoidance is a required safety property, not merely a convenience.
 - Final media is published only after FFmpeg succeeds; temporary output is never presented as a completed video.
 - CLI diagnostics use non-zero exit statuses for validation and processing failures.

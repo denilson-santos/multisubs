@@ -2,6 +2,11 @@
 
 Status: Done
 
+The [visual-iteration follow-up](../rerun-optimization/02-real-excerpt-preview.md)
+changes the omitted background timestamp to the first frame, uses `HH:MM:SS`
+for CLI frame selection, and shares timing controls with real excerpts. The
+original delivery decisions below remain history.
+
 Depends on:
 
 - [Multiline capacity](00-multiline-capacity.md).

@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from test_cli_helpers import TestParser
+from typer.testing import CliRunner
 
 from multisubs import cli
 from multisubs.ass import rgba_to_ass_color_override, write_ass
@@ -62,9 +63,11 @@ def _request(tmp_path: Path, **overrides) -> PreviewRequest:
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("00:00:00.000", 0.0),
-        ("01:02:03.45", 3723.45),
-        ("23:04:05.678", 83045.678),
+        ("00:00:00", 0.0),
+        ("00:00:10", 10.0),
+        ("01:02:03", 3723.0),
+        ("23:04:05", 83045.0),
+        ("24:00:00", 86400.0),
     ],
 )
 def test_parse_preview_timestamp(value, expected):
@@ -74,17 +77,37 @@ def test_parse_preview_timestamp(value, expected):
 @pytest.mark.parametrize(
     "value",
     [
-        "-00:00:01.000",
-        "00:60:00.000",
-        "00:00:60.000",
+        "-00:00:01",
+        "00:60:00",
+        "00:00:60",
+        "00:00:00.000",
+        "01:02:03.45",
+        "23:04:05.678",
         "00:00:00.1234",
-        "00:00:00",
+        "0:00:00",
+        "000:00:00",
+        "00:0:00",
+        "00:00:0",
+        "24:00:01",
+        "٠٠:٠٠:٠٠",
         "1.5",
     ],
 )
 def test_parse_preview_timestamp_rejects_ambiguous_values(value):
     with pytest.raises(ValidationError, match="preview-at"):
         parse_preview_timestamp(value)
+
+
+@pytest.mark.parametrize(
+    "mode", ["--preview-layout", "--preview-animation", "--preview-clip"]
+)
+def test_preview_timestamp_cli_requires_whole_seconds(tmp_path, mode):
+    result = CliRunner().invoke(
+        cli.app,
+        ["-i", str(tmp_path / "missing.mp4"), mode, "--preview-at", "00:00:01.250"],
+    )
+    assert result.exit_code == 2
+    assert "HH:MM:SS notation" in " ".join(result.output.split())
 
 
 @pytest.mark.parametrize(
@@ -135,8 +158,8 @@ def test_simulated_cjk_effect_timing_uses_character_like_units():
     ] == [0, 1, 2]
 
 
-def test_preview_timestamp_defaults_to_midpoint_or_zero():
-    assert resolve_preview_timestamp(None, GEOMETRY) == 5.0
+def test_preview_timestamp_defaults_to_first_frame_with_or_without_duration():
+    assert resolve_preview_timestamp(None, GEOMETRY) == 0.0
     unknown_duration = replace(GEOMETRY, duration_seconds=None)
     assert resolve_preview_timestamp(None, unknown_duration) == 0.0
 
@@ -157,7 +180,7 @@ def test_preview_request_is_built_without_transcription_options(tmp_path: Path):
             str(input_path),
             "--preview-layout",
             "--preview-at",
-            "00:00:01.250",
+            "00:00:01",
             "--preview-guides",
         ]
     )
@@ -165,7 +188,7 @@ def test_preview_request_is_built_without_transcription_options(tmp_path: Path):
     request = cli._build_request(args, parser)
 
     assert isinstance(request, PreviewRequest)
-    assert request.preview_at == 1.25
+    assert request.preview_at == 1.0
     assert request.preview_text == DEFAULT_PREVIEW_TEXT
     assert request.guides is True
 
@@ -195,7 +218,7 @@ def test_animation_preview_request_uses_typed_mode_and_default_duration(
     assert request.preview_duration_ms == DEFAULT_PREVIEW_DURATION_MS
 
 
-def test_preview_duration_requires_animation_mode(tmp_path: Path):
+def test_png_preview_rejects_duration(tmp_path: Path):
     input_path = tmp_path / "video.mp4"
     input_path.write_bytes(b"input")
     parser = TestParser()
@@ -213,6 +236,35 @@ def test_preview_duration_requires_animation_mode(tmp_path: Path):
         cli._build_request(args, parser)
 
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("mode", "default_duration"),
+    [("--preview-animation", 4_000), ("--preview-clip", 10_000)],
+)
+@pytest.mark.parametrize(
+    ("duration", "expected"), [(None, None), ("1500ms", 1500), ("1.5s", 1500)]
+)
+def test_preview_modes_share_duration_option_and_units(
+    tmp_path,
+    mode,
+    default_duration,
+    duration,
+    expected,
+):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"input")
+    arguments = ["-i", str(source), mode]
+    if mode == "--preview-clip":
+        arguments += ["--preview-at", "00:00:01"]
+    if duration is not None:
+        arguments += ["--preview-duration", duration]
+    parser = TestParser()
+    request = cli._build_request(parser.parse_args(arguments), parser)
+    assert request.preview_duration_ms == (
+        default_duration if expected is None else expected
+    )
+    assert request.preview_at == (1.0 if mode == "--preview-clip" else 0.0)
 
 
 def test_preview_modes_are_mutually_exclusive(tmp_path: Path, capsys):
@@ -916,12 +968,17 @@ def test_preview_one_line_box_uses_one_shared_surface(tmp_path: Path):
     assert sum(line.startswith("Dialogue: 2,") for line in dialogue) == 1
 
 
-def test_preview_run_branches_before_asr_runtime_import(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("preview_at", [None, 1.25])
+def test_preview_run_branches_before_asr_runtime_import(
+    tmp_path: Path, monkeypatch, preview_at
+):
     input_path = tmp_path / "video.mp4"
     output_dir = tmp_path / "output"
     input_path.write_bytes(b"input")
     request = _request(input_path.parent)
-    request = replace(request, input_path=input_path, output_dir=output_dir)
+    request = replace(
+        request, input_path=input_path, output_dir=output_dir, preview_at=preview_at
+    )
 
     monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
     monkeypatch.setattr(
@@ -930,6 +987,7 @@ def test_preview_run_branches_before_asr_runtime_import(tmp_path: Path, monkeypa
 
     def fake_render(source, subtitle, destination, **kwargs):
         assert Path(subtitle).exists()
+        assert kwargs["timestamp"] == (0.0 if preview_at is None else preview_at)
         preview = Path(destination) / "video-subtitle-preview.png"
         preview.parent.mkdir(parents=True, exist_ok=True)
         preview.write_bytes(b"png")
@@ -964,8 +1022,9 @@ def test_preview_run_branches_before_asr_runtime_import(tmp_path: Path, monkeypa
     assert not list(output_dir.glob(".multisubs-*"))
 
 
+@pytest.mark.parametrize("preview_at", [None, 1.25])
 def test_animation_preview_branches_before_asr_runtime_import(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, preview_at
 ):
     input_path = tmp_path / "video.mp4"
     output_dir = tmp_path / "output"
@@ -977,6 +1036,7 @@ def test_animation_preview_branches_before_asr_runtime_import(
         output_dir=output_dir,
         preview_mode=PreviewMode.ANIMATION,
         preview_duration_ms=1_000,
+        preview_at=preview_at,
     )
 
     monkeypatch.setattr("multisubs.subtitler.validate_ffmpeg_support", lambda: None)
@@ -989,6 +1049,7 @@ def test_animation_preview_branches_before_asr_runtime_import(
 
     def fake_render(source, subtitle, destination, **kwargs):
         assert Path(subtitle).exists()
+        assert kwargs["timestamp"] == (0.0 if preview_at is None else preview_at)
         preview = Path(destination) / "video-subtitle-animation-preview.mp4"
         preview.parent.mkdir(parents=True, exist_ok=True)
         preview.write_bytes(b"mp4")

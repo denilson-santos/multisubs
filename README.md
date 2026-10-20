@@ -212,7 +212,7 @@ multisubs -i ./video.mp4 -l pt -o ./output --asr faster-whisper
 
 Available backends are `whisperx` (the default), `faster-whisper`, `parakeet`,
 and `qwen`. Omit `-l pt` for automatic language detection where supported.
-See [backend defaults and models](#input-and-processing) for the differences.
+See [backend defaults and models](#asr-backends-and-models) for the differences.
 
 ### Choose a built-in subtitle template
 
@@ -241,7 +241,8 @@ multisubs -i ./video.mp4 -l pt -o ./output \
 ```
 
 Quote hexadecimal colors in the shell. Lengths require `%` or `px`.
-See [appearance options](#appearance) for spacing, opacity, casing, and backdrops,
+See [appearance options](#subtitle-appearance) for opacity, casing, and backdrops,
+[relative layout units](#relative-layout-units) for size, spacing, and line height,
 and the guides for [bundled fonts](#use-a-bundled-font) and
 [custom fonts](#use-a-custom-font).
 
@@ -256,8 +257,8 @@ multisubs -i ./video.mp4 -l pt -o ./output \
 ```
 
 Top positions use `--margin-top`; middle positions use neither vertical margin.
-See [layout and positioning](#layout-and-positioning) for all nine positions
-and [exact coordinates](#exact-coordinates) for custom placement.
+See [native subtitle positions](#native-subtitle-positions) for all nine positions
+and [exact coordinates](#custom-subtitle-coordinates) for custom placement.
 
 ### Preview a layout before transcribing
 
@@ -271,8 +272,8 @@ multisubs -i ./video.mp4 -o ./previews \
 ```
 
 This creates `video-subtitle-preview.png` without transcription or ASR loading.
-The frame comes from the video midpoint; use `--preview-at 00:00:10.500` to
-choose another time and `--preview-guides` to show placement guides. Only the
+The first video frame is used by default; use `--preview-at 00:00:10` to
+choose another frame and `--preview-guides` to show placement guides. Only the
 first fitting subtitle is shown, with motion suppressed.
 
 ### Preview subtitle animation
@@ -288,9 +289,78 @@ multisubs -i ./video.mp4 -o ./previews \
 ```
 
 This creates `video-subtitle-animation-preview.mp4` without transcription or
-ASR loading. A `4s` subtitle produces a five-second clip, with half a second
-before and after the subtitle. Word timing is simulated. Both preview modes accept the
-same styling options as rendering; see [preview options](#preview-and-animation).
+ASR loading. The background is the first video frame by default; optional
+`--preview-at 00:00:10` selects another frozen frame. That choice does not
+change the animation clock. A `4s` subtitle produces a five-second clip, with
+half a second before and after the subtitle. Word timing is simulated. Both
+sample previews accept the same styling options as rendering; see
+[preview options](#subtitle-preview).
+
+### Reuse transcription while trying subtitle styles
+
+Transcription runs automatically reuse source speech in
+`<output-dir>/.multisubs-cache`. Export subtitles without encoding a video:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output \
+  --subtitles-only --template yellow-pop
+```
+
+This writes `video-pt.srt` and `video-pt.ass`. Change the template, typography,
+layout, or animation and repeat the command: source speech is reused while the
+subtitle presentation is rebuilt. The input video is still required for its
+geometry. Export needs ffprobe; a cache hit does not run FFmpeg or initialize
+a video encoder. A cache miss may require FFmpeg through the selected ASR.
+
+To evaluate a style on moving video with real speech timing and source audio:
+
+```bash
+multisubs -i ./video.mp4 -l pt -o ./output --template yellow-pop \
+  --preview-clip --preview-at 00:00:10 --preview-duration 8s
+```
+
+This writes `video-subtitle-clip-preview.mp4`. Start is required; duration
+defaults to `10s` and accepts `1s` through `15s` in whole milliseconds using
+`ms` or `s`. The end is limited to the video end. The clip preserves moving
+source frames, autorotated geometry, and the existing subtitle animation phase
+at the cut. Available audio is re-encoded as AAC for accurate cuts; silent inputs
+stay silent. Video uses H.264/libx264 unless an explicit supported
+[video encoder](#video-encoding) is selected. Only the clip is published.
+
+On a miss, either command transcribes the **full input video**, enabling later
+styles, clips, and complete renders to share the same speech. To render the
+complete video, keep the same output directory and omit `--subtitles-only` and
+`--preview-clip`. Use `--cache-dir DIR` to select another cache location, such as
+`--cache-dir ~/.cache/multisubs` to share speech across different output
+directories. Add `--refresh-cache` to recognize again and refresh the matching
+entry after success; it works with the default or custom cache directory.
+Progress reports the cache directory and when ASR and alignment are skipped.
+
+Speech caching, subtitle exports, and real clips support `--task transcribe`.
+Ordinary translation runs retain their uncached behavior. `--subtitles-only`
+and `--preview-clip` reject `--keep-transcriptions`, external subtitles, and
+other preview modes. Real clips reject sample text/guides; subtitle export also
+rejects video encoding options.
+The existing PNG and frozen-background animation previews remain ASR-free.
+
+Speech entries contain the original text and available timestamps. They are
+saved under `<output-dir>/.multisubs-cache/transcriptions/v1` by default, or
+`DIR/transcriptions/v1` with `--cache-dir DIR`, before layout/rendering. They
+remain after a later failure and are retained until you remove that dedicated
+directory. Existing `speech-v1` entries remain readable when the matching entry
+is absent from the new location; new transcriptions and refreshes use
+`transcriptions/v1` and leave the old files untouched.
+They are independent of `--keep-transcriptions`; retained runs share the cache
+at the requested output root, outside each collision-safe run directory.
+Sample previews and external-subtitle rendering do not access a speech cache.
+Cache files use owner-only permissions on systems that support them.
+
+Each lookup hashes the complete input file, so renamed identical media can reuse
+speech while changed content cannot. Backend, model, requested language, and
+recognition compatibility also participate. Differences in installed runtime
+versions invalidate an entry; missing optional ASR packages do not prevent a hit.
+To pick up changed model assets under the same model name, force a refresh.
+Model downloads remain in the ASR runtime's own caches.
 
 ### Add subtitle animations
 
@@ -381,13 +451,16 @@ see [public functions](#public-functions).
 
 ## ⚙️ Command reference
 
-Run `multisubs --help` for the CLI's complete, authoritative help text.
+The blocks below follow the names and order shown by `multisubs --help`.
+Run that command for the CLI's complete, authoritative help text.
 
-### Input and processing
+### Options
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `-i`, `--input-path PATH` | required | Path to one local input video. |
+| `-v`, `--version` | — | Print the package version. |
+| `--verbose` | off | Show detailed processing progress and backend logs. |
 | `-o`, `--output-dir DIR` | current directory | Directory for generated files. |
 | `--subtitle-file PATH` | off | Burn an existing SRT or ASS file into the video without transcription. |
 | `--asr BACKEND` | `whisperx` | `whisperx`, `faster-whisper`, `parakeet`, or `qwen`. |
@@ -395,9 +468,19 @@ Run `multisubs --help` for the CLI's complete, authoritative help text.
 | `-t`, `--task TASK` | `transcribe` | `transcribe` or translate speech to English. |
 | `-m`, `--model MODEL` | backend default | Model used by the selected ASR. |
 | `-k`, `--keep-transcriptions` | off | Keep JSON, SRT, and ASS in a `subtitles` directory. |
-| `--verbose` | off | Show detailed processing progress and backend logs. |
-| `-v`, `--version` | — | Print the package version. |
+| `--cache-dir DIR` | `<output-dir>/.multisubs-cache` | Override the source-speech cache location for transcription runs, independently of presentation and retained artifacts. |
+| `--refresh-cache` | off | Recognize again and atomically refresh the matching entry in the default or custom cache directory. |
+| `--subtitles-only` | off | Export a collision-safe SRT/ASS pair without rendering video; supports transcription only. |
+| `--template NAME` | `default` | Select a built-in or `--template-dir` custom presentation by JSON name. |
+| `--template-dir DIR` | — | Read immediate custom template JSON files for this invocation; custom names take precedence over built-ins. |
+| `--position POSITION` | `bottom-center` | Native ASS semantic position. |
 | `-h`, `--help` | — | Show CLI help and backend-dependent support guidance. |
+
+Defaults in the appearance and relative-unit tables describe the `default`
+template. A selected template supplies its documented baseline first;
+explicitly provided flags then replace only their own fields.
+
+#### Progress and diagnostics
 
 By default, multisubs shows only its own processing stages, relevant subtitle
 warnings, errors, and final output path. Output printed by ASR runtimes and
@@ -405,6 +488,8 @@ native libraries is suppressed during processing, including backend warnings
 and progress bars. Use `--verbose` to show detailed stages and the raw backend
 output when diagnosing a run. If a backend fails, multisubs still reports the
 failed operation; rerun with `--verbose` to inspect the backend diagnostics.
+
+#### ASR backends and models
 
 | ASR | Default model | Task and timing notes |
 | --- | --- | --- |
@@ -422,7 +507,25 @@ small models plus `large-v1`, `large-v2`, `large-v3`, and `large-v3-turbo`.
 Parakeet accepts `nvidia/parakeet-tdt-0.6b-v3`; Qwen accepts
 `Qwen/Qwen3-ASR-1.7B-hf`.
 
+#### Native subtitle positions
+
+`--position` changes only alignment; margins and maximum dimensions retain their
+defaults unless they are overridden independently.
+
+Available semantic positions:
+
+| `top-left` | `top-center` | `top-right` |
+| --- | --- | --- |
+| `middle-left` | `center` | `middle-right` |
+| `bottom-left` | `bottom-center` | `bottom-right` |
+
 ### Video encoding
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--video-encoder ENCODER` | FFmpeg selection | Select `libx264` or `h264_nvenc` for video rendering. |
+| `--video-preset PRESET` | encoder default | Select an encoder-compatible speed/compression preset; requires `--video-encoder`. |
+| `--video-quality INTEGER` | encoder default | Integer `0`–`51`, using CRF for x264 or CQ for NVENC; requires `--video-encoder`. |
 
 #### Defaults
 
@@ -431,7 +534,7 @@ preset, and quality to FFmpeg. In the tested MP4 runs, FFmpeg selected
 `libx264 / medium / CRF 23`. NVIDIA encoding is enabled only when explicitly
 selected; using a GPU for transcription does not enable it for rendering.
 
-| `--video-encoder` | Default preset | Default quality |
+| Encoder | Default preset | Default quality |
 | --- | --- | --- |
 | omitted | FFmpeg default | FFmpeg default |
 | `libx264` (CPU) | `medium` | CRF `23` |
@@ -477,10 +580,13 @@ including earlier 4K tests, are in the
   generally preserve more detail and produce larger files. CRF and CQ numbers
   are not equivalent. NVENC CQ `0` requests automatic quality selection.
 
-These options work with normal rendering, `--subtitle-file`, and
-`--preview-animation`; PNG `--preview-layout` rejects them. Animated previews
-use `libx264` when no encoder is selected and remain silent; normal rendering
-copies audio. Encoding settings are independent of subtitle templates.
+These options work with normal rendering, `--subtitle-file`,
+`--preview-animation`, and `--preview-clip`. PNG `--preview-layout` accepts valid
+encoding options and ignores them, so you can keep the same settings when
+switching preview modes. PNG generation does not initialize the video encoder.
+Animated previews use `libx264` when no encoder is selected and remain silent;
+normal rendering copies audio. Encoding settings are independent of subtitle
+templates.
 
 Both explicit encoders produce H.264. The output keeps the input extension,
 so its container must support H.264. NVENC requires a compatible NVIDIA GPU,
@@ -488,23 +594,65 @@ driver, and FFmpeg build. Encoder initialization errors stop processing before
 transcription; the requested encoder is never silently replaced. Decoding and
 subtitle filtering continue to use the CPU.
 
-### Preview and animation
+### Subtitle preview
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--preview-layout` | off | Render one layout preview PNG without transcription. |
-| `--preview-animation` | off | Render a silent H.264 MP4 with simulated word timing; mutually exclusive with `--preview-layout`. |
-| `--preview-duration DURATION` | `4s` | Animated cue duration from `1s` through `15s`, using whole `ms` or `s`; requires `--preview-animation`. |
-| `--preview-at HH:MM:SS.mmm` | video midpoint | Select the frame used by the preview. |
-| `--preview-text TEXT` | sample text | Replace the preview subtitle text. |
-| `--preview-guides` | off | Draw placement, envelope, and canvas guides. |
+| `--preview-layout` | off | Render one layout preview PNG without transcription; exclusive with other preview modes. Valid video encoding options are accepted and ignored. |
+| `--preview-animation` | off | Render a silent H.264 MP4 with simulated word timing; exclusive with other preview modes. |
+| `--preview-clip` | off | Render moving source video with actual transcript timing and available source audio; transcription only and exclusive with other preview modes. |
+| `--preview-at HH:MM:SS` | first frame for samples; required for real clips | Whole-second frame selection for PNG/animation, or the required source start for `--preview-clip`; use two digits per field. |
+| `--preview-duration DURATION` | animation `4s`; real clip `10s` | Animation cue or real clip duration, `1s` through `15s` in whole `ms` or `s`. Real clips stop at the media end; PNG rejects duration. |
+| `--preview-text TEXT` | sample text | Replace sample subtitle text in PNG/animation previews. |
+| `--preview-guides` | off | Draw placement, envelope, and canvas guides in PNG/animation previews. |
+
+### Subtitle appearance
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
+| `--text-color COLOR` | `#FFFFFF` | Subtitle text color. |
+| `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
+| `--bold`, `--no-bold` | off | Compatibility shorthand for weight 700 or 400. |
+| `--italic`, `--no-italic` | off | Enable or disable italic text. |
+| `--backdrop KIND` | `box` | `none`, `outline`, or `box`. |
+| `--backdrop-color COLOR` | `#00000099` | Outline, box, and shadow color. |
+| `--word-backdrop KIND` | `none` | Timed word decoration: `none`, `outline`, or `box`. |
+| `--word-backdrop-color COLOR` | `#111827E6` | Timed word-decoration color. |
+| `--opacity PERCENT` | `100%` | Opacity multiplier for the complete composition. |
+| `--text-case MODE` | `original` | `original`, `uppercase`, or `lowercase`. |
+| `--fonts-dir DIR` | — | Additional `.ttf`, `.otf`, or `.ttc` fonts for this run. |
+
+Colors use `#RRGGBB` or `#RRGGBBAA`, where `00` is transparent and `FF` is
+opaque. Text case is applied before measurement; retained JSON keeps the
+original transcript and aligned words.
+
+With `--backdrop box`, every nonempty cue uses one continuous measured box
+around the complete text block, regardless of whether it occupies one line or
+several; padding, placement, and shadow are resolved from that same geometry.
+Visible font bounds center the text vertically so baseline space does not appear
+as extra padding. A single-line cue is also centered horizontally inside its
+box while the complete box retains the requested screen anchor.
+
+Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
+`semi-bold`, `bold`, `extra-bold`, and `black`. Their numeric equivalents are
+100 through 900 in steps of 100. The closest available face is selected when a
+font family does not contain the exact requested weight.
+
+The complete custom-font workflow and provider precedence are documented in
+[Use a custom font](#use-a-custom-font).
+
+### Subtitle animations
+
+| Option | Default | Description |
+| --- | --- | --- |
 | `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit} TYPE` | inherited or `none` | Select one phase on one independent visual track; run `--help` for the animation types valid for each phase. |
 | `--animation-{cue\|word}-{text\|backdrop}-{entrance\|emphasis\|exit}-duration DURATION` | phase or template default | Override an enabled phase with `10ms`–`5000ms`, expressed as `150ms` or `0.15s`. |
-| `--disable-cue-animations` | off | Remove all cue text/backdrop animation phases, preserving the static cue backdrop. |
-| `--disable-word-animations` | off | Remove all word text/backdrop animation phases, word highlight, and timed word decoration. |
 | `--animation-word-text-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for word text. |
 | `--animation-word-backdrop-mode MODE` | `active-word` | Use `active-word` or `progressive` timing for the word decoration. |
 | `--animation-word-text-highlight-color COLOR` | `#FFD54F` when enabled | Set the text color used by the `highlight` word emphasis. |
+| `--disable-cue-animations` | off | Remove all cue text/backdrop animation phases, preserving the static cue backdrop. |
+| `--disable-word-animations` | off | Remove all word text/backdrop animation phases, word highlight, and timed word decoration. |
 
 #### Cue and word effects
 
@@ -576,74 +724,27 @@ all word text and backdrop animation tracks, the word backdrop decoration, and
 highlight color. The word backdrop is removed because it depends on aligned-word
 timestamps even when its own phases are neutral.
 
-### Appearance
+### Relative layout units
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--template NAME` | `default` | Select a built-in or `--template-dir` custom presentation by JSON name. |
-| `--template-dir DIR` | — | Read immediate custom template JSON files for this invocation; custom names take precedence over built-ins. |
-| `--font NAME` | `Roboto` | Bundled, custom, or system subtitle font family. |
 | `--font-size LENGTH` | `4%` | Size relative to the render height, or PlayRes pixels. |
-| `--font-weight WEIGHT` | `regular` (`400`) | Named or numeric weight from 100 through 900. |
-| `--bold`, `--no-bold` | off | Compatibility shorthand for weight 700 or 400. |
-| `--italic`, `--no-italic` | off | Enable or disable italic text. |
 | `--letter-spacing LENGTH` | `0px` | Extra spacing between rendered grapheme clusters. |
 | `--line-height auto\|LENGTH` | `auto` | Baseline distance for multi-line subtitles. |
-| `--text-color COLOR` | `#FFFFFF` | Subtitle text color. |
-| `--opacity PERCENT` | `100%` | Opacity multiplier for the complete composition. |
-| `--text-case MODE` | `original` | `original`, `uppercase`, or `lowercase`. |
-| `--backdrop KIND` | `box` | `none`, `outline`, or `box`. |
-| `--backdrop-color COLOR` | `#00000099` | Outline, box, and shadow color. |
 | `--backdrop-size LENGTH` | `25%` | Outline thickness or box padding. |
-| `--word-backdrop KIND` | `none` | Timed word decoration: `none`, `outline`, or `box`. |
-| `--word-backdrop-color COLOR` | `#111827E6` | Timed word-decoration color. |
 | `--word-backdrop-size LENGTH` | `25%` | Outline thickness or padding for each timed word decoration. |
 | `--shadow-size LENGTH` | `0px` | Shadow size relative to the resolved font size or in pixels. |
-| `--fonts-dir DIR` | — | Additional `.ttf`, `.otf`, or `.ttc` fonts for this run. |
-
-Colors use `#RRGGBB` or `#RRGGBBAA`, where `00` is transparent and `FF` is
-opaque. Font size, spacing, and other lengths require `%` or PlayRes `px`.
-Text case is applied before measurement; retained JSON keeps the original
-transcript and aligned words.
-
-With `--backdrop box`, every nonempty cue uses one continuous measured box
-around the complete text block, regardless of whether it occupies one line or
-several; padding, placement, and shadow are resolved from that same geometry.
-Visible font bounds center the text vertically so baseline space does not appear
-as extra padding. A single-line cue is also centered horizontally inside its
-box while the complete box retains the requested screen anchor.
-
-Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
-`semi-bold`, `bold`, `extra-bold`, and `black`. Their numeric equivalents are
-100 through 900 in steps of 100. The closest available face is selected when a
-font family does not contain the exact requested weight.
-
-The complete custom-font workflow and provider precedence are documented in
-[Use a custom font](#use-a-custom-font).
-
-Defaults in the appearance and layout tables describe the `default` template.
-A selected template supplies its documented baseline first; explicitly
-provided flags then replace only their own fields.
-
-### Layout and positioning
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `--position POSITION` | `bottom-center` | Native ASS semantic position. |
 | `--margin-left LENGTH` | `18%` | Native ASS left margin. |
 | `--margin-right LENGTH` | `18%` | Native ASS right margin. |
 | `--margin-top LENGTH` | `0%` | Native ASS margin for top positions. |
 | `--margin-bottom LENGTH` | `3%` | Native ASS margin for bottom positions. |
 | `--max-width LENGTH` | `100%` | Maximum subtitle width. |
 | `--max-height LENGTH` | `12%` | Maximum height used to derive line capacity. |
-| `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
-| `--position-y LENGTH` | — | Explicit global PlayRes Y coordinate. |
-| `--anchor POSITION` | — | Subtitle-box anchor for explicit coordinates. |
+
+#### Native margins
 
 These defaults are identical for landscape, portrait, square, and rotated
 inputs. Percentages resolve from each video's autorotated render geometry.
-`--position` changes only alignment; margins and maximum dimensions retain their
-defaults unless they are overridden independently.
 
 Only the active vertical margin can be supplied explicitly: top positions use
 `--margin-top`, bottom positions use `--margin-bottom`, and middle positions use
@@ -652,12 +753,7 @@ default `bottom-center` layout therefore keeps `--margin-top` at `0%` and uses
 the `3%` bottom inset. A top position needs an explicit `--margin-top` when an
 inset is desired.
 
-Available semantic positions:
-
-| `top-left` | `top-center` | `top-right` |
-| --- | --- | --- |
-| `middle-left` | `center` | `middle-right` |
-| `bottom-left` | `bottom-center` | `bottom-right` |
+#### Percentage bases
 
 All layout lengths require an explicit `%` or `px` suffix. Percentages remain
 resolution-aware; pixels refer to the generated ASS PlayRes canvas.
@@ -672,9 +768,32 @@ resolution-aware; pixels refer to the generated ASS PlayRes canvas.
 | `--margin-top`, `--margin-bottom` | Render height. |
 | `--max-width` | Native: width after side margins; explicit: render width. |
 | `--max-height` | Native: height after the active vertical margin; explicit: render height. |
-| `--position-x`, `--position-y` | Render width and height, respectively. |
 
-### Exact coordinates
+#### Adaptive wrapping
+
+Wrapping uses the selected font's measured metrics when available and a
+Unicode-aware estimate otherwise; size, spacing, line height, decorations, and
+maximum dimensions all contribute. Japanese and Chinese records receive
+[language-specific grouping](docs/architecture.md#unicode-segmentation-and-source-mapping),
+while validated alignment records remain the timing units for word effects.
+Text is never truncated. If a source/alignment map is incomplete, the full cue
+keeps its segment timing and word effects are disabled rather than inventing
+timestamps. For translation, six-second backend chunks are tried before the
+layout fallback makes up to three retries, reducing the effective font size
+by 4% per step when translated text cannot fit its measured envelope. SRT and ASS
+share intentional line breaks; JSON retains source text beside rendered
+`display_text` and records requested versus effective rendering values.
+
+### Custom subtitle coordinates
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
+| `--position-y LENGTH` | — | Explicit global PlayRes Y coordinate. |
+| `--anchor POSITION` | — | Subtitle-box anchor for explicit coordinates. |
+
+Coordinate percentages use render width for X and render height for Y.
+Pixels refer to the global ASS PlayRes canvas.
 
 Use X and Y together to attach an anchor on the subtitle box to a global point:
 
@@ -691,21 +810,6 @@ Explicit coordinates require `--position-x`, `--position-y`, `--anchor`,
 `--max-width`, and `--max-height`. They cannot be combined with `--position`,
 or explicitly supplied margins. The complete anchored envelope must fit inside
 the canvas; invalid coordinates are rejected instead of being moved or clipped.
-
-### Adaptive wrapping
-
-Wrapping uses the selected font's measured metrics when available and a
-Unicode-aware estimate otherwise; size, spacing, line height, decorations, and
-maximum dimensions all contribute. Japanese and Chinese records receive
-[language-specific grouping](docs/architecture.md#unicode-segmentation-and-source-mapping),
-while validated alignment records remain the timing units for word effects.
-Text is never truncated. If a source/alignment map is incomplete, the full cue
-keeps its segment timing and word effects are disabled rather than inventing
-timestamps. For translation, six-second backend chunks are tried before the
-layout fallback makes up to three retries, reducing the effective font size
-by 4% per step when translated text cannot fit its measured envelope. SRT and ASS
-share intentional line breaks; JSON retains source text beside rendered
-`display_text` and records requested versus effective rendering values.
 
 ## 🎨 Subtitle templates
 
@@ -937,7 +1041,7 @@ transcribe_speech(
 - `asr_backend` selects `"whisperx"`, `"faster-whisper"`, `"parakeet"`, or
   `"qwen"`; `model_name=None` uses that backend's default model.
 - `lang=None` uses automatic language detection where the backend exposes it.
-  See [backend and language behavior](#input-and-processing) for the differences.
+  See [backend and language behavior](#asr-backends-and-models) for the differences.
 - `task` accepts only `"transcribe"` through this API.
 - The result preserves source text, segment/word association, and supplied
   timestamps, including missing alignment. Subtitle files are created later by
@@ -1065,8 +1169,8 @@ settings take Python `True` or `False`.
   and `"1px"`.
 - `line_height`: `"auto"` or a length such as `"125%"` or `"32px"`.
 
-See [appearance](#appearance) for weight names and
-[relative-unit bases](#layout-and-positioning) for how percentages resolve.
+See [appearance](#subtitle-appearance) for weight names and
+[relative-unit bases](#percentage-bases) for how percentages resolve.
 
 #### Backdrops and opacity
 
@@ -1080,7 +1184,7 @@ See [appearance](#appearance) for weight names and
 
 #### Placement and dimensions
 
-- `position`: one of the [nine named positions](#layout-and-positioning), such
+- `position`: one of the [nine named positions](#native-subtitle-positions), such
   as `"bottom-center"`.
 - `margin_left`, `margin_right`, `margin_top`, and `margin_bottom`: lengths
   such as `"8%"` or `"24px"`. Only the active vertical margin may be supplied:
@@ -1095,7 +1199,7 @@ For explicit coordinates, supply `position_x`, `position_y`, `anchor`,
 `max_width`, and `max_height` together in `overrides`. Explicit `position` or
 margin overrides cannot accompany them; inherited template placement does not
 cause a conflict. The complete envelope must fit the final video canvas.
-See [exact coordinates](#exact-coordinates).
+See [exact coordinates](#custom-subtitle-coordinates).
 
 #### Animation phases and word effects
 
@@ -1190,12 +1294,16 @@ before model loading.
 For `video.mp4` with selected or automatically detected source language `pt`:
 
 ```text
-# Default: only the rendered video is kept; all subtitle artifacts are transient
+# Default transcription: rendered video and reusable source speech
 output/
+├── .multisubs-cache/
+│   └── transcriptions/
+│       └── v1/
 └── video-pt.mp4
 
 # With --keep-transcriptions
 output/
+├── .multisubs-cache/
 └── video/
     ├── video-pt.mp4
     └── subtitles/
@@ -1210,6 +1318,17 @@ output/
 # With --subtitle-file captions.srt or styled.ass
 output/
 └── video-subtitled.mp4
+
+# With --subtitles-only
+output/
+├── .multisubs-cache/
+├── video-pt.srt
+└── video-pt.ass
+
+# With --preview-clip (real source audio/video and speech timing)
+output/
+├── .multisubs-cache/
+└── video-subtitle-clip-preview.mp4
 
 # With render_transcript(...), language pt
 output/
@@ -1228,9 +1347,18 @@ the source stem without a language suffix: `video.mp4`, `video.json`,
 `video.srt`, and `video.ass`.
 
 Work happens in a private temporary directory inside the requested output
-directory. Completed artifacts are published only after FFmpeg succeeds. If
+directory. Rendered artifacts are published only after FFmpeg succeeds;
+subtitle-only exports are published after their preparation succeeds. If
 normal transcription fails, its artifacts are retained there for diagnosis;
 partial final media is not published.
+
+Transcription runs retain reusable source speech under
+`<output-dir>/.multisubs-cache/transcriptions/v1` by default. `--cache-dir DIR`
+moves that storage to `DIR/transcriptions/v1`; translation, sample previews,
+external subtitle rendering, and Python rendering APIs do not create an
+automatic speech cache. See
+[transcription reuse and real previews](#reuse-transcription-while-trying-subtitle-styles)
+for the retention and refresh policy.
 
 When `--keep-transcriptions` is enabled, the schema-3 JSON records the selected
 ASR and model and preserves normalized source word records beside display text,

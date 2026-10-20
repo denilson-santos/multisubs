@@ -127,7 +127,7 @@ def test_real_video_encoding_preserves_media_and_collision_safety(
                         "--preview-duration",
                         "1s",
                         "--preview-at",
-                        "00:00:00.500",
+                        "00:00:00",
                         "--preview-text",
                         "Hello video",
                     ]

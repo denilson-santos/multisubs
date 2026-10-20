@@ -187,17 +187,17 @@ def test_preflight_timeout_has_an_actionable_error(monkeypatch):
         subtitler.validate_video_encoding_support(VideoEncodingConfig("h264_nvenc"))
 
 
+@pytest.mark.parametrize("preview", [False, True])
 @pytest.mark.parametrize(
     "arguments",
     [
         ["--video-preset", "veryfast"],
         ["--video-encoder", "libx264", "--video-preset", "p4"],
         ["--video-encoder", "h264_nvenc", "--video-quality", "52"],
-        ["--preview-layout", "--video-encoder", "h264_nvenc"],
     ],
 )
 def test_cli_rejects_invalid_encoding_before_processing(
-    tmp_path, monkeypatch, arguments
+    tmp_path, monkeypatch, arguments, preview
 ):
     source = tmp_path / "source.mp4"
     source.touch()
@@ -206,10 +206,12 @@ def test_cli_rejects_invalid_encoding_before_processing(
         "_run_request",
         lambda *_a, **_kw: pytest.fail("invalid request must not run"),
     )
+    if preview:
+        arguments = [*arguments, "--preview-layout"]
     assert CliRunner().invoke(cli.app, ["-i", str(source), *arguments]).exit_code == 2
 
 
-@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("preview", [None, "--preview-layout", "--preview-animation"])
 @pytest.mark.parametrize("quality", [None, 23])
 def test_cli_carries_normalized_encoding_independently_of_subtitle_style(
     tmp_path, monkeypatch, preview, quality
@@ -227,7 +229,7 @@ def test_cli_carries_normalized_encoding_independently_of_subtitle_style(
     if quality is not None:
         args.extend(["--video-quality", str(quality)])
     if preview:
-        args.append("--preview-animation")
+        args.append(preview)
     assert cli.main(args) == 0
     assert requests[0].video_encoding == VideoEncodingConfig(
         "h264_nvenc", "p4", 28 if quality is None else quality
