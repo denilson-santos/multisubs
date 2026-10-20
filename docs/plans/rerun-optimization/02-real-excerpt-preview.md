@@ -1,8 +1,8 @@
 # Preview real synchronized video excerpts
 
-Status: In review
+Status: Done
 
-Delivery: `feat/reusable-subtitle-runs`
+Delivery: [PR #115](https://github.com/denilson-santos/multisubs/pull/115)
 
 Depends on: [source reuse](00-source-speech-cache.md),
 [artifact preparation](01-subtitle-export.md), and the existing FFmpeg boundary.

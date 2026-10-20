@@ -19,7 +19,7 @@ statuses, dependencies, implementation pull requests, and delivery order.
 | Codebase simplification | Done | 5/5 | Complete | [Open dashboard](codebase-simplification/README.md) |
 | Selectable ASR backends | In review | 1/1 | Plan 0 | [Open dashboard](asr-backends/README.md) |
 | External subtitle inputs | Done | 2/2 | Complete; timed-cue JSON removed | [Open dashboard](external-subtitle-inputs/README.md) |
-| Reusable transcription and visual iteration | In review | 0/3 | Plans 0–2; awaiting review | [Open dashboard](rerun-optimization/README.md) |
+| Reusable transcription and visual iteration | Done | 3/3 | Complete | [Open dashboard](rerun-optimization/README.md) |
 
 Progress includes foundation plans when they are required delivery work.
 

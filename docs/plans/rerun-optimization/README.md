@@ -1,6 +1,6 @@
 # Reusable transcription and visual iteration
 
-Status: In review
+Status: Done
 
 ## Objective and scope
 
@@ -12,9 +12,10 @@ template exports in one invocation and persistent layout caches are deferred.
 
 ## Plans and progress
 
-Progress: 0/3 plans merged. Plans 0–2 are implemented, verified, and prepared
-for review on `feat/reusable-subtitle-runs`, the delivery reference for the
-shared draft pull request against `main`. Verification passed:
+Progress: 3/3 plans merged into `main` in
+[PR #115](https://github.com/denilson-santos/multisubs/pull/115) on 2026-10-20.
+Development and staging workflows passed, including Python 3.10 and 3.13.
+Local verification passed:
 1,450 hermetic tests and 20 synthetic FFmpeg integration cases, including the
 automatic output-local cache, `transcriptions/v1` with legacy reuse, optional
 sample-frame selection, first-frame defaults, and PNG previews accepting video
@@ -26,22 +27,22 @@ Pyright 1.1.414, covering ANSI-normalized option errors and typed RGB pixels.
 
 | Plan | Status | Dependencies | Implementation delivery |
 | --- | --- | --- | --- |
-| [0 — Source speech cache](00-source-speech-cache.md) | In review | Existing source-speech API and ASR catalog | `feat/reusable-subtitle-runs` |
-| [1 — Subtitle export](01-subtitle-export.md) | In review | Plan 0 for source reuse; existing artifact pipeline | `feat/reusable-subtitle-runs` |
-| [2 — Real excerpt preview](02-real-excerpt-preview.md) | In review | Plans 0–1; existing FFmpeg and geometry boundaries | `feat/reusable-subtitle-runs` |
+| [0 — Source speech cache](00-source-speech-cache.md) | Done | Existing source-speech API and ASR catalog | [PR #115](https://github.com/denilson-santos/multisubs/pull/115) |
+| [1 — Subtitle export](01-subtitle-export.md) | Done | Plan 0 for source reuse; existing artifact pipeline | [PR #115](https://github.com/denilson-santos/multisubs/pull/115) |
+| [2 — Real excerpt preview](02-real-excerpt-preview.md) | Done | Plans 0–1; existing FFmpeg and geometry boundaries | [PR #115](https://github.com/denilson-santos/multisubs/pull/115) |
 
 ## Delivery order and strategy
 
-Implement cache, subtitle export, then real previews. Review the shared workflow
-in one draft pull request against `main`, with focused commits for each behavior
-and a final documentation commit. Git staging, commits, pushing, and PR creation
-require separate explicit delivery confirmation under [AGENTS.md](../../../AGENTS.md).
+The implementation proceeded through cache, subtitle export, and real previews
+on `feat/reusable-subtitle-runs`, delivered together in PR #115. Focused feature,
+documentation, and CI portability commits formed one shared review candidate.
+All three plans and this package were marked `In review` before opening the PR,
+with the task branch retained as the delivery reference.
 
-Before opening that PR, change all three plans and this package to `In review`
-in the final documentation commit and retain the task branch as the delivery
-reference. Push the complete branch first. After an authoritative merge signal,
-mark the plans/package `Done`, record the merged PR link, and update the
-[catalog](../README.md). No post-open metadata-only commit is required.
+After the confirmed merge and successful staging run, the version-bump update
+marks the plans/package `Done`, records the merged PR, and synchronizes the
+[catalog](../README.md). Git delivery follows the explicit approval rules in
+[AGENTS.md](../../../AGENTS.md).
 
 ## Shared definition of done
 
