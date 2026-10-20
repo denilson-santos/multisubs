@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from test_cli_helpers import TestParser
 
-from multisubs import cli
+from multisubs import cli, subtitler
 from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
 from multisubs.models import KaraokeCue, PreviewRequest, SubtitleDisplayFragment
@@ -114,6 +114,82 @@ def test_preview_png_matches_probe_geometry_for_named_and_custom_layouts(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    ("encoder", "preset"), [("libx264", "veryfast"), ("h264_nvenc", "p4")]
+)
+def test_layout_preview_cli_ignores_video_encoding_without_initializing_encoder(
+    tmp_path: Path, monkeypatch, encoder: str, preset: str
+):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("FFmpeg and ffprobe are required")
+    try:
+        validate_ffmpeg_support()
+    except Exception as exc:
+        pytest.skip(str(exc))
+
+    input_path = tmp_path / "source.mp4"
+    output_dir = tmp_path / "output"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=320x180:d=0.2",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+
+    def fail_encoder_check(*args, **kwargs):
+        pytest.fail("PNG previews must not initialize a video encoder")
+
+    monkeypatch.setattr(
+        subtitler, "validate_video_encoding_support", fail_encoder_check
+    )
+    monkeypatch.setattr(
+        subtitler, "validate_animation_preview_support", fail_encoder_check
+    )
+    arguments = [
+        "-i",
+        str(input_path),
+        "-o",
+        str(output_dir),
+        "--preview-layout",
+        "--preview-text",
+        "Sample subtitles",
+    ]
+    assert cli.main(arguments) == 0
+    reference = next(output_dir.glob("*.png"))
+    assert (
+        cli.main(
+            [
+                *arguments,
+                "--video-encoder",
+                encoder,
+                "--video-preset",
+                preset,
+                "--video-quality",
+                "23",
+            ]
+        )
+        == 0
+    )
+    preview = output_dir / "source-subtitle-preview (1).png"
+    with Image.open(reference) as expected, Image.open(preview) as actual:
+        assert actual.format == "PNG"
+        assert actual.size == (320, 180)
+        assert actual.tobytes() == expected.tobytes()
+    assert sorted(path.suffix for path in output_dir.iterdir()) == [".png", ".png"]
+
+
+@pytest.mark.integration
 def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
     tmp_path: Path,
 ):
@@ -135,7 +211,9 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
             "-f",
             "lavfi",
             "-i",
-            "color=c=#203040:s=320x180:d=1.2",
+            "color=c=blue:s=320x180:r=30:d=0.2[head];"
+            "color=c=red:s=320x180:r=30:d=1[tail];"
+            "[head][tail]concat=n=2:v=1:a=0",
             "-frames:v",
             "36",
             "-c:v",
@@ -152,8 +230,6 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
         "-o",
         str(output_dir),
         "--preview-animation",
-        "--preview-at",
-        "00:00:00.400",
         "--preview-duration",
         "2s",
         "--preview-text",
@@ -195,6 +271,79 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
     assert streams[0]["r_frame_rate"] == "30/1"
     assert streams[0]["pix_fmt"] == "yuv420p"
     assert abs(float(payload["format"]["duration"]) - 3.0) <= 1 / 30
+    first_frame = tmp_path / "animation-background.png"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            str(preview_path),
+            "-frames:v",
+            "1",
+            str(first_frame),
+        ],
+        check=True,
+    )
+    with Image.open(first_frame) as frame:
+        red, green, blue = frame.convert("RGB").getpixel((10, 10))
+        assert blue > 200 and red < 30 and green < 30
+    png_output = tmp_path / "png-output"
+    assert (
+        cli.main(
+            [
+                "-i",
+                str(input_path),
+                "-o",
+                str(png_output),
+                "--preview-layout",
+                "--preview-text",
+                "First source frame",
+            ]
+        )
+        == 0
+    )
+    with Image.open(next(png_output.glob("*.png"))) as frame:
+        red, green, blue = frame.convert("RGB").getpixel((10, 10))
+        assert blue > 200 and red < 30 and green < 30
+    for mode in ("--preview-layout", "--preview-animation"):
+        explicit_output = tmp_path / mode.removeprefix("--")
+        assert (
+            cli.main(
+                [
+                    "-i",
+                    str(input_path),
+                    "-o",
+                    str(explicit_output),
+                    mode,
+                    "--preview-at",
+                    "00:00:01",
+                    "--preview-text",
+                    "Chosen source frame",
+                ]
+            )
+            == 0
+        )
+        if mode == "--preview-animation":
+            selected_frame = tmp_path / "selected-animation-background.png"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-i",
+                    str(next(explicit_output.glob("*.mp4"))),
+                    "-frames:v",
+                    "1",
+                    str(selected_frame),
+                ],
+                check=True,
+            )
+        else:
+            selected_frame = next(explicit_output.glob("*.png"))
+        with Image.open(selected_frame) as frame:
+            red, green, blue = frame.convert("RGB").getpixel((10, 10))
+            assert red > 200 and green < 30 and blue < 30
     assert not list(output_dir.glob(".*"))
 
 
@@ -339,7 +488,7 @@ def test_fragmented_words_preserve_unfragmented_libass_spacing(tmp_path: Path):
         str(input_path),
         "--preview-layout",
         "--preview-at",
-        "00:00:00.100",
+        "00:00:00",
         "--preview-text",
         "Example subtitle",
         "--template",
@@ -445,7 +594,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
             str(output_dir),
             "--preview-layout",
             "--preview-at",
-            "00:00:00.100",
+            "00:00:00",
             "--preview-text",
             "Ação, informação e útil: modelo 123!",
             "--template",
@@ -479,7 +628,7 @@ def test_every_builtin_template_renders_with_bundled_fonts_on_common_geometries(
         str(active_output_dir),
         "--preview-layout",
         "--preview-at",
-        "00:00:00.100",
+        "00:00:00",
         "--preview-text",
         "Primeira palavra destacada no modo ativo",
         "--template",

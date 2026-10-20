@@ -54,8 +54,7 @@ DEFAULT_PREVIEW_DURATION_MS = 4_000
 MIN_PREVIEW_DURATION_MS = 1_000
 MAX_PREVIEW_DURATION_MS = 15_000
 _TIMESTAMP_PATTERN = re.compile(
-    r"^(?P<hours>\d{2,}):(?P<minutes>[0-5]\d):"
-    r"(?P<seconds>[0-5]\d)\.(?P<milliseconds>\d{1,3})$"
+    r"^(?P<hours>[0-9]{2}):(?P<minutes>[0-5][0-9]):(?P<seconds>[0-5][0-9])$"
 )
 _DURATION_PATTERN = re.compile(
     r"^(?P<number>(?:0|[1-9]\d{0,4})(?:\.\d{1,3})?)(?P<unit>ms|s)$"
@@ -66,30 +65,28 @@ _GUIDE_FONT_SIZE = 40
 
 
 def parse_preview_timestamp(raw_value: str) -> float:
-    """Parse a preview timestamp in ``HH:MM:SS.mmm`` notation."""
+    """Parse a whole-second preview timestamp in ``HH:MM:SS`` notation."""
     if not isinstance(raw_value, str):
-        raise ValidationError("preview-at must use HH:MM:SS.mmm notation")
+        raise ValidationError("preview-at must use HH:MM:SS notation")
     match = _TIMESTAMP_PATTERN.fullmatch(raw_value.strip())
     if match is None:
         raise ValidationError(
-            "preview-at must use HH:MM:SS.mmm notation, for example 00:00:10.500"
+            "preview-at must use HH:MM:SS notation, for example 00:00:10"
         )
-    milliseconds = match.group("milliseconds")
     value = (
         int(match.group("hours")) * 3_600
         + int(match.group("minutes")) * 60
         + int(match.group("seconds"))
-        + int(milliseconds.ljust(3, "0")) / 1_000
     )
     if value > MAX_PREVIEW_TIMESTAMP_SECONDS:
         raise ValidationError(
             f"preview-at must not exceed {MAX_PREVIEW_TIMESTAMP_SECONDS:g} seconds"
         )
-    return value
+    return float(value)
 
 
 def parse_preview_duration(raw_value: object) -> int:
-    """Parse an animation-preview duration into whole milliseconds."""
+    """Parse an animation cue or real preview duration into whole milliseconds."""
     if not isinstance(raw_value, str):
         raise ValidationError("preview-duration must end in ms or s")
     match = _DURATION_PATTERN.fullmatch(raw_value.strip().casefold())
@@ -114,15 +111,8 @@ def resolve_preview_timestamp(
     requested: float | None,
     geometry: VideoGeometry,
 ) -> float:
-    """Resolve the requested frame time, defaulting to the video midpoint."""
-    if requested is None:
-        timestamp = (
-            geometry.duration_seconds / 2
-            if geometry.duration_seconds is not None
-            else 0.0
-        )
-    else:
-        timestamp = requested
+    """Validate a supplied frame time, defaulting to the first video frame."""
+    timestamp = 0.0 if requested is None else requested
     if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
         raise ValidationError("preview-at must be a finite, non-negative timestamp")
     timestamp = float(timestamp)

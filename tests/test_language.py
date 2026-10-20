@@ -180,6 +180,10 @@ def test_detected_language_reaches_files_and_metadata(
     assert cli.main(options) == 0
     assert measured_languages == [None, "pt"]
     assert (output / "video-pt.mp4").read_bytes() == b"existing"
+    cache = output / ".multisubs-cache"
+    cache_entries = list((cache / "transcriptions" / "v1").glob("*.json"))
+    assert len(cache_entries) == 1
+    assert json.loads(cache_entries[0].read_text())["speech"]["language"] == "pt"
     if keep:
         retained = output / "video (1)"
         assert (retained / "video-pt.mp4").read_bytes() == b"rendered"
@@ -190,10 +194,10 @@ def test_detected_language_reaches_files_and_metadata(
         ]
     else:
         assert (output / "video-pt (1).mp4").read_bytes() == b"rendered"
-        assert not list(output.rglob("*.json"))
+        assert set(output.rglob("*.json")) == set(cache_entries)
         assert not list(output.rglob("*.srt"))
         assert not list(output.rglob("*.ass"))
-    assert not list(output.glob(".multisubs-*"))
+    assert set(output.glob(".multisubs-*")) == {cache}
 
 
 def test_programmatic_generation_uses_detected_language(speech_runtime, tmp_path):

@@ -62,6 +62,7 @@ from .models import (
     SubtitleElementAnimation,
     SubtitleOpacity,
     TextCase,
+    TranscriptDocument,
     TranscriptionPaths,
     VideoEncodingConfig,
 )
@@ -419,6 +420,34 @@ def _cli_command(
             show_default=False,
         ),
     ] = False,
+    cache_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--cache-dir",
+            metavar="DIR",
+            help=(
+                "Source speech cache directory for transcription "
+                "(default: OUTPUT_DIR/.multisubs-cache)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    refresh_cache: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-cache",
+            help="Recognize again and replace the matching speech cache entry.",
+            show_default=False,
+        ),
+    ] = False,
+    subtitles_only: Annotated[
+        bool,
+        typer.Option(
+            "--subtitles-only",
+            help="Generate SRT and styled ASS without rendering a video.",
+            show_default=False,
+        ),
+    ] = False,
     template: Annotated[
         str | None,
         typer.Option(
@@ -466,7 +495,10 @@ def _cli_command(
         typer.Option(
             "--preview-layout",
             rich_help_panel="Subtitle preview",
-            help="Render a transcription-free subtitle layout preview PNG.",
+            help=(
+                "Render a transcription-free subtitle layout preview PNG; "
+                "video encoding options are ignored."
+            ),
             show_default=False,
         ),
     ] = False,
@@ -475,7 +507,16 @@ def _cli_command(
         typer.Option(
             "--preview-animation",
             rich_help_panel="Subtitle preview",
-            help="Render a silent MP4 with deterministic simulated word timing.",
+            help="Render a silent MP4 with simulated timing; default: first frame.",
+            show_default=False,
+        ),
+    ] = False,
+    preview_clip: Annotated[
+        bool,
+        typer.Option(
+            "--preview-clip",
+            rich_help_panel="Subtitle preview",
+            help="Render a real excerpt with synchronized subtitles and source audio.",
             show_default=False,
         ),
     ] = False,
@@ -483,12 +524,26 @@ def _cli_command(
         float | None,
         typer.Option(
             "--preview-at",
-            metavar="HH:MM:SS.mmm",
+            metavar="HH:MM:SS",
             parser=_preview_timestamp_argument_type,
             rich_help_panel="Subtitle preview",
             help=(
-                "Frame timestamp for the preview (default: video midpoint; format "
-                "HH:MM:SS.mmm)."
+                "Frame time for PNG/animation (default: first frame), or required "
+                "source start for --preview-clip, in HH:MM:SS."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    preview_duration: Annotated[
+        int | None,
+        typer.Option(
+            "--preview-duration",
+            metavar="DURATION",
+            parser=_preview_duration_argument_type,
+            rich_help_panel="Subtitle preview",
+            help=(
+                "Animation cue or real clip duration, 1s through 15s in ms or s "
+                "(default: animation 4s; real clip 10s)."
             ),
             show_default=False,
         ),
@@ -512,20 +567,6 @@ def _cli_command(
             show_default=False,
         ),
     ] = False,
-    preview_duration: Annotated[
-        int | None,
-        typer.Option(
-            "--preview-duration",
-            metavar="DURATION",
-            parser=_preview_duration_argument_type,
-            rich_help_panel="Subtitle preview",
-            help=(
-                "Animated preview cue duration in ms or s, from 1s through 15s "
-                "(default: 4s)."
-            ),
-            show_default=False,
-        ),
-    ] = None,
     # Subtitle appearance
     font: Annotated[
         str | None,
@@ -1245,6 +1286,10 @@ def _cli_command(
             else "Preview saved to"
         )
         print(f"{label}: {result_path}")
+    elif request.subtitles_only:
+        print(f"Subtitle files saved in: {result_path}")
+    elif request.preview_clip:
+        print(f"Video excerpt saved to: {result_path}")
     elif request.keep_transcriptions:
         print(f"Files saved in: {result_path}")
     else:
@@ -1306,9 +1351,8 @@ def _build_request(
 ) -> RunRequest | PreviewRequest:
     preview_mode_requested = args.preview_layout or args.preview_animation
     _validate_preview_options(args, parser, preview_mode_requested)
+    _validate_rerun_options(args, parser)
     video_encoding = _resolve_video_encoding(args, parser)
-    if args.preview_layout and video_encoding.encoder is not None:
-        parser.fail("Video encoding options cannot be used with --preview-layout (PNG)")
     selection, subtitle_config = _resolve_request_config(args, parser)
 
     language = args.lang
@@ -1345,7 +1389,62 @@ def _build_request(
         subtitle_template_source=selection.source,
         subtitle_template_base=selection.base,
         video_encoding=video_encoding,
+        cache_dir=_resolve_cache_dir(args, output_dir, parser),
+        refresh_cache=args.refresh_cache,
+        subtitles_only=args.subtitles_only,
+        preview_clip=args.preview_clip,
+        preview_at=args.preview_at if args.preview_at is not None else 0.0,
+        preview_duration_ms=(
+            args.preview_duration if args.preview_duration is not None else 10_000
+        ),
     )
+
+
+def _validate_rerun_options(args: SimpleNamespace, parser: _ValidationContext) -> None:
+    if args.subtitles_only and args.preview_clip:
+        parser.fail("--subtitles-only and --preview-clip cannot be combined")
+    rerun = (
+        args.subtitles_only
+        or args.preview_clip
+        or args.cache_dir is not None
+        or args.refresh_cache
+    )
+    if rerun and (args.preview_layout or args.preview_animation):
+        parser.fail(
+            "Speech cache, subtitle export, and real clips cannot be combined "
+            "with sample previews"
+        )
+    if rerun and args.task != "transcribe":
+        parser.fail(
+            "Speech cache, subtitle export, and real clips support only "
+            "--task transcribe"
+        )
+    if args.subtitles_only and args.keep_transcriptions:
+        parser.fail("--keep-transcriptions cannot be used with --subtitles-only")
+    if args.subtitles_only and any(
+        value is not None
+        for value in (args.video_encoder, args.video_preset, args.video_quality)
+    ):
+        parser.fail("Video encoding options cannot be used with --subtitles-only")
+
+
+def _resolve_cache_dir(
+    args: SimpleNamespace, output_dir: Path, parser: _ValidationContext
+) -> Path | None:
+    """Choose a persistent output-local cache only for speech transcription."""
+    if args.task != "transcribe":
+        return None
+    directory = (
+        Path(args.cache_dir).expanduser().resolve(strict=False)
+        if args.cache_dir is not None
+        else output_dir / ".multisubs-cache"
+    )
+    if directory.exists() and not directory.is_dir():
+        parser.fail(
+            f"Speech cache path '{directory}' is a file; "
+            "use --cache-dir DIR to choose a directory instead"
+        )
+    return directory
 
 
 def _resolve_video_encoding(
@@ -1371,25 +1470,38 @@ def _validate_preview_options(
     preview_mode_requested: bool,
 ) -> None:
     """Reject preview-only options and artifact conflicts before file access."""
-    if args.preview_layout and args.preview_animation:
-        parser.fail("--preview-layout and --preview-animation cannot be combined")
+    if sum((args.preview_layout, args.preview_animation, args.preview_clip)) > 1:
+        parser.fail(
+            "--preview-layout, --preview-animation, and --preview-clip "
+            "cannot be combined"
+        )
+    any_preview_requested = preview_mode_requested or args.preview_clip
     preview_options_used = (
         args.preview_at is not None
         or args.preview_text is not None
         or args.preview_guides
         or args.preview_duration is not None
     )
-    if preview_options_used and not preview_mode_requested:
+    if preview_options_used and not any_preview_requested:
         parser.fail(
             "--preview-at, --preview-text, --preview-guides, and "
-            "--preview-duration require --preview-layout or --preview-animation"
+            "--preview-duration require a preview mode"
         )
-    if args.preview_duration is not None and not args.preview_animation:
-        parser.fail("--preview-duration can only be used with --preview-animation")
-    if preview_mode_requested and args.keep_transcriptions:
+    if args.preview_clip and args.preview_at is None:
+        parser.fail("--preview-clip requires --preview-at HH:MM:SS")
+    if args.preview_duration is not None and not (
+        args.preview_animation or args.preview_clip
+    ):
+        parser.fail("--preview-duration requires --preview-animation or --preview-clip")
+    if args.preview_clip and (args.preview_text is not None or args.preview_guides):
+        parser.fail(
+            "--preview-text and --preview-guides require --preview-layout "
+            "or --preview-animation"
+        )
+    if any_preview_requested and args.keep_transcriptions:
         parser.fail(
             "--keep-transcriptions cannot be used with --preview-layout or "
-            "--preview-animation"
+            "--preview-animation or --preview-clip"
         )
 
 
@@ -1458,7 +1570,7 @@ def _build_preview_request(
         input_path=input_path,
         output_dir=output_dir,
         subtitle_config=subtitle_config,
-        preview_at=args.preview_at,
+        preview_at=0.0 if args.preview_at is None else args.preview_at,
         preview_text=(
             DEFAULT_PREVIEW_TEXT if args.preview_text is None else args.preview_text
         ),
@@ -1605,15 +1717,25 @@ def _run_request_with_fonts(
     from .subtitler import (
         embed_subtitles,
         probe_video_geometry,
+        render_subtitle_clip,
+        validate_animation_preview_support,
+        validate_clip_range,
         validate_ffmpeg_support,
         validate_video_encoding_support,
     )
     from .transcriber import transcribe_video, write_transcription_artifacts
     from .wrapping import transform_display_text
 
-    validate_ffmpeg_support()
-    validate_video_encoding_support(request.video_encoding)
+    if not request.subtitles_only:
+        validate_ffmpeg_support()
+        validate_video_encoding_support(request.video_encoding)
+        if request.preview_clip and request.video_encoding.encoder is None:
+            validate_animation_preview_support()
     geometry = probe_video_geometry(request.input_path)
+    if request.preview_clip:
+        validate_clip_range(
+            request.preview_at, request.preview_duration_ms / 1000, geometry
+        )
     resolved_subtitle_config = resolve_subtitle_config(
         request.subtitle_config,
         geometry,
@@ -1648,15 +1770,41 @@ def _run_request_with_fonts(
     )
     work_dir = create_work_dir(request.output_dir)
     try:
-        document = transcribe_video(
-            request.input_path,
-            request.language,
-            request.task,
-            request.model_name,
-            asr_backend=request.asr_backend,
-            progress=progress,
-            verbose=verbose,
-        )
+        if request.cache_dir is None:
+            document = transcribe_video(
+                request.input_path,
+                request.language,
+                request.task,
+                request.model_name,
+                asr_backend=request.asr_backend,
+                progress=progress,
+                verbose=verbose,
+            )
+        else:
+            from .speech_cache import get_cached_speech
+            from .transcriber import _build_subtitle_segments
+
+            speech = get_cached_speech(
+                request.input_path,
+                request.cache_dir,
+                language=request.language,
+                backend=request.asr_backend,
+                model=request.model_name,
+                refresh=request.refresh_cache,
+                progress=progress,
+                verbose=verbose,
+            )
+            document = TranscriptDocument(
+                source_path=request.input_path,
+                language=speech.language,
+                task=speech.task,
+                model_name=speech.model_name,
+                full_text=speech.full_text,
+                asr_backend=speech.asr_backend,
+                segments=tuple(
+                    _build_subtitle_segments(speech.segments, language=speech.language)
+                ),
+            )
         request = replace(request, language=document.language)
         wrapping_metrics = resolve_wrapping_metrics(
             resolved_subtitle_config,
@@ -1695,25 +1843,41 @@ def _run_request_with_fonts(
         transcripts = TranscriptionPaths(
             json_path=Path(json_path), srt_path=Path(srt_path), ass_path=Path(ass_path)
         )
-        video_path = work_dir / (
-            f"{with_language_suffix(request.input_path.stem, request.language)}"
-            f"{request.input_path.suffix}"
-        )
-        rendered_path = Path(
-            embed_subtitles(
+        if request.subtitles_only:
+            result_path = _publish_subtitle_files(transcripts, request, progress)
+        elif request.preview_clip:
+            rendered = render_subtitle_clip(
                 request.input_path,
                 transcripts.ass_path,
-                work_dir,
-                document.language,
-                output_path=video_path,
+                work_dir / "excerpt.mp4",
                 geometry=geometry,
-                fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
+                start=request.preview_at,
+                duration=request.preview_duration_ms / 1000,
+                fonts_dir=wrapping_metrics.text_measurer.info.renderer_fonts_dir,
                 progress=progress,
                 video_encoding=request.video_encoding,
             )
-        )
-        artifacts = RunArtifacts(work_dir, transcripts, rendered_path)
-        result_path = _publish_run(artifacts, request)
+            result_path = _publish_clip(rendered, request)
+        else:
+            video_path = work_dir / (
+                f"{with_language_suffix(request.input_path.stem, request.language)}"
+                f"{request.input_path.suffix}"
+            )
+            rendered_path = Path(
+                embed_subtitles(
+                    request.input_path,
+                    transcripts.ass_path,
+                    work_dir,
+                    document.language,
+                    output_path=video_path,
+                    geometry=geometry,
+                    fonts_dir=(wrapping_metrics.text_measurer.info.renderer_fonts_dir),
+                    progress=progress,
+                    video_encoding=request.video_encoding,
+                )
+            )
+            artifacts = RunArtifacts(work_dir, transcripts, rendered_path)
+            result_path = _publish_run(artifacts, request)
     except MultisubsError as exc:
         raise ArtifactError(
             f"{exc} Working artifacts were kept in '{work_dir}'."
@@ -1868,6 +2032,35 @@ def _run_preview_request(
         raise ArtifactError(f"Unexpected preview failure: {exc}") from exc
     finally:
         _cleanup_work_dir(work_dir)
+
+
+def _publish_subtitle_files(
+    transcripts: TranscriptionPaths, request: RunRequest, progress: ProgressReporter
+) -> Path:
+    stem = with_language_suffix(request.input_path.stem, request.language)
+    while True:
+        chosen = find_unique_stem(request.output_dir, stem, (".srt", ".ass"))
+        srt = request.output_dir / f"{chosen}.srt"
+        ass = request.output_dir / f"{chosen}.ass"
+        try:
+            publish_files({transcripts.srt_path: srt, transcripts.ass_path: ass})
+        except FileExistsError:
+            continue
+        progress(f"SRT saved to: {srt}")
+        progress(f"ASS saved to: {ass}")
+        return request.output_dir
+
+
+def _publish_clip(video: Path, request: RunRequest) -> Path:
+    stem = f"{request.input_path.stem}-subtitle-clip-preview"
+    while True:
+        chosen = find_unique_stem(request.output_dir, stem, (".mp4",))
+        destination = request.output_dir / f"{chosen}.mp4"
+        try:
+            publish_files({video: destination})
+        except FileExistsError:
+            continue
+        return destination
 
 
 def _publish_run(artifacts: RunArtifacts, request: RunRequest) -> Path:
