@@ -1,6 +1,7 @@
 """End-to-end hermetic CLI visual iteration without ASR runtimes or FFmpeg."""
 
 import json
+import re
 from fractions import Fraction
 from pathlib import Path
 
@@ -246,6 +247,7 @@ def test_all_preview_options_share_one_help_panel_without_duplicate_flags():
     assert options.count("--preview-duration") == 1
 
 
+@pytest.mark.parametrize("color", [False, True])
 @pytest.mark.parametrize(
     "option",
     [
@@ -256,10 +258,11 @@ def test_all_preview_options_share_one_help_panel_without_duplicate_flags():
         "--clip-duration",
     ],
 )
-def test_superseded_flags_are_not_exposed(option):
-    result = CliRunner().invoke(cli.app, [option])
+def test_superseded_flags_are_not_exposed(option, color):
+    result = CliRunner().invoke(cli.app, [option], color=color)
     assert result.exit_code == 2
-    assert f"No such option: {option}" in result.output
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output)
+    assert f"No such option: {option}" in " ".join(output.split())
 
 
 def test_empty_speech_and_unknown_language_remain_valid(run, monkeypatch):

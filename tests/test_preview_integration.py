@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 from PIL import Image
@@ -286,7 +287,9 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
         check=True,
     )
     with Image.open(first_frame) as frame:
-        red, green, blue = frame.convert("RGB").getpixel((10, 10))
+        red, green, blue = cast(
+            tuple[int, int, int], frame.convert("RGB").getpixel((10, 10))
+        )
         assert blue > 200 and red < 30 and green < 30
     png_output = tmp_path / "png-output"
     assert (
@@ -304,7 +307,9 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
         == 0
     )
     with Image.open(next(png_output.glob("*.png"))) as frame:
-        red, green, blue = frame.convert("RGB").getpixel((10, 10))
+        red, green, blue = cast(
+            tuple[int, int, int], frame.convert("RGB").getpixel((10, 10))
+        )
         assert blue > 200 and red < 30 and green < 30
     for mode in ("--preview-layout", "--preview-animation"):
         explicit_output = tmp_path / mode.removeprefix("--")
@@ -342,7 +347,9 @@ def test_animation_preview_clip_is_silent_h264_30fps_and_collision_safe(
         else:
             selected_frame = next(explicit_output.glob("*.png"))
         with Image.open(selected_frame) as frame:
-            red, green, blue = frame.convert("RGB").getpixel((10, 10))
+            red, green, blue = cast(
+                tuple[int, int, int], frame.convert("RGB").getpixel((10, 10))
+            )
             assert red > 200 and green < 30 and blue < 30
     assert not list(output_dir.glob(".*"))
 

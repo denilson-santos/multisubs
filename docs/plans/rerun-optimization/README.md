@@ -15,12 +15,14 @@ template exports in one invocation and persistent layout caches are deferred.
 Progress: 0/3 plans merged. Plans 0–2 are implemented, verified, and prepared
 for review on `feat/reusable-subtitle-runs`, the delivery reference for the
 shared draft pull request against `main`. Verification passed:
-1,445 hermetic tests and 20 synthetic FFmpeg integration cases, including the
+1,450 hermetic tests and 20 synthetic FFmpeg integration cases, including the
 automatic output-local cache, `transcriptions/v1` with legacy reuse, optional
 sample-frame selection, first-frame defaults, and PNG previews accepting video
 encoding options without initializing an encoder. Three opt-in NVENC cases were
 skipped. Ruff formatting/lint, Pyright, compileall, CLI help, wheel/source builds,
 package metadata checks, and bundled-font artifact audits also passed.
+CI-specific regression checks also passed with forced terminal colors and
+Pyright 1.1.414, covering ANSI-normalized option errors and typed RGB pixels.
 
 | Plan | Status | Dependencies | Implementation delivery |
 | --- | --- | --- | --- |
