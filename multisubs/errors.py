@@ -5,6 +5,10 @@ class MultisubsError(Exception):
     """Base class for user-actionable multisubs failures."""
 
 
+class CancelledError(MultisubsError):
+    """Raised when a caller requests cooperative cancellation."""
+
+
 class ValidationError(MultisubsError):
     """Raised when user input cannot satisfy the project contract."""
 

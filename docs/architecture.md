@@ -62,7 +62,8 @@ flowchart LR
 | --- | --- | --- |
 | multisubs/cli.py | Defines the Typer console interface, validates direct user errors, chooses output layout, invokes the pipeline, and cleans up transient files. | app, main() |
 | multisubs/asr/ | Defines backend capabilities and normalizes WhisperX, Faster-Whisper, Parakeet/NeMo, and Qwen3-ASR results into one language/text/segments contract without importing unselected runtimes. | ASRBackend, ASRRequest, ASRResult, create_adapter() |
-| multisubs/speech.py | Validates lossless source-speech interchange and renders it through the normal transcription pipeline without ASR. | SpeechTranscript, render_transcript() |
+| multisubs/speech.py | Validates source speech, prepares native subtitles against explicit geometry with leased fonts, and renders through that preparation without ASR. | SpeechTranscript, prepare_subtitles(), render_transcript() |
+| multisubs/cancellation.py | Checks an invocation-local cancellation predicate without global state. | check_cancelled() |
 | multisubs/speech_cache.py | Owns content/request identity, bounded source-speech validation, runtime compatibility, and atomic local persistence before presentation. | get_cached_speech() |
 | multisubs/transcriber.py | Selects an ASR adapter, builds readable display cues, prepares optional aligned-word timing, and coordinates JSON/SRT/ASS artifact writing. | transcribe_speech(), transcribe_video(), write_transcription_artifacts(), generate_transcriptions() |
 | multisubs/preview.py | Resolves a sample cue without transcription, applies adaptive wrapping, generates deterministic simulated word timing for animated previews, and generates optional native or explicit ASS guide events. | build_preview_ass(), build_animation_preview_ass(), build_simulated_karaoke_cue(), resolve_preview_timestamp() |
@@ -81,8 +82,8 @@ flowchart LR
 | multisubs/wrapping.py | Applies typed Unicode display casing, shares font-aware bounded adaptive wrapping between transcription and preview without importing the model runtime, and partitions mapped display units into visual lines. | transform_display_text(), wrap_subtitle_text(), line_count(), build_visual_lines(), render_display_units() |
 | multisubs/utils.py | Produces non-conflicting file and directory paths. | get_unique_path(), get_unique_dir_path() |
 | multisubs/errors.py | Defines user-actionable validation, template-catalog, dependency, artifact, transcription, and rendering errors. | MultisubsError subclasses |
-| multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, GeneratedSubtitleArtifacts, RunArtifacts |
-| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions, semantic configuration, and composition errors. | __version__, transcribe_speech(), SpeechTranscript, render_transcript(), GeneratedSubtitleArtifacts, build_subtitle_config(), SubtitleConfig, MultisubsError, ValidationError, TemplateError |
+| multisubs/models.py | Defines typed request, preview mode, style/layout/animation configuration, typography, cue and word backdrops, shadow, global opacity, display casing, timed-word modes, immutable source spans/maps/display groups/units/fragments, visual lines and timed cues, video geometry, placement, guide, transcript, and artifact value objects. | RelativeLength, PreviewMode, SubtitleStyle, SubtitleTypography, SubtitleBackdropStyle, SubtitleWordBackdropStyle, SubtitleShadow, SubtitleLayout, SubtitleAnimation, SubtitleConfig, SubtitleSourceSpan, SubtitleSourceMap, SubtitleDisplayGroup, SubtitleDisplayUnit, RunRequest, PreviewRequest, TranscriptDocument, PreparedSubtitleArtifacts, GeneratedSubtitleArtifacts, RunArtifacts |
+| multisubs/__init__.py | Exposes the package version and lazily loads the primary package functions, semantic configuration, and composition errors. | __version__, transcribe_speech(), SpeechTranscript, prepare_subtitles(), render_transcript(), PreparedSubtitleArtifacts, GeneratedSubtitleArtifacts, build_subtitle_config(), SubtitleConfig, MultisubsError, CancelledError, ValidationError, TemplateError |
 
 ### Public subtitle configuration
 
@@ -177,13 +178,24 @@ leaving absent/null times unchanged. A coarse segment cannot be accurately
 trimmed into timed words without alignment. Observed bounds extending past
 the media end follow normal transcription behavior; FFmpeg bounds the video.
 
-`render_transcript()` is the public entry for reusable transcription data. It
-accepts the object or dictionary with times already local
-to the supplied final video. It resolves a built-in/custom template or an
-explicit typed configuration, probes final geometry once, and reconstructs
-semantic cues using `_build_subtitle_segments()`. It delegates artifact creation
-to `write_transcription_artifacts()` with the same language, covering-font
-measurement, resolved layout, and karaoke preparation as the normal path.
+`prepare_subtitles()` is the media-free public entry for reusable speech. Its
+context manager validates and copies schema-1 input, accepts explicit integer
+width/height in [1, 32,768], and constructs final square-pixel `VideoGeometry`
+without a source path or probe. It reconstructs native semantic cues and uses
+the ordinary artifact writer, covering-font metrics, layout, shaping, and
+animation compiler. Neither ASR nor the CLI transcription cache participates.
+The generic source stem `subtitles` is used only for artifact naming; private
+schema-3 JSON is discarded. All observed speech semantics and existing fallback
+warnings remain unchanged. Template/config exclusivity matches rendering.
+Consumers apply crop/scale/rotation before the ASS filter and keep the final
+sample aspect ratio at 1:1. Geometry-dependent validation uses the native rules.
+
+`render_transcript()` is the video-producing entry for reusable speech. It
+accepts the object or dictionary with times already local to the supplied final
+video. It resolves a built-in/custom template or an
+explicit typed configuration and probes final geometry once. It calls public
+`prepare_subtitles()` in a private output directory using the final render
+dimensions and holds its fonts through `embed_subtitles()`.
 Missing word timing never becomes simulated alignment. Suppressed effects are
 reported through progress or UserWarning. New APIs reject tasks other than
 transcribe before expensive work; legacy translation behavior is unchanged.
@@ -195,6 +207,74 @@ and leaves existing outputs untouched. No source path or ASR runtime is required
 in the interchange data; cropping, source selection, and shifting observed times
 to an edit's timeline are the consumer's responsibility. See the
 [Python API reference](../README.md#transcribe-once-and-reuse-the-transcript).
+
+#### Prepared subtitle resources
+
+Immutable `PreparedSubtitleArtifacts` exposes subtitle paths, the optional font
+directory, and template provenance. The font-resource context surrounds the
+entire yield, including the consumer's external encode:
+
+| Resource | Lifetime and ownership |
+| --- | --- |
+| `srt_path`, `ass_path` | Published before context entry returns under one `subtitles[-language]` stem with numeric collision suffixes. Completed files persist after context exit, including consumer failure or cancellation after publication. |
+| `fonts_dir` | Optional renderer font directory, valid throughout the context. Per-call packaged-font materializations are removed on exit; filesystem package fonts, system fonts, and caller-owned custom directories are read-only and never deleted. Temporary fonts must not be used after exit. |
+| Private JSON and work directory | Unique to the invocation; removed on success, error, and cancellation. Never published by preparation. Output directories themselves may remain. |
+| Template provenance | Immutable `template_requested`, `template_resolved`, `template_source`, and `template_base`. Sources are `builtin`, `custom`, or `config`; explicit configs have no inferred resolved name/base because they do not retain their builder's template history. Local template paths are not exposed. |
+
+Failure or cancellation before subtitle publication removes incomplete work.
+Consumers must wait for external FFmpeg before leaving the context, including
+after terminating it on failure or cancellation. That process, its temporary
+media, and its publication are owned by the consumer. See the
+[single-encode composition example](../README.md#compose-subtitles-in-one-ffmpeg-encode).
+
+### Cooperative cancellation and invocation isolation
+
+The public preparation and three package-root rendering operations accept only
+keyword `should_cancel: Callable[[], bool] | None`. `cancellation.py` raises public
+`CancelledError(MultisubsError)` at stage boundaries; artifact-writer progress
+boundaries also check before and after invoking caller callbacks. Predicates
+must be fast, nonblocking, and valid through context exit. Progress runs
+synchronously on the invoking thread; callback exceptions propagate after
+owned children are stopped. With a supplied predicate, `subtitler.py` owns
+cancellable Popen/FFmpeg run_async execution for capability checks, encoder
+preflight, probing, and video encoding. It drains both
+pipes with approximately 100 ms communicate timeouts, checks cancellation, and
+preserves overall probe/preflight timeouts. On cancellation or callback failure
+it terminates the owned child, waits up to two seconds, kills if necessary, and
+drains/reaps it before cleaning media. Calls without a predicate retain the
+synchronous subprocess/ffmpeg-python execution path.
+
+Publication is a short uncancellable commit boundary: exclusive hard-link/copy
+publication never replaces another result. Collisions retry with a new stem;
+pair/batch failures roll back only files created by that batch. `embed_subtitles()`
+also uses this publisher, closing the old exists-check/replace race. Cancellation
+observed after a completed publication preserves those files and raises
+`CancelledError` without returning success. CPU grouping, font resolution,
+layout, and serialization are cooperative between stages, not
+preempted mid-stage. Consumer exceptions are propagated without replacement by a
+context-exit cancellation check. External FFmpeg is never owned by this lease.
+
+Preparation, transcript rendering, external-subtitle rendering, and ASS embedding
+support simultaneous synchronous calls with independent output directories and
+shared read-only speech/config. Work folders, measurement caches, font leases,
+linguistic providers and jieba caches, process handles, and callback references
+are invocation-local. Packaged templates and cached font catalog metadata are
+shared and immutable. A failing or cancelled call cannot release another call's
+fonts, delete its files, or stop its child. No global cancellation flag or library
+lock is needed; callers use a separate cancellation event for each job.
+Inputs are detached before cue compilation; typed configs remain immutable.
+Consumers must keep template/font files stable and make shared callbacks safe
+for their own concurrency. No ordering across jobs is guaranteed. Collision
+retries are also tested for a shared output directory; independent workspaces
+remain the integration contract. CPU, memory, process, and encoder capacity are
+scheduler decisions. ASR/model concurrency, ASR/CLI cancellation, and CLI stream
+suppression are outside this contract. See the
+[public usage example](../README.md#cancellation-and-concurrent-calls).
+
+Hermetic tests cover native equivalence, three canvas orientations, source timing
+variants, template/config provenance, font leases, concurrent failures, process
+reaping, and publication collisions. Opt-in synthetic integration tests cover
+single-encode cut/crop/blur/ASS composition and cancellation of real FFmpeg.
 
 ### CLI speech reuse and visual iteration
 

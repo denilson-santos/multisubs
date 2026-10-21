@@ -164,6 +164,10 @@ def _publish_one(source: Path, destination: Path) -> None:
             with destination.open("xb") as destination_stream:
                 created_destination = True
                 shutil.copyfileobj(source_stream, destination_stream)
+    except FileExistsError:
+        # Preserve the collision signal so callers can retry a whole output
+        # batch even on filesystems without hard-link support.
+        raise
     except OSError as exc:
         if created_destination:
             try:

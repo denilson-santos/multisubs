@@ -1,3 +1,4 @@
+import errno
 from pathlib import Path
 
 import pytest
@@ -57,7 +58,18 @@ def test_atomic_write_text_writes_utf8_and_leaves_no_temp_files(tmp_path: Path):
     assert list(destination.parent.glob(f".{destination.name}.*.tmp")) == []
 
 
-def test_publish_files_does_not_overwrite_or_leave_partial_outputs(tmp_path: Path):
+@pytest.mark.parametrize("copy_fallback", [False, True])
+def test_publish_files_does_not_overwrite_or_leave_partial_outputs(
+    tmp_path: Path,
+    monkeypatch,
+    copy_fallback: bool,
+):
+    if copy_fallback:
+
+        def no_links(*args, **kwargs):
+            raise OSError(errno.EOPNOTSUPP, "Hard links unavailable")
+
+        monkeypatch.setattr("multisubs.utils.os.link", no_links)
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     second_source = tmp_path / "second-source.txt"
