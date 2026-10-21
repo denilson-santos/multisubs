@@ -13,20 +13,28 @@ __all__ = (
     "transcribe_speech",
     "SpeechTranscript",
     "render_transcript",
+    "prepare_subtitles",
+    "PreparedSubtitleArtifacts",
     "GeneratedSubtitleArtifacts",
     "render_subtitle_file",
     "build_subtitle_config",
     "SubtitleConfig",
     "VideoEncodingConfig",
     "MultisubsError",
+    "CancelledError",
     "ValidationError",
     "TemplateError",
 )
 
 if TYPE_CHECKING:
-    from .errors import MultisubsError, TemplateError, ValidationError
-    from .models import GeneratedSubtitleArtifacts, SubtitleConfig, VideoEncodingConfig
-    from .speech import SpeechTranscript, render_transcript
+    from .errors import CancelledError, MultisubsError, TemplateError, ValidationError
+    from .models import (
+        GeneratedSubtitleArtifacts,
+        PreparedSubtitleArtifacts,
+        SubtitleConfig,
+        VideoEncodingConfig,
+    )
+    from .speech import SpeechTranscript, prepare_subtitles, render_transcript
     from .subtitle_config import build_subtitle_config
     from .subtitler import embed_subtitles, render_subtitle_file
     from .transcriber import generate_transcriptions, transcribe_speech
@@ -38,7 +46,7 @@ def __getattr__(name: str):
         from . import transcriber
 
         return getattr(transcriber, name)
-    if name in ("SpeechTranscript", "render_transcript"):
+    if name in ("SpeechTranscript", "render_transcript", "prepare_subtitles"):
         from . import speech
 
         return getattr(speech, name)
@@ -46,7 +54,12 @@ def __getattr__(name: str):
         from . import subtitler
 
         return getattr(subtitler, name)
-    if name in ("GeneratedSubtitleArtifacts", "SubtitleConfig", "VideoEncodingConfig"):
+    if name in (
+        "GeneratedSubtitleArtifacts",
+        "PreparedSubtitleArtifacts",
+        "SubtitleConfig",
+        "VideoEncodingConfig",
+    ):
         from . import models
 
         return getattr(models, name)
@@ -54,7 +67,7 @@ def __getattr__(name: str):
         from .subtitle_config import build_subtitle_config
 
         return build_subtitle_config
-    if name in ("MultisubsError", "ValidationError", "TemplateError"):
+    if name in ("MultisubsError", "CancelledError", "ValidationError", "TemplateError"):
         from . import errors
 
         return getattr(errors, name)

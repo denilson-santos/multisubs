@@ -497,6 +497,24 @@ class TranscriptionPaths:
 
 
 @dataclass(frozen=True)
+class PreparedSubtitleArtifacts:
+    """Published subtitles with font resources leased by prepare_subtitles().
+
+    SRT and ASS persist after context exit. Materialized fonts remain valid only
+    inside that context; caller-owned and installed fonts are never removed.
+    A complete subtitle_config has source 'config' and no inferred template name.
+    """
+
+    srt_path: Path
+    ass_path: Path
+    fonts_dir: Path | None
+    template_requested: str | None
+    template_resolved: str | None
+    template_source: str
+    template_base: str | None
+
+
+@dataclass(frozen=True)
 class GeneratedSubtitleArtifacts:
     """Published subtitle files and the video rendered from their ASS."""
 

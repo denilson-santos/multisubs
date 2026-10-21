@@ -6,14 +6,23 @@ import math
 import re
 import shutil
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from .cancellation import CancellationCheck, check_cancelled
 from .errors import ValidationError
-from .models import GeneratedSubtitleArtifacts, SubtitleConfig, VideoEncodingConfig
+from .models import (
+    GeneratedSubtitleArtifacts,
+    PreparedSubtitleArtifacts,
+    SubtitleConfig,
+    VideoEncodingConfig,
+    VideoGeometry,
+)
 
 _LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\Z", re.ASCII)
 _FIELDS = {
@@ -178,52 +187,46 @@ def _validate_json_value(value: Any) -> None:
             raise ValidationError("Speech transcript must contain finite JSON values")
 
 
-def render_transcript(
+@contextmanager
+def prepare_subtitles(
     transcript: SpeechTranscript | Mapping[str, Any],
-    video_path: str | Path,
-    output_dir: str | Path,
     *,
+    output_dir: str | Path,
+    frame_width: int,
+    frame_height: int,
     template: str | None = None,
     template_dir: str | Path | None = None,
     subtitle_config: SubtitleConfig | None = None,
     progress: Callable[[str], None] | None = None,
-    video_encoding: VideoEncodingConfig | None = None,
-) -> GeneratedSubtitleArtifacts:
-    """Render source speech data on a final video without calling an ASR.
+    should_cancel: CancellationCheck = None,
+) -> Iterator[PreparedSubtitleArtifacts]:
+    """Prepare native SRT/ASS for a final square-pixel canvas without media/ASR.
 
-    Accept a SpeechTranscript or its to_dict() result, with times already local
-    to the video. Select a template or supply a complete typed subtitle_config.
-    Return collision-safe SRT, ASS, and video paths after successful rendering.
-    Only task='transcribe' is supported. Missing alignment uses native coarse
-    timing and explicitly reports any suppressed word effects through progress.
+    Enter the context to prepare and publish a collision-safe subtitle pair.
+    Fonts remain available until context exit. Published subtitles persist even
+    if the consumer raises or cancels; private intermediates/materialized fonts
+    are released on every exit. Cancellation before publication leaves no pair.
+    Caller-owned fonts, templates, transcript, and configuration are never changed.
     """
+    check_cancelled(should_cancel)
     document = SpeechTranscript.from_dict(
         transcript.to_dict() if isinstance(transcript, SpeechTranscript) else transcript
     )
-
-    def report(message: str) -> None:
-        if message.startswith("Warning:"):
-            message = message.split("; inspect retained", 1)[0] + "."
-        if progress is not None:
-            progress(message)
-        elif message.startswith("Warning:"):
-            warnings.warn(message, UserWarning, stacklevel=3)
-
+    if any(
+        type(value) is not int or not 1 <= value <= 32_768
+        for value in (frame_width, frame_height)
+    ):
+        raise ValidationError("Frame dimensions must be integers from 1 to 32,768")
     if subtitle_config is not None and (
         template is not None or template_dir is not None
     ):
         raise ValidationError("Use a template or subtitle_config, not both")
-    from .config import validate_subtitle_config, validate_video_encoding_config
+
+    from .config import validate_subtitle_config
     from .custom_templates import resolve_subtitle_template
     from .font_catalog import bundled_font_directory
     from .layout import resolve_subtitle_config, resolve_wrapping_metrics
     from .models import TranscriptDocument
-    from .subtitler import (
-        embed_subtitles,
-        probe_video_geometry,
-        validate_ffmpeg_support,
-        validate_video_encoding_support,
-    )
     from .transcriber import _build_subtitle_segments, write_transcription_artifacts
     from .utils import (
         create_work_dir,
@@ -235,18 +238,34 @@ def render_transcript(
 
     selected = resolve_subtitle_template(template, template_dir)
     config = validate_subtitle_config(subtitle_config or selected.template.config)
-    selected_encoding = validate_video_encoding_config(video_encoding)
-    source = Path(video_path).expanduser().resolve(strict=False)
-    if not source.is_file():
-        raise ValidationError(f"Video file not found at '{video_path}'")
     destination = Path(output_dir).expanduser().resolve(strict=False)
     if destination.exists() and not destination.is_dir():
         raise ValidationError(f"Output path '{output_dir}' is a file")
-    validate_ffmpeg_support()
-    validate_video_encoding_support(selected_encoding)
-    geometry = probe_video_geometry(source)
+    geometry = VideoGeometry(
+        0,
+        frame_width,
+        frame_height,
+        frame_width,
+        frame_height,
+        0,
+        Fraction(1),
+        Fraction(frame_width, frame_height),
+        None,
+    )
+
+    def report(message: str) -> None:
+        check_cancelled(should_cancel)
+        if message.startswith("Warning:"):
+            message = message.split("; inspect retained", 1)[0] + "."
+        if progress is not None:
+            progress(message)
+        elif message.startswith("Warning:"):
+            warnings.warn(message, UserWarning, stacklevel=3)
+        check_cancelled(should_cancel)
+
+    check_cancelled(should_cancel)
     native = TranscriptDocument(
-        source_path=source,
+        source_path=Path("subtitles"),
         language=document.language,
         task=document.task,
         model_name=document.model_name,
@@ -256,8 +275,10 @@ def render_transcript(
         ),
         asr_backend=document.asr_backend,
     )
+    check_cancelled(should_cancel)
     with bundled_font_directory(config.style.typography.font) as fonts:
         resolved = resolve_subtitle_config(config, geometry, bundled_fonts_dir=fonts)
+        check_cancelled(should_cancel)
         metrics = resolve_wrapping_metrics(
             resolved,
             geometry,
@@ -271,6 +292,7 @@ def render_transcript(
             verify_font_coverage=True,
             bundled_fonts_dir=fonts,
         )
+        check_cancelled(should_cancel)
         work_dir = create_work_dir(destination)
         try:
             _, srt, ass = write_transcription_artifacts(
@@ -286,38 +308,142 @@ def render_transcript(
                 template_base=selected.base,
                 progress=report,
             )
+            check_cancelled(should_cancel)
+            stem = with_language_suffix("subtitles", document.language)
+            while True:
+                check_cancelled(should_cancel)
+                chosen = find_unique_stem(destination, stem, (".srt", ".ass"))
+                artifacts = PreparedSubtitleArtifacts(
+                    srt_path=destination / f"{chosen}.srt",
+                    ass_path=destination / f"{chosen}.ass",
+                    fonts_dir=metrics.text_measurer.info.renderer_fonts_dir,
+                    template_requested=template,
+                    template_resolved=selected.template.name
+                    if subtitle_config is None
+                    else None,
+                    template_source=selected.source
+                    if subtitle_config is None
+                    else "config",
+                    template_base=selected.base if subtitle_config is None else None,
+                )
+                try:
+                    publish_files(
+                        {Path(srt): artifacts.srt_path, Path(ass): artifacts.ass_path}
+                    )
+                except FileExistsError:
+                    continue
+                break
+            check_cancelled(should_cancel)
+            yield artifacts
+            check_cancelled(should_cancel)
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def render_transcript(
+    transcript: SpeechTranscript | Mapping[str, Any],
+    video_path: str | Path,
+    output_dir: str | Path,
+    *,
+    template: str | None = None,
+    template_dir: str | Path | None = None,
+    subtitle_config: SubtitleConfig | None = None,
+    progress: Callable[[str], None] | None = None,
+    video_encoding: VideoEncodingConfig | None = None,
+    should_cancel: CancellationCheck = None,
+) -> GeneratedSubtitleArtifacts:
+    """Prepare native subtitles and render them on a final video without ASR.
+
+    Preserve the existing return type and publish all three files only after a
+    successful encode. Cancellation cleans invocation-owned work and never
+    removes a previously published result. Times must already be video-local.
+    """
+    check_cancelled(should_cancel)
+    document = SpeechTranscript.from_dict(
+        transcript.to_dict() if isinstance(transcript, SpeechTranscript) else transcript
+    )
+    if subtitle_config is not None and (
+        template is not None or template_dir is not None
+    ):
+        raise ValidationError("Use a template or subtitle_config, not both")
+
+    from .config import validate_video_encoding_config
+    from .subtitler import (
+        embed_subtitles,
+        probe_video_geometry,
+        validate_ffmpeg_support,
+        validate_video_encoding_support,
+    )
+    from .utils import (
+        create_work_dir,
+        find_unique_stem,
+        publish_files,
+        with_language_suffix,
+    )
+
+    selected_encoding = validate_video_encoding_config(video_encoding)
+    source = Path(video_path).expanduser().resolve(strict=False)
+    if not source.is_file():
+        raise ValidationError(f"Video file not found at '{video_path}'")
+    destination = Path(output_dir).expanduser().resolve(strict=False)
+    if destination.exists() and not destination.is_dir():
+        raise ValidationError(f"Output path '{output_dir}' is a file")
+    cancel_options = {} if should_cancel is None else {"should_cancel": should_cancel}
+    validate_ffmpeg_support(**cancel_options)
+    check_cancelled(should_cancel)
+    validate_video_encoding_support(selected_encoding, **cancel_options)
+    check_cancelled(should_cancel)
+    geometry = probe_video_geometry(source, **cancel_options)
+    check_cancelled(should_cancel)
+    work_dir = create_work_dir(destination)
+    try:
+        with prepare_subtitles(
+            document,
+            output_dir=work_dir,
+            frame_width=geometry.render_width,
+            frame_height=geometry.render_height,
+            template=template,
+            template_dir=template_dir,
+            subtitle_config=subtitle_config,
+            progress=progress,
+            should_cancel=should_cancel,
+        ) as prepared:
             video = work_dir / f"video{source.suffix}"
             embed_subtitles(
                 source,
-                ass,
+                prepared.ass_path,
                 work_dir,
                 document.language,
                 output_path=video,
                 geometry=geometry,
-                fonts_dir=metrics.text_measurer.info.renderer_fonts_dir,
+                fonts_dir=prepared.fonts_dir,
                 progress=progress,
                 video_encoding=selected_encoding,
+                **cancel_options,
             )
-            stem = with_language_suffix(source.stem, document.language)
-            while True:
-                chosen = find_unique_stem(
-                    destination, stem, (".srt", ".ass", source.suffix)
+            check_cancelled(should_cancel)
+        stem = with_language_suffix(source.stem, document.language)
+        while True:
+            check_cancelled(should_cancel)
+            chosen = find_unique_stem(
+                destination, stem, (".srt", ".ass", source.suffix)
+            )
+            artifacts = GeneratedSubtitleArtifacts(
+                destination / f"{chosen}.srt",
+                destination / f"{chosen}.ass",
+                destination / f"{chosen}{source.suffix}",
+            )
+            try:
+                publish_files(
+                    {
+                        prepared.srt_path: artifacts.srt_path,
+                        prepared.ass_path: artifacts.ass_path,
+                        video: artifacts.video_path,
+                    }
                 )
-                artifacts = GeneratedSubtitleArtifacts(
-                    destination / f"{chosen}.srt",
-                    destination / f"{chosen}.ass",
-                    destination / f"{chosen}{source.suffix}",
-                )
-                try:
-                    publish_files(
-                        {
-                            Path(srt): artifacts.srt_path,
-                            Path(ass): artifacts.ass_path,
-                            video: artifacts.video_path,
-                        }
-                    )
-                except FileExistsError:
-                    continue
-                return artifacts
-        finally:
-            shutil.rmtree(work_dir, ignore_errors=True)
+            except FileExistsError:
+                continue
+            check_cancelled(should_cancel)
+            return artifacts
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)

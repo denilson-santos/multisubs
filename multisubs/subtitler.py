@@ -8,11 +8,13 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from .cancellation import CancellationCheck, check_cancelled
 from .config import validate_video_encoding_config
 from .errors import ArtifactError, DependencyError, RenderingError, ValidationError
 from .models import VideoEncodingConfig, VideoGeometry
@@ -34,6 +36,98 @@ MAX_ANIMATION_PREVIEW_DURATION_MS = 15_000
 ENCODER_PREFLIGHT_TIMEOUT_SECONDS = 30
 
 
+def _communicate(
+    process: subprocess.Popen[Any],
+    should_cancel: CancellationCheck,
+    *,
+    timeout: float | None = None,
+) -> tuple[Any, Any]:
+    """Drain both pipes while polling cancellation; always reap owned processes."""
+    deadline = None if timeout is None else time.monotonic() + timeout
+    try:
+        while True:
+            check_cancelled(should_cancel)
+            interval = 0.1
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 and timeout is not None:
+                    raise subprocess.TimeoutExpired(process.args, timeout)
+                interval = min(interval, remaining)
+            try:
+                result = process.communicate(timeout=interval)
+            except subprocess.TimeoutExpired:
+                continue
+            check_cancelled(should_cancel)
+            return result
+    except BaseException:
+        # This includes callback exceptions and KeyboardInterrupt: none may leave
+        # the process running after invocation-owned temporary files are removed.
+        if process.poll() is None:
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+        try:
+            process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            process.communicate()
+        raise
+
+
+def _run_command(
+    command: list[str],
+    *,
+    should_cancel: CancellationCheck = None,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Keep legacy synchronous execution unless cancellation was requested."""
+    if should_cancel is None:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    check_cancelled(should_cancel)
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = _communicate(process, should_cancel, timeout=timeout)
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _run_output_stream(
+    output_stream: Any,
+    ffmpeg: Any,
+    should_cancel: CancellationCheck,
+) -> None:
+    """Run the normal FFmpeg graph with optional cooperative cancellation."""
+    if should_cancel is None:
+        output_stream.run(
+            overwrite_output=True,
+            capture_stdout=True,
+            capture_stderr=True,
+        )
+        return
+    check_cancelled(should_cancel)
+    process = output_stream.run_async(
+        overwrite_output=True,
+        pipe_stdout=True,
+        pipe_stderr=True,
+    )
+    stdout, stderr = _communicate(process, should_cancel)
+    if process.returncode:
+        raise ffmpeg.Error("ffmpeg", stdout, stderr)
+
+
 def _video_encoding_options(
     config: VideoEncodingConfig | None,
 ) -> dict[str, Any]:
@@ -48,13 +142,18 @@ def _video_encoding_options(
     return options
 
 
-def validate_video_encoding_support(config: VideoEncodingConfig | None) -> None:
+def validate_video_encoding_support(
+    config: VideoEncodingConfig | None,
+    *,
+    should_cancel: CancellationCheck = None,
+) -> None:
     """Initialize an explicitly selected encoder on one synthetic frame.
 
     Run once before ASR or artifact generation in high-level entry points.
     The real encode still owns media-specific validation and safe publication.
     No capability cache or silent fallback hides changes in device availability.
     """
+    check_cancelled(should_cancel)
     selected = validate_video_encoding_config(config)
     if selected.encoder is None:
         return
@@ -82,11 +181,9 @@ def validate_video_encoding_support(config: VideoEncodingConfig | None) -> None:
         command.extend((f"-{key}", str(value)))
     command.extend(("-f", "null", "-"))
     try:
-        completed = subprocess.run(
+        completed = _run_command(
             command,
-            check=False,
-            capture_output=True,
-            text=True,
+            should_cancel=should_cancel,
             timeout=ENCODER_PREFLIGHT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -152,8 +249,9 @@ def extract_audio_track(input_path: str | Path, output_path: str | Path) -> Path
     return destination
 
 
-def validate_ffmpeg_support() -> None:
+def validate_ffmpeg_support(*, should_cancel: CancellationCheck = None) -> None:
     """Ensure FFmpeg, ffprobe, and the subtitles filter are available."""
+    check_cancelled(should_cancel)
     executable = shutil.which("ffmpeg")
     if executable is None:
         raise DependencyError(
@@ -166,11 +264,9 @@ def validate_ffmpeg_support() -> None:
         )
 
     try:
-        completed = subprocess.run(
+        completed = _run_command(
             [executable, "-hide_banner", "-filters"],
-            check=False,
-            capture_output=True,
-            text=True,
+            should_cancel=should_cancel,
         )
     except OSError as exc:
         raise DependencyError(f"Could not run FFmpeg at '{executable}': {exc}") from exc
@@ -214,13 +310,18 @@ def validate_animation_preview_support() -> None:
         )
 
 
-def probe_video_geometry(input_path: str | Path) -> VideoGeometry:
+def probe_video_geometry(
+    input_path: str | Path,
+    *,
+    should_cancel: CancellationCheck = None,
+) -> VideoGeometry:
     """Probe and normalize the first renderable video stream.
 
     FFmpeg autorotation is enabled by default. Consequently, right-angle
     rotation swaps the dimensions and pixel aspect ratio used to calculate the
     displayed frame geometry.
     """
+    check_cancelled(should_cancel)
     source_path = _require_file(input_path, "Input video")
     executable = shutil.which("ffprobe")
     if executable is None:
@@ -241,11 +342,9 @@ def probe_video_geometry(input_path: str | Path) -> VideoGeometry:
         str(source_path),
     ]
     try:
-        completed = subprocess.run(
+        completed = _run_command(
             command,
-            check=False,
-            capture_output=True,
-            text=True,
+            should_cancel=should_cancel,
             timeout=FFPROBE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
@@ -445,8 +544,10 @@ def render_subtitle_file(
     *,
     fonts_dir: str | Path | None = None,
     video_encoding: VideoEncodingConfig | None = None,
+    should_cancel: CancellationCheck = None,
 ) -> Path:
     """Burn a supplied SRT or ASS file into a collision-safe copy of a video."""
+    check_cancelled(should_cancel)
     selected_encoding = validate_video_encoding_config(video_encoding)
     source = _require_file(video_path, "Input video")
     subtitles = _require_file(subtitle_path, "Subtitle file")
@@ -466,9 +567,13 @@ def render_subtitle_file(
         raise ValidationError(
             f"Output path '{output_dir}' is a file; provide a directory instead"
         )
-    validate_ffmpeg_support()
-    validate_video_encoding_support(selected_encoding)
-    geometry = probe_video_geometry(source)
+    cancel_options = {} if should_cancel is None else {"should_cancel": should_cancel}
+    validate_ffmpeg_support(**cancel_options)
+    check_cancelled(should_cancel)
+    validate_video_encoding_support(selected_encoding, **cancel_options)
+    check_cancelled(should_cancel)
+    geometry = probe_video_geometry(source, **cancel_options)
+    check_cancelled(should_cancel)
     work_dir = create_work_dir(destination)
     try:
         private_video = work_dir / f"video{source.suffix}"
@@ -482,6 +587,7 @@ def render_subtitle_file(
                 geometry=geometry,
                 fonts_dir=selected_fonts,
                 video_encoding=selected_encoding,
+                should_cancel=should_cancel,
             )
         except RenderingError as exc:
             raise RenderingError(
@@ -489,6 +595,7 @@ def render_subtitle_file(
                 f"check the subtitle file and selected video encoder. {exc}"
             ) from exc
         while True:
+            check_cancelled(should_cancel)
             stem = find_unique_stem(
                 destination, f"{source.stem}-subtitled", (source.suffix,)
             )
@@ -497,6 +604,7 @@ def render_subtitle_file(
                 publish_files({private_video: published})
             except FileExistsError:
                 continue
+            check_cancelled(should_cancel)
             return published
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -513,16 +621,20 @@ def embed_subtitles(
     fonts_dir: str | Path | None = None,
     progress: ProgressReporter = None,
     video_encoding: VideoEncodingConfig | None = None,
+    should_cancel: CancellationCheck = None,
 ) -> str:
     """Render an ASS subtitle file into a copied video and return its path.
 
     The established positional interface is unchanged. ``output_path`` is an
     internal-friendly optional override used by the CLI's private work folder.
     """
+    check_cancelled(should_cancel)
     selected_encoding = validate_video_encoding_config(video_encoding)
     source_path = _require_file(input_path, "Input video")
     subtitle_path = _require_file(ass_path, "ASS subtitle file")
-    resolved_geometry = geometry or probe_video_geometry(source_path)
+    cancel_options = {} if should_cancel is None else {"should_cancel": should_cancel}
+    resolved_geometry = geometry or probe_video_geometry(source_path, **cancel_options)
+    check_cancelled(should_cancel)
     resolved_fonts_dir = _require_directory(fonts_dir, "Fonts directory")
     destination_dir = _normalise_output_dir(output_dir)
     final_path = _choose_output_path(source_path, destination_dir, lang, output_path)
@@ -541,9 +653,8 @@ def embed_subtitles(
                 resolved_fonts_dir,
                 video_encoding=selected_encoding,
             )
-            output_stream.run(
-                overwrite_output=True, capture_stdout=True, capture_stderr=True
-            )
+            check_cancelled(should_cancel)
+            _run_output_stream(output_stream, ffmpeg, should_cancel)
         except ffmpeg.Error as exc:
             raise RenderingError(
                 f"FFmpeg could not render subtitles into '{final_path}': "
@@ -554,20 +665,21 @@ def embed_subtitles(
                 f"FFmpeg could not render '{source_path}': {exc}"
             ) from exc
 
-        try:
-            if os.path.lexists(final_path):
+        while True:
+            check_cancelled(should_cancel)
+            try:
+                publish_files({temporary_path: final_path})
+            except FileExistsError as exc:
                 if output_path is not None:
                     raise ArtifactError(
                         f"Refusing to overwrite existing output '{final_path}'"
-                    )
+                    ) from exc
                 final_path = Path(get_unique_path(final_path))
-            os.replace(temporary_path, final_path)
-        except OSError as exc:
-            raise ArtifactError(
-                f"Could not publish rendered video '{final_path}': {exc}"
-            ) from exc
+                continue
+            break
 
         _report(progress, "Subtitle video rendered successfully.")
+        check_cancelled(should_cancel)
         return str(final_path)
     finally:
         if temporary_path.exists():
