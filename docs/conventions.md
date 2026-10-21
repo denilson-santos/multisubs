@@ -302,6 +302,13 @@ Update a higher-level document when a proposed change intentionally modifies the
 - Should make cleanup failure non-destructive: report it separately without hiding a primary successful result or primary processing failure.
 - Should include an invocation identifier in structured logs if batch or concurrent processing is introduced.
 - Must ensure diagnostic output never contains raw credentials or a complete transcript unless the user explicitly requests debug output and accepts that exposure.
+- Public preparation/rendering must keep cancellation predicates, callbacks,
+  subprocess handles, font leases, and temporary resources invocation-local.
+  Raise `CancelledError` rather than returning success on observed cancellation;
+  terminate and reap owned children before cleaning their files. Preserve
+  completed publications and consumer-owned resources. Verify parallel calls
+  with shared read-only inputs, including a failing or cancelled peer, without
+  extending this guarantee to ASR runtimes or CLI stream suppression.
 
 ## Testing conventions
 

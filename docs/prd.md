@@ -114,6 +114,31 @@ translation and the existing Python speech schema remain unchanged. Batch
 variants, cached layout, and retaining loaded models between processes are
 outside this increment.
 
+### Public composition integration
+
+- **FR-26:** Public `prepare_subtitles()` must accept a source `SpeechTranscript`
+  or its version-1 dictionary and explicit final width/height, without video,
+  probing, ASR, encoding, or access to the CLI speech cache. It must use native
+  grouping, layout, fonts, wrapping, animations, timing fallbacks, and template
+  exclusivity. Its context-managed `PreparedSubtitleArtifacts` exposes SRT/ASS,
+  optional renderer fonts, and truthful template provenance. ASS PlayRes matches
+  the final canvas. Successful subtitle pairs persist without overwrites;
+  temporary resources remain available throughout consumption and are then
+  cleaned on success, failure, or cancellation. Caller objects are not mutated.
+- **FR-27:** Preparation and public `render_transcript()`,
+  `render_subtitle_file()`, and `embed_subtitles()` must accept optional
+  cooperative cancellation, raise public `CancelledError` under `MultisubsError`,
+  check between stages and during owned FFmpeg/ffprobe execution, terminate and
+  reap owned processes, and remove incomplete invocation-owned outputs.
+  `render_transcript()` must reuse preparation and preserve its existing return
+  type and three-file publication after successful encoding. Published files and
+  independent calls must survive another call's failure or cancellation.
+- **FR-28:** The four synchronous operations must support concurrent independent
+  output directories and shared read-only speech/config objects. Scheduling and
+  externally launched FFmpeg remain the consumer's responsibility. Document
+  resource ownership, callback requirements, and the scope of verified support;
+  no concurrent-ASR or CLI-wide thread-safety guarantee is implied.
+
 ### Reusable source transcription API
 
 Library consumers must be able to compose a selected built-in/custom template

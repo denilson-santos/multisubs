@@ -952,9 +952,11 @@ unverified fallback.
 ## 🐍 Python API
 
 Use the package-root APIs to keep source transcription separate from styling
-and rendering. Start with [transcript reuse](#transcribe-once-and-reuse-the-transcript)
-or [template overrides](#compose-subtitle-settings-in-python); full signatures
-and configuration rules follow the examples.
+and rendering. Start with [transcript reuse](#transcribe-once-and-reuse-the-transcript),
+[template overrides](#compose-subtitle-settings-in-python), or
+[external composition](#compose-subtitles-in-one-ffmpeg-encode).
+[Cancellation and concurrent calls](#cancellation-and-concurrent-calls), full
+signatures, and configuration rules follow the examples.
 
 ### Transcribe once and reuse the transcript
 
@@ -1019,6 +1021,135 @@ See [public functions](#public-functions) for the signatures and
 [subtitle configuration reference](#subtitle-configuration-reference) for all
 override keys, inheritance rules, and errors.
 
+### Compose subtitles in one FFmpeg encode
+
+This complete example reads a previously saved `speech.json`, prepares subtitles
+at 1080×1920, and renders `input.mp4` once. The transcript must already contain
+the selected content with times shifted to the eight-second cut's timeline;
+selection and timestamp editing are the consumer's responsibility. No video
+intermediate is created by multisubs.
+
+```python
+import json
+from pathlib import Path
+
+import ffmpeg
+
+from multisubs import build_subtitle_config, prepare_subtitles
+
+transcript = json.loads(Path("speech.json").read_text(encoding="utf-8"))
+config = build_subtitle_config(
+    template="yellow-pop",
+    overrides={"font_size": "4.5%", "margin_bottom": "8%"},
+)
+width, height = 1080, 1920
+with prepare_subtitles(
+    transcript,
+    output_dir="output",
+    frame_width=width,
+    frame_height=height,
+    subtitle_config=config,
+) as prepared:
+    source = ffmpeg.input("input.mp4", ss=10, t=8)
+    parts = source.video.filter_multi_output("split")
+    background = (
+        parts[0]
+        .filter(
+            "scale",
+            width,
+            height,
+            force_original_aspect_ratio="increase",
+        )
+        .filter("crop", width, height)
+        .filter("gblur", sigma=20)
+    )
+    foreground = parts[1].filter(
+        "scale",
+        width,
+        height,
+        force_original_aspect_ratio="decrease",
+    )
+    canvas = ffmpeg.overlay(
+        background,
+        foreground,
+        x="(W-w)/2",
+        y="(H-h)/2",
+    ).filter("setsar", 1)
+    subtitle_options = {
+        "filename": str(prepared.ass_path),
+        "original_size": f"{width}x{height}",
+    }
+    if prepared.fonts_dir is not None:
+        subtitle_options["fontsdir"] = str(prepared.fonts_dir)
+    captioned = canvas.filter("subtitles", **subtitle_options)
+    ffmpeg.output(
+        captioned,
+        source["a?"],
+        "final.mp4",
+        vcodec="libx264",
+        acodec="aac",
+        pix_fmt="yuv420p",
+    ).global_args("-nostdin", "-n").run(capture_stdout=True, capture_stderr=True)
+```
+
+The structured ffmpeg-python filter arguments escape subtitle/font paths; do not
+interpolate them into a shell command. `-n` refuses an existing consumer output.
+The consumer owns external FFmpeg errors, cancellation, temporary media, and
+publication; the multisubs predicate does not control a process it did not
+launch. Wait for that process before leaving the preparation context, including
+after terminating it on failure or cancellation.
+
+### Cancellation and concurrent calls
+
+`prepare_subtitles()`, `render_transcript()`, `render_subtitle_file()`, and
+`embed_subtitles()` accept optional `should_cancel: Callable[[], bool] | None`.
+Pass a fast, nonblocking predicate, such as `Event.is_set`, and keep it valid
+through context exit. Cancellation raises public `multisubs.CancelledError`,
+derived from `MultisubsError`, instead of returning a successful result.
+
+```python
+import json
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Event
+
+from multisubs import CancelledError, render_transcript
+
+transcript = json.loads(Path("speech.json").read_text(encoding="utf-8"))
+cancel = Event()
+with ThreadPoolExecutor(max_workers=1) as executor:
+    job = executor.submit(
+        render_transcript,
+        transcript,
+        "final-input.mp4",
+        "output",
+        should_cancel=cancel.is_set,
+    )
+    cancel.set()  # The application's Stop action can do this from another thread.
+    try:
+        artifacts = job.result()
+    except CancelledError:
+        print("Rendering cancelled")
+```
+
+Checks occur between stages and while owned FFmpeg/ffprobe processes run.
+Cancellation stops and waits for owned processes, removes incomplete outputs and
+private resources, and preserves completed published files. CPU/font work is
+cooperative between stages. External FFmpeg execution and its cancellation
+belong to the consumer.
+
+The four operations support simultaneous synchronous calls in independent
+output directories, sharing transcripts/configs for reading. Use a separate
+cancellation event per job. Shared callbacks must be thread-safe; progress runs
+on each invoking thread without cross-job ordering. Do not mutate shared inputs
+or change font/template files during use. Scheduling and resource limits belong
+to the consumer. Concurrent ASR/model execution and the CLI's process-wide
+runtime-output suppression are outside this contract.
+
+See [resource lifetimes](docs/architecture.md#prepared-subtitle-resources) and
+[cancellation and invocation isolation](docs/architecture.md#cooperative-cancellation-and-invocation-isolation)
+for cleanup, publication boundaries, and concurrency guarantees.
+
 ### Public functions
 
 Import these functions from `multisubs`. File and directory paths accept `str`
@@ -1067,6 +1198,66 @@ Call this function before expensive media work to validate template selection
 and overrides. Pass the result through `render_transcript(subtitle_config=...)`.
 See [configuration rules and supported keys](#subtitle-configuration-reference).
 
+#### prepare_subtitles()
+
+Prepare native SRT and ASS directly from existing speech and final frame
+dimensions, with no video, ASR, encoder, or CLI transcription cache:
+
+```python
+from multisubs import SpeechTranscript, build_subtitle_config, prepare_subtitles
+
+speech = SpeechTranscript(
+    language="en",
+    task="transcribe",
+    asr_backend="parakeet",
+    model_name="external",
+    full_text="Hello world!",
+    segments=({"text": "Hello world!", "start": 0.0, "end": 2.0},),
+)
+config = build_subtitle_config(template="yellow-pop", overrides={"font_size": "4.5%"})
+with prepare_subtitles(
+    speech,
+    output_dir="output",
+    frame_width=1080,
+    frame_height=1920,
+    subtitle_config=config,
+) as prepared:
+    print(prepared.ass_path, prepared.fonts_dir)
+    # Complete the consumer's FFmpeg composition before leaving this context.
+```
+
+```text
+prepare_subtitles(
+    transcript, *, output_dir, frame_width, frame_height,
+    template=None, template_dir=None, subtitle_config=None,
+    progress=None, should_cancel=None,
+) -> ContextManager[PreparedSubtitleArtifacts]
+```
+
+The input may also be the transcript's version-1 dictionary. Dimensions are
+integers from 1 through 32,768 describing the final square-pixel canvas; ASS
+`PlayResX`/`PlayResY` match them. Choose template arguments or `subtitle_config`,
+with the same exclusivity as `render_transcript()`. Use `build_subtitle_config()`
+for template overrides. Inputs remain unchanged; observed times, whitespace,
+partial alignment, point words, unknown language, and native fallbacks are
+preserved through the normal cue/layout/animation compiler.
+
+`PreparedSubtitleArtifacts` is an immutable public type with `srt_path`,
+`ass_path`, optional `fonts_dir`, and `template_requested`, `template_resolved`,
+`template_source`, `template_base`. Template selection records built-in/custom
+provenance. An explicit config records source `"config"` and no inferred name
+or base, because configs do not retain their builder's template history.
+
+Preparation publishes `subtitles[-language].srt` and `.ass` under one
+collision-safe stem before yielding. Both files persist after context exit,
+including a consumer failure or cancellation after publication. Private JSON and
+work files are removed on every exit. Materialized packaged fonts are valid
+throughout the context and then released; installed and caller-owned fonts are
+never deleted. Finish external rendering before exiting the context.
+
+See the [single-encode composition example](#compose-subtitles-in-one-ffmpeg-encode)
+and the [resource contract](docs/architecture.md#prepared-subtitle-resources).
+
 #### render_transcript()
 
 Create SRT, ASS, and a hard-subtitled video from existing speech data using the
@@ -1076,7 +1267,7 @@ final video's geometry.
 render_transcript(
     transcript, video_path, output_dir,
     *, template=None, template_dir=None, subtitle_config=None, progress=None,
-    video_encoding=None,
+    video_encoding=None, should_cancel=None,
 ) -> GeneratedSubtitleArtifacts
 ```
 
@@ -1117,6 +1308,9 @@ continues to accept only presentation settings.
 The returned `GeneratedSubtitleArtifacts` contains three `Path` attributes:
 `srt_path`, `ass_path`, and `video_path`. All three files use one collision-safe
 stem in `output_dir` and are published after successful rendering.
+This operation reuses `prepare_subtitles()` privately and holds its font lease
+until FFmpeg finishes. A failed or cancelled encode publishes none of the three
+final outputs.
 
 #### render_subtitle_file()
 
@@ -1125,6 +1319,7 @@ Burn an existing local SRT or ASS into a new video with copied audio.
 ```text
 render_subtitle_file(
     video_path, subtitle_path, output_dir, *, fonts_dir=None, video_encoding=None,
+    should_cancel=None,
 ) -> Path
 ```
 
@@ -1132,6 +1327,18 @@ render_subtitle_file(
 styling; SRT uses libass defaults. The returned `Path` points to the
 collision-safe output video. See the
 [existing subtitle recipe](#burn-an-existing-subtitle-file) for an example.
+
+#### embed_subtitles()
+
+The existing lower-level positional ASS interface remains supported:
+
+```text
+embed_subtitles(
+    input_path, ass_path, output_dir, lang="en", *, output_path=None,
+    geometry=None, fonts_dir=None, progress=None, video_encoding=None,
+    should_cancel=None,
+) -> str
+```
 
 ### Subtitle configuration reference
 
@@ -1335,6 +1542,11 @@ output/
 ├── video-pt.srt
 ├── video-pt.ass
 └── video-pt.mp4
+
+# With prepare_subtitles(...), language pt (no video required)
+output/
+├── subtitles-pt.srt
+└── subtitles-pt.ass
 ```
 
 Existing paths are never overwritten. multisubs adds suffixes such as `(1)` to
