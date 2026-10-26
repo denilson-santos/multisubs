@@ -348,7 +348,7 @@ def test_build_request_uses_fixed_layout_defaults(tmp_path: Path):
     assert layout.margin_top == parse_relative_length("0%")
     assert layout.margin_bottom == parse_relative_length("3%")
     assert layout.max_width == parse_relative_length("100%")
-    assert layout.max_height == parse_relative_length("12%")
+    assert layout.max_height == parse_relative_length("11.64%")
 
 
 @pytest.mark.parametrize(
@@ -509,19 +509,9 @@ def test_build_request_accepts_complete_explicit_coordinate_envelope(
 @pytest.mark.parametrize(
     "arguments",
     [
-        ["--position-x", "50%"],
-        ["--position-y", "86%"],
-        ["--anchor", "top-left"],
-        [
-            "--position-x",
-            "50%",
-            "--position-y",
-            "86%",
-            "--max-width",
-            "60%",
-            "--max-height",
-            "20%",
-        ],
+        ["--position", "top-left", "--position-x", "50%"],
+        ["--position", "top-left", "--position-y", "86%"],
+        ["--position", "top-left", "--anchor", "top-left"],
         [
             "--position",
             "top-left",
@@ -699,7 +689,7 @@ def test_help_exposes_fixed_defaults_without_layout_or_safe_area():
 
     assert "--layout" not in help_text
     assert "--safe-area" not in help_text
-    for value in ("bottom-center", "18%", "3%", "100%", "12%"):
+    for value in ("bottom-center", "18%", "3%", "100%", "11.64%"):
         assert value in compact_help
 
 

@@ -20,6 +20,7 @@ from multisubs import (
     build_subtitle_config,
     cli,
 )
+from multisubs.layout import resolve_subtitle_config
 from multisubs.models import (
     CueAnimationType,
     RelativeLength,
@@ -324,14 +325,86 @@ def test_font_directory_accepts_paths_without_loading_fonts(tmp_path, as_string)
     assert config.style.typography.line_height == "auto"
 
 
-_INVALID_COMBINATIONS = [
-    {"font_weight": "bold", "bold": False},
+_SPARSE_COORDINATES = [
     {"position_x": "50%"},
     {"position_y": "50%"},
     {"anchor": "center"},
     {key: value for key, value in _COORDINATES.items() if key != "anchor"},
     {key: value for key, value in _COORDINATES.items() if key != "max_width"},
     {key: value for key, value in _COORDINATES.items() if key != "max_height"},
+]
+
+
+@pytest.mark.parametrize("overrides", _SPARSE_COORDINATES)
+@pytest.mark.parametrize("template", ["default", "golden-title"])
+def test_sparse_coordinates_inherit_template_defaults_and_match_cli(
+    overrides, template
+):
+    baseline = get_subtitle_template(template).config
+    config = build_subtitle_config(template=template, overrides=overrides)
+    assert config == _cli_config(overrides, template=template)
+    assert config.layout.has_custom_coordinates
+    assert config.layout.anchor is not None
+    assert config.layout.anchor.value == overrides.get(
+        "anchor", baseline.layout.position.value
+    )
+    assert config.layout.max_width_inherited == ("max_width" not in overrides)
+    if "max_width" not in overrides:
+        assert config.layout.max_width == baseline.layout.max_width
+    if "max_height" not in overrides:
+        assert config.layout.max_height == baseline.layout.max_height
+    assert get_subtitle_template(template).config == baseline
+
+
+@pytest.mark.parametrize("position", ["top-right", "center", "bottom-left"])
+def test_custom_coordinate_defaults_use_local_template_layout(tmp_path, position):
+    (tmp_path / "caption.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "name": "caption",
+                "layout": {
+                    "position": position,
+                    "margins": {
+                        "left": "12.5%",
+                        "right": "73px",
+                        "top": "21px",
+                        "bottom": "15%",
+                    },
+                    "max_width": "80%",
+                    "max_height": "17%",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    baseline = build_subtitle_config(template="caption", template_dir=tmp_path)
+    overrides = {"position_y": "50%"}
+    custom = build_subtitle_config(
+        template="caption", template_dir=tmp_path, overrides=overrides
+    )
+    assert custom == _cli_config(overrides, template="caption", template_dir=tmp_path)
+    geometry = VideoGeometry(
+        0, 1920, 1080, 1920, 1080, 0, Fraction(1), Fraction(16, 9), 10
+    )
+    native = resolve_subtitle_config(baseline, geometry)
+    resolved = resolve_subtitle_config(custom, geometry)
+    assert resolved.layout.anchor is not None
+    assert resolved.layout.anchor.value == position
+    assert resolved.layout.position_y == 540
+    assert resolved.layout.max_width == native.layout.max_width
+    assert resolved.layout.max_height == native.layout.max_height
+    assert (
+        resolved.layout.position_x
+        == {"top-right": 1847, "center": 1043, "bottom-left": 240}[position]
+    )
+
+
+_INVALID_COMBINATIONS = [
+    {"font_weight": "bold", "bold": False},
+    {"position_x": "50%", "position": "bottom-center"},
+    {"position_y": "50%", "position": "bottom-center"},
+    {"anchor": "center", "position": "bottom-center"},
     {**_COORDINATES, "position": "bottom-center"},
     *(
         {**_COORDINATES, key: "0px"}

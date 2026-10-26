@@ -1183,7 +1183,8 @@ def _cli_command(
             help=(
                 "Maximum subtitle line width. Native percentages use the width after "
                 "horizontal margins; explicit percentages use render width (native "
-                "default: 100%)."
+                "default: 100%). Omitted custom width preserves the template's "
+                "width after margins."
             ),
             show_default=False,
         ),
@@ -1196,9 +1197,9 @@ def _cli_command(
             parser=_relative_length_argument_type,
             rich_help_panel="Relative layout units",
             help=(
-                "Maximum subtitle box height. Native percentages use the height after "
-                "the active margin; explicit percentages use the render height "
-                "(native default: 12%)."
+                "Maximum subtitle box height as a percentage of full render height "
+                "or pixels, independent of vertical margins (default: 11.64%). "
+                "Omitted custom height inherits the template's height."
             ),
             show_default=False,
         ),
@@ -1211,7 +1212,10 @@ def _cli_command(
             metavar="LENGTH",
             parser=_relative_length_argument_type,
             rich_help_panel="Custom subtitle coordinates",
-            help="Horizontal anchor coordinate measured from the PlayRes left edge.",
+            help=(
+                "Horizontal anchor coordinate from the PlayRes left edge. In custom "
+                "mode, omitted X inherits the anchor's native margin position."
+            ),
             show_default=False,
         ),
     ] = None,
@@ -1222,7 +1226,10 @@ def _cli_command(
             metavar="LENGTH",
             parser=_relative_length_argument_type,
             rich_help_panel="Custom subtitle coordinates",
-            help="Vertical anchor coordinate measured from the PlayRes top edge.",
+            help=(
+                "Vertical anchor coordinate from the PlayRes top edge. In custom "
+                "mode, omitted Y inherits the anchor's native margin position."
+            ),
             show_default=False,
         ),
     ] = None,
@@ -1233,7 +1240,10 @@ def _cli_command(
             metavar="POSITION",
             parser=_choice_parser(POSITION_CHOICES),
             rich_help_panel="Custom subtitle coordinates",
-            help="Required subtitle-box anchor for custom coordinates.",
+            help=(
+                "Subtitle-box anchor for custom coordinates; defaults to the template "
+                "position. Supplying X, Y, or anchor enables custom placement."
+            ),
             show_default=False,
         ),
     ] = None,

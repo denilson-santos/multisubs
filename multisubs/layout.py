@@ -184,13 +184,28 @@ def resolve_subtitle_config(
         ),
     )
 
-    if explicit:
-        width_basis = geometry.render_width
-        height_basis = geometry.render_height
-    else:
-        region = resolve_native_layout_region(geometry, resolved_margin_layout)
+    width_basis = geometry.render_width
+    available_height = geometry.render_height
+    native_layout = replace(
+        resolved_margin_layout, placement_mode=SubtitlePlacementMode.NATIVE_STYLE
+    )
+    if not explicit or merged_layout.max_width_inherited:
+        region = resolve_native_layout_region(geometry, native_layout)
         width_basis = region.width
-        height_basis = region.height
+        if not explicit:
+            available_height = region.height
+
+    default_x = default_y = None
+    if explicit and (
+        merged_layout.position_x is None or merged_layout.position_y is None
+    ):
+        anchor = merged_layout.anchor
+        if anchor is None:
+            raise ValidationError("explicit placement requires an anchor")
+        anchor_region = resolve_native_layout_region(
+            geometry, replace(native_layout, position=anchor)
+        )
+        default_x, default_y = resolve_native_anchor_point(anchor, anchor_region)
 
     max_width = resolve_relative_length(
         _require_resolved_layout_length(merged_layout.max_width, "max-width"),
@@ -200,10 +215,15 @@ def resolve_subtitle_config(
     )
     max_height = resolve_relative_length(
         _require_resolved_layout_length(merged_layout.max_height, "max-height"),
-        height_basis,
+        geometry.render_height,
         field="max-height",
-        maximum=height_basis,
+        maximum=geometry.render_height,
     )
+    if max_height > available_height:
+        raise ValidationError(
+            f"max-height resolves to {max_height}px, but the active vertical margin "
+            f"leaves only {available_height}px; reduce the margin or max-height"
+        )
     if max_width <= 0:
         raise ValidationError("max-width must resolve to a value greater than zero")
     if max_height <= 0:
@@ -212,21 +232,29 @@ def resolve_subtitle_config(
     resolved_layout = replace(
         resolved_margin_layout,
         position_x=(
-            resolve_relative_length(
-                _require_resolved_layout_length(merged_layout.position_x, "position-x"),
-                geometry.render_width,
-                field="position-x",
-                maximum=geometry.render_width,
+            (
+                default_x
+                if merged_layout.position_x is None
+                else resolve_relative_length(
+                    merged_layout.position_x,
+                    geometry.render_width,
+                    field="position-x",
+                    maximum=geometry.render_width,
+                )
             )
             if explicit
             else None
         ),
         position_y=(
-            resolve_relative_length(
-                _require_resolved_layout_length(merged_layout.position_y, "position-y"),
-                geometry.render_height,
-                field="position-y",
-                maximum=geometry.render_height,
+            (
+                default_y
+                if merged_layout.position_y is None
+                else resolve_relative_length(
+                    merged_layout.position_y,
+                    geometry.render_height,
+                    field="position-y",
+                    maximum=geometry.render_height,
+                )
             )
             if explicit
             else None
@@ -234,6 +262,7 @@ def resolve_subtitle_config(
         anchor=merged_layout.anchor if explicit else None,
         max_width=max_width,
         max_height=max_height,
+        max_width_inherited=False,
     )
     resolved = SubtitleConfig(
         style=replace(

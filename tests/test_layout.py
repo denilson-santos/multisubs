@@ -9,6 +9,7 @@ from multisubs.layout import (
     position_visual_lines,
     resolve_cue_placement,
     resolve_line_height,
+    resolve_native_anchor_point,
     resolve_native_layout_region,
     resolve_relative_length,
     resolve_subtitle_config,
@@ -22,6 +23,7 @@ from multisubs.models import (
     SubtitleVisualLine,
     VideoGeometry,
 )
+from multisubs.templates import TEMPLATE_CHOICES, get_subtitle_template
 from multisubs.text_measurement import (
     TextMeasurementInfo,
     TextMeasurer,
@@ -365,7 +367,7 @@ def test_fixed_defaults_resolve_against_portrait_geometry():
     )
 
     assert config.layout.margin_left == parse_relative_length("18%")
-    assert config.layout.max_height == parse_relative_length("12%")
+    assert config.layout.max_height == parse_relative_length("11.64%")
     assert resolved.layout.margin_left == 194
     assert resolved.layout.margin_right == 194
     assert resolved.layout.margin_top == 0
@@ -472,6 +474,126 @@ def test_custom_coordinates_resolve_against_global_playres_axes():
     assert placement is not None
     assert (placement.position_x, placement.position_y) == (960, 929)
     assert placement.anchor is SubtitlePosition.BOTTOM_CENTER
+
+
+@pytest.mark.parametrize("template", TEMPLATE_CHOICES)
+@pytest.mark.parametrize("width,height", [(1920, 1080), (1080, 1920), (1279, 719)])
+def test_custom_defaults_preserve_every_template_native_geometry(
+    template, width, height
+):
+    geometry = replace(GEOMETRY, render_width=width, render_height=height)
+    baseline = get_subtitle_template(template).config
+    native = resolve_subtitle_config(baseline, geometry)
+    custom = resolve_subtitle_config(
+        validate_subtitle_config(
+            None, defaults=baseline, anchor=baseline.layout.position
+        ),
+        geometry,
+    )
+    region = resolve_native_layout_region(geometry, native.layout)
+    assert (
+        custom.layout.position_x,
+        custom.layout.position_y,
+    ) == resolve_native_anchor_point(baseline.layout.position, region)
+    assert custom.layout.max_width == native.layout.max_width
+    assert custom.layout.max_height == native.layout.max_height
+    assert not custom.layout.max_width_inherited
+    assert resolve_subtitle_config(custom, geometry) == custom
+
+
+@pytest.mark.parametrize(
+    "anchor,x,y",
+    [
+        ("top-left", 346, 0),
+        ("top-center", 960, 0),
+        ("top-right", 1574, 0),
+        ("middle-left", 346, 540),
+        ("center", 960, 540),
+        ("middle-right", 1574, 540),
+        ("bottom-left", 346, 1048),
+        ("bottom-center", 960, 1048),
+        ("bottom-right", 1574, 1048),
+    ],
+)
+def test_anchor_alone_uses_its_native_point_and_preserves_template_dimensions(
+    anchor, x, y
+):
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(None, anchor=anchor), GEOMETRY
+    )
+    assert (resolved.layout.position_x, resolved.layout.position_y) == (x, y)
+    # Resolve each 18% margin before subtraction, just as native ASS does.
+    assert resolved.layout.max_width == 1228
+    assert resolved.layout.max_height == 126
+
+
+@pytest.mark.parametrize("max_width,max_height", [("80%", "12.5%"), ("900px", "120px")])
+def test_custom_defaults_resolve_asymmetric_mixed_unit_template_margins(
+    max_width, max_height
+):
+    baseline = validate_subtitle_config(
+        None,
+        relative_values={
+            "margin_left": "12.5%",
+            "margin_right": "73px",
+            "margin_bottom": "34px",
+            "max_width": max_width,
+            "max_height": max_height,
+        },
+    )
+    native = resolve_subtitle_config(baseline, GEOMETRY)
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(None, defaults=baseline, anchor="bottom-center"),
+        GEOMETRY,
+    )
+    assert resolved.layout.position_x == 1043
+    assert resolved.layout.position_y == 1046
+    assert resolved.layout.max_width == native.layout.max_width
+    assert resolved.layout.max_height == native.layout.max_height
+
+
+@pytest.mark.parametrize(
+    "field,value,x,y",
+    [("position_x", "60%", 1152, 1048), ("position_y", "86%", 960, 929)],
+)
+def test_one_coordinate_overrides_only_its_axis(field, value, x, y):
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(None, relative_values={field: value}), GEOMETRY
+    )
+    assert resolved.layout.anchor is SubtitlePosition.BOTTOM_CENTER
+    assert (resolved.layout.position_x, resolved.layout.position_y) == (x, y)
+    assert resolved.layout.max_width == 1228
+    assert resolved.layout.max_height == 126
+
+
+@pytest.mark.parametrize(
+    "overrides,width,height",
+    [
+        ({"max_width": "70%"}, 1344, 126),
+        ({"max_height": "20%"}, 1228, 216),
+        ({"max_width": "900px", "max_height": "100px"}, 900, 100),
+    ],
+)
+def test_explicit_dimensions_use_full_canvas_without_reapplying_margins(
+    overrides, width, height
+):
+    resolved = resolve_subtitle_config(
+        validate_subtitle_config(
+            None, relative_values={"position_y": "86%", **overrides}
+        ),
+        GEOMETRY,
+    )
+    assert resolved.layout.max_width == width
+    assert resolved.layout.max_height == height
+
+
+@pytest.mark.parametrize(
+    "field,dimension", [("position_x", "max-width"), ("position_y", "max-height")]
+)
+def test_sparse_coordinate_envelopes_are_rejected_instead_of_shrunk(field, dimension):
+    config = validate_subtitle_config(None, relative_values={field: "1%"})
+    with pytest.raises(ValidationError, match=dimension):
+        resolve_subtitle_config(config, GEOMETRY)
 
 
 def test_explicit_coordinates_reject_user_supplied_margins():
@@ -585,15 +707,15 @@ def test_native_max_width_percentage_recalculates_after_margin_changes():
 
 
 @pytest.mark.parametrize(
-    ("position", "expected_basis", "expected_height"),
+    ("position", "expected_basis"),
     [
-        ("top-center", 980, 490),
-        ("bottom-center", 880, 440),
-        ("center", 1080, 540),
+        ("top-center", 980),
+        ("bottom-center", 880),
+        ("center", 1080),
     ],
 )
-def test_native_max_height_uses_alignment_specific_available_height(
-    position, expected_basis, expected_height
+def test_native_max_height_uses_full_height_for_every_alignment(
+    position, expected_basis
 ):
     relative_values = {"max_height": "50%"}
     if position.startswith("top-"):
@@ -608,7 +730,54 @@ def test_native_max_height_uses_alignment_specific_available_height(
     region = resolve_native_layout_region(GEOMETRY, resolved.layout)
 
     assert region.height == expected_basis
-    assert resolved.layout.max_height == expected_height
+    assert resolved.layout.max_height == 540
+
+
+@pytest.mark.parametrize("position", ["top-center", "bottom-center"])
+@pytest.mark.parametrize("margin", ["0%", "3%", "20%", "300px"])
+def test_vertical_margins_preserve_explicit_height_and_line_capacity(position, margin):
+    margin_field = "margin_top" if position.startswith("top-") else "margin_bottom"
+    config = validate_subtitle_config(
+        None,
+        position=position,
+        relative_values={margin_field: margin, "max_height": "12%"},
+    )
+    metrics = resolve_wrapping_metrics(config, GEOMETRY)
+    assert metrics.max_height == 130
+    assert metrics.line_capacity == 2
+
+
+@pytest.mark.parametrize("position", ["top-center", "bottom-center"])
+@pytest.mark.parametrize("height", ["10%", "108px"])
+def test_native_max_height_rejects_overflow_without_reducing_height(position, height):
+    margin_field = "margin_top" if position.startswith("top-") else "margin_bottom"
+    config = validate_subtitle_config(
+        None,
+        position=position,
+        relative_values={margin_field: "972px", "max_height": height},
+    )
+    resolved = resolve_subtitle_config(config, GEOMETRY)
+    assert resolved.layout.max_height == 108
+    assert resolve_subtitle_config(resolved, GEOMETRY) == resolved
+    invalid = replace(config, layout=replace(config.layout, **{margin_field: 973}))
+    with pytest.raises(
+        ValidationError, match="leaves only 107px; reduce the margin or max-height"
+    ):
+        resolve_subtitle_config(invalid, GEOMETRY)
+
+
+def test_lateral_margins_change_width_while_preserving_height_and_line_capacity():
+    baseline = resolve_wrapping_metrics(validate_subtitle_config(None), GEOMETRY)
+    narrowed = resolve_wrapping_metrics(
+        validate_subtitle_config(
+            None, relative_values={"margin_left": "25%", "margin_right": "25%"}
+        ),
+        GEOMETRY,
+    )
+    assert narrowed.max_width == 960
+    assert narrowed.max_width < baseline.max_width
+    assert narrowed.max_height == baseline.max_height
+    assert narrowed.line_capacity == baseline.line_capacity == 2
 
 
 def test_line_capacity_is_derived_from_max_height_and_vertical_metrics():

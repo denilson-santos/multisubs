@@ -255,17 +255,20 @@ def test_write_ass_serializes_generated_guide_events_and_rejects_raw_newlines(
         )
 
 
-def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path):
+@pytest.mark.parametrize("sparse", [False, True])
+def test_custom_ass_placement_is_serialized_before_escaped_text(tmp_path: Path, sparse):
     path = tmp_path / "custom.ass"
     config = validate_subtitle_config(
         None,
-        relative_values={
+        relative_values={"position_y": "86%"}
+        if sparse
+        else {
             "position_x": "50%",
             "position_y": "86%",
             "max_width": "60%",
             "max_height": "20%",
         },
-        anchor="bottom-center",
+        anchor=None if sparse else "bottom-center",
     )
 
     write_ass(

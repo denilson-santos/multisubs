@@ -738,8 +738,8 @@ timestamps even when its own phases are neutral.
 | `--margin-right LENGTH` | `18%` | Native ASS right margin. |
 | `--margin-top LENGTH` | `0%` | Native ASS margin for top positions. |
 | `--margin-bottom LENGTH` | `3%` | Native ASS margin for bottom positions. |
-| `--max-width LENGTH` | `100%` | Maximum subtitle width. |
-| `--max-height LENGTH` | `12%` | Maximum height used to derive line capacity. |
+| `--max-width LENGTH` | Native: `100%`; custom: inherited effective width | Maximum subtitle width. The default template's custom width is equivalent to `64%` of the video before pixel rounding. |
+| `--max-height LENGTH` | `11.64%` | Maximum height relative to full render height, independent of vertical margins; selected templates may supply another height. Custom placement inherits the selected value. |
 
 #### Native margins
 
@@ -752,6 +752,18 @@ neither. An inactive vertical margin is rejected with an actionable error. The
 default `bottom-center` layout therefore keeps `--margin-top` at `0%` and uses
 the `3%` bottom inset. A top position needs an explicit `--margin-top` when an
 inset is desired.
+
+Vertical margins move the subtitle anchor without changing `max-height` or its
+line capacity. Maximum height always uses the full render height in both native
+and custom placement. If the configured envelope no longer fits after a margin
+change, validation fails instead of reducing the height, font, or line capacity.
+For example, `--max-height 12%` means 120px in a 1000px-high video with either a
+3% or 20% bottom margin.
+
+Side margins continue to reduce the native width budget, so changing them may
+change wrapping and cue count. The maximum line capacity remains controlled by
+height, font metrics, line spacing, and decorations; each cue can use fewer lines
+depending on its text.
 
 #### Percentage bases
 
@@ -766,8 +778,8 @@ resolution-aware; pixels refer to the generated ASS PlayRes canvas.
 | `--backdrop-size`, `--word-backdrop-size`, `--shadow-size` | Resolved font size. |
 | `--margin-left`, `--margin-right` | Render width. |
 | `--margin-top`, `--margin-bottom` | Render height. |
-| `--max-width` | Native: width after side margins; explicit: render width. |
-| `--max-height` | Native: height after the active vertical margin; explicit: render height. |
+| `--max-width` | Native or inherited custom default: width after side margins; explicit custom override: render width. |
+| `--max-height` | Full render height in every placement mode, independent of vertical margins. |
 
 #### Adaptive wrapping
 
@@ -788,14 +800,30 @@ share intentional line breaks; JSON retains source text beside rendered
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--position-x LENGTH` | — | Explicit global PlayRes X coordinate. |
-| `--position-y LENGTH` | — | Explicit global PlayRes Y coordinate. |
-| `--anchor POSITION` | — | Subtitle-box anchor for explicit coordinates. |
+| `--position-x LENGTH` | Native anchor X (`50%` with `default`) | Global PlayRes X coordinate in custom mode. |
+| `--position-y LENGTH` | Native anchor Y (`97%` with `default`) | Global PlayRes Y coordinate in custom mode. |
+| `--anchor POSITION` | Template position (`bottom-center` with `default`) | Subtitle-box anchor for custom coordinates. |
 
 Coordinate percentages use render width for X and render height for Y.
 Pixels refer to the global ASS PlayRes canvas.
 
-Use X and Y together to attach an anchor on the subtitle box to a global point:
+Supplying X, Y, or anchor enables custom placement. Omitted coordinates use the
+selected anchor's native point inside the template margins, so each option can
+be changed independently. For example, move only the vertical position:
+
+```bash
+multisubs -i ./video.mp4 --position-y 86%
+```
+
+Omitted maximum dimensions inherit the template's limits.
+For the default template, `100% - 18% - 18% = 64%` gives the inherited width;
+the inherited height is `11.64%` of the full render height, independent of
+vertical margins. Side margins resolve to pixels before the inherited width is
+calculated, preserving native rounding even with asymmetric or mixed `%`/`px`
+margins. Changing the anchor changes the default coordinate point while
+retaining the template's dimensions.
+
+You can also override every field:
 
 ```bash
 multisubs -i ./video.mp4 \
@@ -806,10 +834,11 @@ multisubs -i ./video.mp4 \
   --max-height 20%
 ```
 
-Explicit coordinates require `--position-x`, `--position-y`, `--anchor`,
-`--max-width`, and `--max-height`. They cannot be combined with `--position`,
-or explicitly supplied margins. The complete anchored envelope must fit inside
-the canvas; invalid coordinates are rejected instead of being moved or clipped.
+Custom placement cannot be combined with `--position` or explicitly supplied
+margins. Explicit custom maximum dimensions use the full video axes: for
+example, `--max-width 70%` means `70%` of the render width without another margin
+deduction. The complete anchored envelope must fit inside the canvas; invalid
+coordinates are rejected instead of being moved, clipped, or given smaller limits.
 
 ## 🎨 Subtitle templates
 
@@ -820,22 +849,22 @@ Roboto Regular with white text on a translucent black box.
 
 | Template | Good for | Font | Baseline appearance and animation |
 | --- | --- | --- | --- |
-| `default` | General use | Roboto Regular | 4%, white/original, 100%; box `#00000099`/25%, shadow 0px; max-height 12%; no animation. |
-| `bold-headline` | Short-form hooks | Montserrat ExtraBold | 4.8%, white uppercase; outline `#111827`/7%; pop in, fade out; max-height 9.9%. |
-| `amber-word` | Explanations | Inter SemiBold | 4.65%, white/original; outline `#111827`/5%; active-word amber highlight; max-height 9.7%. |
-| `mint-progress` | Tips and steps | Montserrat Medium | 5.24%, white/original; box `#111827D9`/15%; progressive mint highlight; max-height 11.3%. |
-| `focus-marker` | Accessible captions | Atkinson Hyperlegible Next Bold | 4.99%, white/original; outline `#111827`/4%, word box `#FFD54F`/12%; active-word; max-height 11.8%. |
-| `golden-title` | Topics and chapter titles | Oswald Bold | 5.06%, `#FACC15` uppercase; outline `#111827`/6%; bottom-left; max-height 11.3%; no animation. |
-| `emerald-word` | Word-led explainers | Roboto Bold | 4%, white/original; outline `#111827`/5%, word box `#166534FF`/12%; active-word; max-height 9.9%. |
-| `kinetic-lime` | Fast tutorials | Montserrat Bold | 5.2%, white/original; outline `#111827`/5%, active text `#D9F99D`; slide up 180ms, fade out 120ms; max-height 10.3%. |
-| `coral-marker` | Advice and interviews | Roboto SemiBold | 4%, white/original; outline `#111827`/4%, word box `#FDA4AFFF`/14%, active text `#111827`; fade in 140ms/out 120ms, word fade 70ms; bottom-left, max-height 9.8%. |
-| `editorial-reveal` | Reflective clips | Lora SemiBold Italic | 5.07%, `#FFF8ED`; outline `#111827`/4%; zoom in 200ms, fade out 160ms, progressive word fade 100ms; max-height 11.1%. |
-| `headline-bounce` | Punchlines | Oswald SemiBold | 5.06%, `#FDE68A` uppercase; outline `#111827`/6%; fade in 120ms, slide down 160ms, active-word bounce 420ms; max-height 11.3%. |
-| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | 4.9%, white uppercase; outline `#111827`/5%; active-word `#FBE003` pop 120ms; max-height 9.8%. |
-| `yellow-trace` | Step-by-step clips | Inter Medium | 4.65%, white/original; box `#111827FF`/15%; progressive `#FBE003`; max-height 10.7%. |
-| `neon-lime-marker` | Energetic explainers | Oswald Medium | 5.06%, white; outline `#111827`/4%, word box `#39FF14FF`/12%; active-word, word zoom 100ms/fade 70ms; max-height 11.1%. |
-| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | 4.99%, `#00F5FF`; outline `#111827`/5%; progressive slide-up 120ms; max-height 11.9%. |
-| `neon-magenta-pulse` | Reactions | Roboto Bold | 3.8%, `#FF4FD8` uppercase; outline `#111827`/5%; active-word pulse 400ms; max-height 9.4%. |
+| `default` | General use | Roboto Regular | 4%, white/original, 100%; box `#00000099`/25%, shadow 0px; max-height 11.64%; no animation. |
+| `bold-headline` | Short-form hooks | Montserrat ExtraBold | 4.8%, white uppercase; outline `#111827`/7%; pop in, fade out; max-height 9.603%. |
+| `amber-word` | Explanations | Inter SemiBold | 4.65%, white/original; outline `#111827`/5%; active-word amber highlight; max-height 9.409%. |
+| `mint-progress` | Tips and steps | Montserrat Medium | 5.24%, white/original; box `#111827D9`/15%; progressive mint highlight; max-height 10.961%. |
+| `focus-marker` | Accessible captions | Atkinson Hyperlegible Next Bold | 4.99%, white/original; outline `#111827`/4%, word box `#FFD54F`/12%; active-word; max-height 11.446%. |
+| `golden-title` | Topics and chapter titles | Oswald Bold | 5.06%, `#FACC15` uppercase; outline `#111827`/6%; bottom-left; max-height 10.961%; no animation. |
+| `emerald-word` | Word-led explainers | Roboto Bold | 4%, white/original; outline `#111827`/5%, word box `#166534FF`/12%; active-word; max-height 9.603%. |
+| `kinetic-lime` | Fast tutorials | Montserrat Bold | 5.2%, white/original; outline `#111827`/5%, active text `#D9F99D`; slide up 180ms, fade out 120ms; max-height 9.991%. |
+| `coral-marker` | Advice and interviews | Roboto SemiBold | 4%, white/original; outline `#111827`/4%, word box `#FDA4AFFF`/14%, active text `#111827`; fade in 140ms/out 120ms, word fade 70ms; bottom-left, max-height 9.506%. |
+| `editorial-reveal` | Reflective clips | Lora SemiBold Italic | 5.07%, `#FFF8ED`; outline `#111827`/4%; zoom in 200ms, fade out 160ms, progressive word fade 100ms; max-height 10.767%. |
+| `headline-bounce` | Punchlines | Oswald SemiBold | 5.06%, `#FDE68A` uppercase; outline `#111827`/6%; fade in 120ms, slide down 160ms, active-word bounce 420ms; max-height 10.961%. |
+| `yellow-pop` | Hooks and reactions | Montserrat ExtraBold | 4.9%, white uppercase; outline `#111827`/5%; active-word `#FBE003` pop 120ms; max-height 9.506%. |
+| `yellow-trace` | Step-by-step clips | Inter Medium | 4.65%, white/original; box `#111827FF`/15%; progressive `#FBE003`; max-height 10.379%. |
+| `neon-lime-marker` | Energetic explainers | Oswald Medium | 5.06%, white; outline `#111827`/4%, word box `#39FF14FF`/12%; active-word, word zoom 100ms/fade 70ms; max-height 10.767%. |
+| `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | 4.99%, `#00F5FF`; outline `#111827`/5%; progressive slide-up 120ms; max-height 11.543%. |
+| `neon-magenta-pulse` | Reactions | Roboto Bold | 3.8%, `#FF4FD8` uppercase; outline `#111827`/5%; active-word pulse 400ms; max-height 9.118%. |
 
 Templates use 18% side margins, 0% top margin, 3% bottom margin, 100% maximum
 width, automatic line height, zero letter spacing, full opacity, and no shadow.
@@ -1402,10 +1431,13 @@ See [appearance](#subtitle-appearance) for weight names and
 - `position_x`, `position_y`, and `anchor`: explicit coordinates and a named
   box anchor, such as `"50%"`, `"80%"`, and `"bottom-center"`.
 
-For explicit coordinates, supply `position_x`, `position_y`, `anchor`,
-`max_width`, and `max_height` together in `overrides`. Explicit `position` or
-margin overrides cannot accompany them; inherited template placement does not
-cause a conflict. The complete envelope must fit the final video canvas.
+Supplying any of `position_x`, `position_y`, or `anchor` in `overrides` enables
+custom placement. Omitted coordinates and dimensions inherit the same defaults
+as the CLI; for example, `overrides={"position_y": "86%"}` moves only Y.
+Explicit `position` or margin overrides cannot accompany custom placement;
+inherited template placement does not cause a conflict. Explicit maximum
+dimensions use the full video axes. The complete envelope must fit the final
+video canvas.
 See [exact coordinates](#custom-subtitle-coordinates).
 
 #### Animation phases and word effects

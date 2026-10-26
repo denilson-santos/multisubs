@@ -1873,17 +1873,29 @@ def _serialize_layout_metadata(
             "letter_spacing": "resolved-font-size",
             "line_height": "natural-line-height",
             "max_width": (
-                "render-width" if explicit else "native-width-after-horizontal-margins"
+                "render-width"
+                if explicit and not requested_layout.max_width_inherited
+                else "native-width-after-horizontal-margins"
             ),
-            "max_height": (
-                "render-height"
+            "max_height": "render-height",
+            "position_x": (
+                (
+                    "native-anchor"
+                    if requested_layout.position_x is None
+                    else "render-width"
+                )
                 if explicit
-                or resolved_layout.position.value
-                in {"middle-left", "center", "middle-right"}
-                else "native-height-after-active-margin"
+                else None
             ),
-            "position_x": "render-width" if explicit else None,
-            "position_y": "render-height" if explicit else None,
+            "position_y": (
+                (
+                    "native-anchor"
+                    if requested_layout.position_y is None
+                    else "render-height"
+                )
+                if explicit
+                else None
+            ),
         },
     }
 
