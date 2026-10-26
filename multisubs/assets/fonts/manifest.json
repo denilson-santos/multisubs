@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "face_count": 82,
+  "face_count": 90,
   "families": [
     {
       "id": "roboto",
@@ -991,6 +991,169 @@
           "size": 46796,
           "sha256": "7a373aee7f4639f68338c244f0b503afd988bb0bd96e9a6571a4fa9ab1e42d3d",
           "source_url": "https://fonts.gstatic.com/s/atkinsonhyperlegiblenext/v7/NaP6cYPdHfdVxJw0IfIP0lvYFqijb-UxCtm5_wdGseiMhXSWUJ7iyGKiJPdJ8ONw9T09EpNO.ttf"
+        }
+      ]
+    },
+    {
+      "id": "anton",
+      "family": "Anton",
+      "version": "v27",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "upstream_url": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/anton",
+      "source_url": "https://fonts.googleapis.com/css?family=Anton:400&subset=latin,latin-ext,vietnamese",
+      "license_url": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/anton/OFL.txt",
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "license_size": 4484,
+      "license_sha256": "ee67e6ee22790b7929f1a3769ca2801d565c64b5a9096942c1adf5596de9c9e4",
+      "faces": [
+        {
+          "filename": "Anton-Regular.ttf",
+          "internal_family": "Anton",
+          "style": "Regular",
+          "weight": 400,
+          "italic": false,
+          "format": "ttf",
+          "size": 130324,
+          "sha256": "fd9301f2837c99df2be07cc7f0be66e9470f5354d8fcf1606027c67fcd637a53",
+          "source_url": "https://fonts.gstatic.com/s/anton/v27/1Ptgg87LROyAm0K0.ttf"
+        }
+      ]
+    },
+    {
+      "id": "bangers",
+      "family": "Bangers",
+      "version": "v25",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "upstream_url": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/bangers",
+      "source_url": "https://fonts.googleapis.com/css?family=Bangers:400&subset=latin,latin-ext,vietnamese",
+      "license_url": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/bangers/OFL.txt",
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "license_size": 4479,
+      "license_sha256": "630dd5a307c0657b094d324e069b390edf90182fe5003639e06c02a0e5769af7",
+      "faces": [
+        {
+          "filename": "Bangers-Regular.ttf",
+          "internal_family": "Bangers",
+          "style": "Regular",
+          "weight": 400,
+          "italic": false,
+          "format": "ttf",
+          "size": 91216,
+          "sha256": "a5ad3f06658ecd92705c3499cf000ff5b0c0c6f49641f7b3a6531dcee4bdb4c0",
+          "source_url": "https://fonts.gstatic.com/s/bangers/v25/FeVQS0BTqb0h60ACL5k.ttf"
+        }
+      ]
+    },
+    {
+      "id": "press-start-2p",
+      "family": "Press Start 2P",
+      "version": "v16",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "upstream_url": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/pressstart2p",
+      "source_url": "https://fonts.googleapis.com/css?family=Press+Start+2P:400&subset=latin,latin-ext,cyrillic,cyrillic-ext,greek",
+      "license_url": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/pressstart2p/OFL.txt",
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "license_size": 4413,
+      "license_sha256": "705960c3281a5765ecc0b59bd4ed7ca59eed165748076bc2fc3e8fdbfeb944b0",
+      "faces": [
+        {
+          "filename": "PressStart2P-Regular.ttf",
+          "internal_family": "Press Start 2P",
+          "style": "Regular",
+          "weight": 400,
+          "italic": false,
+          "format": "ttf",
+          "size": 115280,
+          "sha256": "7b939b816f8ce185dd8c2c59e85fb05d3dcd5cde0c0b0de4a1651cb5af9c2c2b",
+          "source_url": "https://fonts.gstatic.com/s/pressstart2p/v16/e3t4euO8T-267oIAQAu6jDQyK0nS.ttf"
+        }
+      ]
+    },
+    {
+      "id": "quantico",
+      "family": "Quantico",
+      "version": "v19",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "upstream_url": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/quantico",
+      "source_url": "https://fonts.googleapis.com/css?family=Quantico:400,400italic,700,700italic&subset=latin,latin-ext",
+      "license_url": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/quantico/OFL.txt",
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "license_size": 4422,
+      "license_sha256": "25995bcf8e8ddea1aafa5449870567cbbeae7e26b27ba30aca5642f2c02e9757",
+      "faces": [
+        {
+          "filename": "Quantico-Regular.ttf",
+          "internal_family": "Quantico",
+          "style": "Regular",
+          "weight": 400,
+          "italic": false,
+          "format": "ttf",
+          "size": 14584,
+          "sha256": "f688cd193e3d3aa70f70174277af28a223a15bac1ba60c39c0989bec67cc3f55",
+          "source_url": "https://fonts.gstatic.com/s/quantico/v19/rax-HiSdp9cPL3KIF7xrJDg.ttf"
+        },
+        {
+          "filename": "Quantico-Italic.ttf",
+          "internal_family": "Quantico",
+          "style": "Italic",
+          "weight": 400,
+          "italic": true,
+          "format": "ttf",
+          "size": 15464,
+          "sha256": "7c1dfeed07c98fd201677066cec8b3f889f01f91af4469547b9e229a54598e97",
+          "source_url": "https://fonts.gstatic.com/s/quantico/v19/rax4HiSdp9cPL3KIF7xuFD96mw.ttf"
+        },
+        {
+          "filename": "Quantico-Bold.ttf",
+          "internal_family": "Quantico",
+          "style": "Bold",
+          "weight": 700,
+          "italic": false,
+          "format": "ttf",
+          "size": 14536,
+          "sha256": "f126484e52d8fe3a620dfbdd66e1cb7d5792edeea362e4abf0d5f7f26f571c32",
+          "source_url": "https://fonts.gstatic.com/s/quantico/v19/rax5HiSdp9cPL3KIF7TQAShdu0o.ttf"
+        },
+        {
+          "filename": "Quantico-BoldItalic.ttf",
+          "internal_family": "Quantico",
+          "style": "Bold Italic",
+          "weight": 700,
+          "italic": true,
+          "format": "ttf",
+          "size": 14164,
+          "sha256": "fdb057408e3a4423ad6028bc6cf955b4e6924df737e48bc2ff470075e28ef66a",
+          "source_url": "https://fonts.gstatic.com/s/quantico/v19/rax7HiSdp9cPL3KIF7xuHIRfi0348Q.ttf"
+        }
+      ]
+    },
+    {
+      "id": "russo-one",
+      "family": "Russo One",
+      "version": "v18",
+      "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+      "upstream_url": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/russoone",
+      "source_url": "https://fonts.googleapis.com/css?family=Russo+One:400&subset=latin,latin-ext,cyrillic",
+      "license_url": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/russoone/OFL.txt",
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "license_size": 4390,
+      "license_sha256": "3ac1301549523d9861fedca12871f24e575fbd26d520632fc00ba849b471d275",
+      "faces": [
+        {
+          "filename": "RussoOne-Regular.ttf",
+          "internal_family": "Russo One",
+          "style": "Regular",
+          "weight": 400,
+          "italic": false,
+          "format": "ttf",
+          "size": 36816,
+          "sha256": "7a022de179a466ad9711d5f2848123c5cba6eedf22e51a8dc04ed6e5d64b205d",
+          "source_url": "https://fonts.gstatic.com/s/russoone/v18/Z9XUDmZRWg6M1LvRYsH-yA.ttf"
         }
       ]
     }

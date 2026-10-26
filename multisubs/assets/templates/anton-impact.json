@@ -1,0 +1,42 @@
+{
+  "schema_version": 5,
+  "name": "anton-impact",
+  "description": "Condensed white headlines with a quick impact entrance and warm amber word accents.",
+  "style": {
+    "typography": {
+      "font_family": "Anton",
+      "font_size": "4.5%",
+      "text_case": "uppercase",
+      "highlight_color": "#FFB347"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#141414",
+      "size": "7%"
+    }
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "pop",
+          "duration_ms": 140
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 120
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  },
+  "layout": {
+    "max_height": "9.8%"
+  }
+}

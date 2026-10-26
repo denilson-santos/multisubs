@@ -1,0 +1,53 @@
+{
+  "schema_version": 5,
+  "name": "quantico-tech",
+  "description": "Angular white captions on a navy panel with a lateral entrance and active-word cyan accents.",
+  "style": {
+    "typography": {
+      "font_family": "Quantico",
+      "font_weight": "bold",
+      "font_size": "4.6%",
+      "text_case": "uppercase",
+      "highlight_color": "#65E3FF"
+    },
+    "backdrop": {
+      "color": "#071827EB",
+      "size": "18%"
+    }
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "slide-left",
+          "duration_ms": 180
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 120
+        }
+      },
+      "backdrop": {
+        "entrance": {
+          "type": "slide-left",
+          "duration_ms": 180
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 120
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "mode": "active-word",
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  },
+  "layout": {
+    "max_height": "12.41%"
+  }
+}

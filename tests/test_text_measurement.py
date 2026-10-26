@@ -89,6 +89,28 @@ def test_text_measurer_without_visible_bounds_keeps_metric_center():
     assert measurer.vertical_center_offset("Sample") == 0
 
 
+def test_multiline_box_center_uses_outer_line_ink_bounds():
+    measurer = TextMeasurer(
+        TextMeasurementInfo(
+            mode="font-metrics",
+            requested_font="Fixture Sans",
+            resolved_font="Fixture Sans",
+            resolved_style="Regular",
+            font_source="fonts-dir",
+            shaping="basic",
+            metric_size=40,
+        ),
+        lambda text: 100.0,
+        line_height=50,
+        measure_vertical_bounds=lambda text: {
+            "first": (7.0, 47.0),
+            "last": (12.0, 42.0),
+        }[text],
+    )
+
+    assert measurer.vertical_center_offset("first\nlast") == pytest.approx(0.5)
+
+
 def test_unicode_fallback_distinguishes_narrow_and_wide_glyphs():
     assert estimate_unicode_text_width("iiii", 40) < estimate_unicode_text_width(
         "MMMM", 40
@@ -105,6 +127,17 @@ def test_ass_metric_size_uses_sfnt_windows_metrics_for_bundled_fonts():
 
     assert text_measurement._ass_metric_size(montserrat, 19) == 12
     assert text_measurement._ass_metric_size(roboto, 43) == 36
+
+
+def test_pixel_font_box_center_accounts_for_renderer_descender():
+    measurer = build_text_measurer(_appearance(font="Press Start 2P"))
+
+    assert measurer.info.font_source == "bundled"
+    # This face has zero Pillow descent but reserves descent in its Win
+    # metrics. Its visible capitals need to move down from the metric center.
+    expected = (measurer.natural_line_height - 40 * (1000 - 374) / 1374) / 2
+    assert measurer.vertical_center_offset("AÇÃO EM JOGO!") == pytest.approx(expected)
+    assert expected > 4
 
 
 @pytest.mark.parametrize(

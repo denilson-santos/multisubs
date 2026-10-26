@@ -159,16 +159,20 @@ class TextMeasurer:
         return width
 
     def vertical_center_offset(self, text: str) -> float:
-        """Return the offset that centers visible glyph bounds in the line cell."""
+        """Center a visual block using its first and last lines' ink bounds."""
         cached = self._vertical_offset_cache.get(text)
         if cached is not None:
             self._vertical_offset_cache.move_to_end(text)
             return cached
         offset = 0.0
         if text and self._measure_vertical_bounds is not None:
-            bounds = self._measure_vertical_bounds(text)
-            if bounds is not None:
-                top, bottom = bounds
+            lines = text.split("\n")
+            first = self._measure_vertical_bounds(lines[0])
+            last = (
+                first if len(lines) == 1 else self._measure_vertical_bounds(lines[-1])
+            )
+            if first is not None and last is not None:
+                top, bottom = first[0], last[1]
                 if math.isfinite(top) and math.isfinite(bottom) and bottom > top:
                     offset = (self.natural_line_height - bottom - top) / 2
                     limit = self.natural_line_height / 2
@@ -271,6 +275,7 @@ def build_text_measurer(
         )
         if resolved is not None:
             direction = _text_direction
+            center_correction = _ass_center_correction(resolved.font, font_size)
 
             def measure(text: str) -> float:
                 if resolved.shaping == "raqm":
@@ -297,7 +302,13 @@ def build_text_measurer(
                     return None
                 if bounds is None or len(bounds) != 4:
                     return None
-                return float(bounds[1]), float(bounds[3])
+                # Pillow and libass can use different ascender/descender pairs
+                # for the same face. Normalize the ink bounds to libass's
+                # middle anchor before centering text in a measured box.
+                return (
+                    float(bounds[1]) - center_correction,
+                    float(bounds[3]) - center_correction,
+                )
 
             return TextMeasurer(
                 TextMeasurementInfo(
@@ -912,6 +923,32 @@ def _ass_metric_size(font: Any, ass_font_size: int) -> int:
 
 def _windows_metric_size(font: Any, ass_font_size: int) -> int | None:
     """Match libass's real-dimension sizing from the face's Win metrics."""
+    metrics = _windows_font_metrics(font)
+    if metrics is None:
+        return None
+    units_per_em, win_ascent, win_descent = metrics
+    scaled = ass_font_size * units_per_em / (win_ascent + win_descent)
+    return max(1, int(scaled + 0.5))
+
+
+def _ass_center_correction(font: Any, ass_font_size: int) -> float:
+    """Reconcile Pillow's metric center with libass's Win-metric center."""
+    metrics = _windows_font_metrics(font)
+    if metrics is None:
+        return 0.0
+    _, win_ascent, win_descent = metrics
+    try:
+        ascent, descent = font.getmetrics()
+    except (AttributeError, OSError, TypeError, ValueError):
+        return 0.0
+    renderer_center = (
+        ass_font_size * (win_ascent - win_descent) / (win_ascent + win_descent)
+    )
+    return ((ascent - descent) - renderer_center) / 2
+
+
+def _windows_font_metrics(font: Any) -> tuple[int, int, int] | None:
+    """Read bounded SFNT Win metrics shared by sizing and box alignment."""
     raw_path = getattr(font, "path", None)
     raw_index = getattr(font, "index", 0)
     if isinstance(raw_path, bytes):
@@ -962,8 +999,7 @@ def _windows_metric_size(font: Any, ass_font_size: int) -> int | None:
     windows_height = win_ascent + win_descent
     if units_per_em <= 0 or windows_height <= 0:
         return None
-    scaled = ass_font_size * units_per_em / windows_height
-    return max(1, int(scaled + 0.5))
+    return units_per_em, win_ascent, win_descent
 
 
 def _read_sfnt_uint(stream: Any, size: int) -> int:

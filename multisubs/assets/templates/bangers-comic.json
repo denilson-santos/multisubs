@@ -1,0 +1,46 @@
+{
+  "schema_version": 5,
+  "name": "bangers-comic",
+  "description": "Comic-book yellow lettering with an ink outline, offset shadow, and spoken-word bounce.",
+  "style": {
+    "typography": {
+      "font_family": "Bangers",
+      "font_size": "4.6%",
+      "text_case": "uppercase",
+      "color": "#FFE45E"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#1B1026",
+      "size": "8%"
+    },
+    "shadow": {
+      "size": "4%"
+    }
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "zoom",
+          "duration_ms": 140
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 100
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "emphasis": {
+          "type": "bounce",
+          "duration_ms": 320
+        }
+      }
+    }
+  },
+  "layout": {
+    "max_height": "7.44%"
+  }
+}

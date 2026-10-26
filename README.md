@@ -22,9 +22,9 @@ the selected ASR must download model assets that are not already cached.
 | Feature | What it gives you |
 | --- | --- |
 | 🗣️ Selectable local ASR | Choose WhisperX, Faster-Whisper, Parakeet, or Qwen3-ASR; Whisper backends can also translate to English. |
-| 🧩 Ready-made templates | Sixteen built-in presentations for Reels, TikTok, Shorts, podcasts, tutorials, and editorial clips. |
+| 🧩 Ready-made templates | Twenty-one built-in presentations for Reels, TikTok, Shorts, podcasts, tutorials, gaming, and editorial clips. |
 | 🎨 Semantic styling | Font, weight, size, letter spacing, line height, colors, opacity, casing, backdrop, and shadow controls. |
-| 🔤 Bundled fonts | 82 static faces from six OFL families render offline without system installation. |
+| 🔤 Bundled fonts | 90 static faces from eleven OFL families render offline without system installation. |
 | 📐 Responsive layout | Fixed resolution-aware defaults with explicit position, margin, width, and height controls. |
 | 🎯 Precise placement | Nine semantic positions, relative units, margins, safe envelopes, and exact PlayRes coordinates. |
 | 👀 Fast previews | Render one subtitle preview frame without loading an ASR runtime or transcribing the video. |
@@ -224,7 +224,7 @@ multisubs -i ./video.mp4 -l pt -o ./output --template yellow-pop
 
 Use `default` for plain captions, `bold-headline` for large headlines, or
 `yellow-pop` for active-word emphasis. See the
-[complete template catalog](#built-in-template-catalog) for all sixteen styles.
+[complete template catalog](#built-in-template-catalog) for all twenty-one styles.
 Explicit flags override only the corresponding template fields.
 
 ### Customize typography
@@ -631,8 +631,10 @@ With `--backdrop box`, every nonempty cue uses one continuous measured box
 around the complete text block, regardless of whether it occupies one line or
 several; padding, placement, and shadow are resolved from that same geometry.
 Visible font bounds center the text vertically so baseline space does not appear
-as extra padding. A single-line cue is also centered horizontally inside its
-box while the complete box retains the requested screen anchor.
+as extra padding. Box alignment accounts for the renderer's ascent/descent
+metrics and the visible first and last lines, including fonts with unusual
+descenders such as Press Start 2P. A single-line cue is also centered horizontally
+inside its box while the complete box retains the requested screen anchor.
 
 Font-weight names are `thin`, `extra-light`, `light`, `regular`, `medium`,
 `semi-bold`, `bold`, `extra-bold`, and `black`. Their numeric equivalents are
@@ -865,13 +867,43 @@ Roboto Regular with white text on a translucent black box.
 | `neon-lime-marker` | Energetic explainers | Oswald Medium | 5.06%, white; outline `#111827`/4%, word box `#39FF14FF`/12%; active-word, word zoom 100ms/fade 70ms; max-height 10.767%. |
 | `neon-cyan-reveal` | High-energy explainers | Atkinson Hyperlegible Next Bold | 4.99%, `#00F5FF`; outline `#111827`/5%; progressive slide-up 120ms; max-height 11.543%. |
 | `neon-magenta-pulse` | Reactions | Roboto Bold | 3.8%, `#FF4FD8` uppercase; outline `#111827`/5%; active-word pulse 400ms; max-height 9.118%. |
+| `anton-impact` | Hooks and bold statements | Anton Regular | 4.5%, white uppercase; outline `#141414`/7%; pop in 140ms, fade out 120ms, active-word amber `#FFB347`; max-height 9.8%. |
+| `bangers-comic` | Humor and comic reactions | Bangers Regular | 4.6%, `#FFE45E` uppercase; ink outline `#1B1026`/8%, shadow 4%; zoom in 140ms, fade out 100ms, active-word bounce 320ms; max-height 7.44%. |
+| `press-start-arcade` | Retro games and pixel art | Press Start 2P Regular | 3.2%, `#F0FFE2` uppercase; line height 140%, solid black box `#000000`/30%; fade in/out 80ms, progressive lime `#66FF33`; earlier words remain highlighted; no scaling or movement; max-height 8.19%. |
+| `quantico-tech` | Technology and tactical explainers | Quantico Bold | 4.6%, white uppercase, active-word cyan `#65E3FF`; only the current word is highlighted, other words stay white; box `#071827EB`/18%; text and panel slide left 180ms, fade out 120ms; max-height 12.41%. |
+| `russo-punch` | Sports and energetic commentary | Russo One Regular | 4%, white uppercase; outline `#161B22`/7%; slide up 160ms, slide down 140ms, active-word coral `#FF6B4A` pop 100ms; max-height 10.03%. |
 
 Templates use 18% side margins, 0% top margin, 3% bottom margin, 100% maximum
-width, automatic line height, zero letter spacing, full opacity, and no shadow.
+width, zero letter spacing, and full opacity. Line height is automatic except
+for `press-start-arcade`, which uses 140% for space between pixel-letter rows.
+Shadow is zero except for the ink-like offset in `bangers-comic`.
 Placement is bottom-center except `golden-title` and `coral-marker`
 (bottom-left). Sizes are optically calibrated; maximum heights target two
 lines. Explicit appearance, layout, and animation flags override only their
 corresponding template fields.
+
+The five display-font templates pair typography with its visual character:
+[Anton](https://fonts.google.com/specimen/Anton) uses a brief impact entrance,
+[Bangers](https://fonts.google.com/specimen/Bangers) adds comic bounce,
+[Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) keeps its pixel
+letterforms steady,
+[Quantico](https://fonts.google.com/specimen/Quantico) uses a technical panel
+and cyan accents on the spoken word, and
+[Russo One](https://fonts.google.com/specimen/Russo+One) emphasizes spoken words
+in a sporting headline style. All five include word effects; add
+`--disable-word-animations` when translating speech to English.
+
+Try an animated sample without transcription:
+
+```bash
+multisubs -i ./video.mp4 --template bangers-comic \
+  --preview-animation --preview-text "Ação em cada palavra!"
+```
+
+Press Start 2P is wider than the other faces, so it wraps into shorter phrases.
+Its relative size follows video height like other templates. For a specific
+pixel-art output, override `--font-size` with a pixel value and review it at the
+final resolution; the source design favors multiples of 8px.
 
 ### Define a custom template
 
@@ -916,7 +948,7 @@ complete data contract.
 
 ### Use a bundled font
 
-multisubs ships 82 static desktop faces from six families. They are available
+multisubs ships 90 static desktop faces from eleven families. They are available
 offline through `--font` without `--fonts-dir` or global installation:
 
 | Family | Bundled weights | Italic |
@@ -927,6 +959,11 @@ offline through `--font` without `--fonts-dir` or global installation:
 | Oswald | 200–700 | no |
 | Lora | 400–700 | all bundled weights |
 | Atkinson Hyperlegible Next | 200–800 | all bundled weights |
+| Anton | 400 | no |
+| Bangers | 400 | no |
+| Press Start 2P | 400 | no |
+| Quantico | 400, 700 | both bundled weights |
+| Russo One | 400 | no |
 
 ```bash
 multisubs -i ./video.mp4 \
@@ -1670,7 +1707,7 @@ the complete process.
 
 ## 📄 License
 
-multisubs source code is available under the [MIT License](LICENSE). The six
+multisubs source code is available under the [MIT License](LICENSE). The eleven
 bundled font families retain the SIL Open Font License 1.1 found in each
 `multisubs/assets/fonts/<family>/OFL.txt`. Other third-party libraries, models,
 and system tools retain their own licenses.
