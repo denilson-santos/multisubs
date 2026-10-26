@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import NoReturn
 
@@ -351,12 +352,16 @@ def test_controlled_fonts_render_high_risk_scripts(
         )
     except ValidationError as exc:
         _font_validation_unavailable(language, exc)
-    metadata = json.loads(Path(paths[0]).read_text())["metadata"]["rendering"]
+    payload = json.loads(Path(paths[0]).read_text())
+    metadata = payload["metadata"]["rendering"]
+    cues = payload["transcription"]["segments"]
     selected_font = metadata["text_measurement"]
     frame, log = _frame(Path(paths[2]), font_path.parent, timestamp=0.1)
     bounds = frame.point(_threshold).getbbox()
 
     record_property("language", language)
+    record_property("cue_count", len(cues))
+    record_property("line_capacity", metadata["resolved"]["line_capacity"])
     record_property("font_family", selected_font["resolved_font"])
     record_property("font_sha256", hashlib.sha256(font_path.read_bytes()).hexdigest())
     record_property(
@@ -367,7 +372,29 @@ def test_controlled_fonts_render_high_risk_scripts(
     assert bounds is not None
     assert 0 <= bounds[0] < bounds[2] <= geometry.render_width
     assert 0 <= bounds[1] < bounds[3] <= geometry.render_height
-    assert metadata["word_effects"]["renderer_strategies"] == {expected_strategy: 1}
+    strategies: Counter[str] = Counter()
+    for cue in cues:
+        # Font metrics may split mixed-script samples into multiple cues. An
+        # ASCII-only remainder such as "(test)" can safely keep word effects.
+        strategy = (
+            "positioned-fragments"
+            if cue["display_text"].isascii()
+            else expected_strategy
+        )
+        effect = cue["word_effect"]
+        assert effect["renderer_strategy"] == strategy
+        if strategy == "full-line":
+            assert effect["status"] == "fallback"
+            assert effect["fallback_reason"] == "unsupported-word-shaping"
+        else:
+            assert effect["status"] == "active"
+            assert effect["fallback_reason"] is None
+        strategies[strategy] += 1
+
+    assert strategies[expected_strategy] > 0
+    assert metadata["word_effects"]["cues"] == len(cues)
+    assert metadata["word_effects"]["fallback_cues"] == strategies["full-line"]
+    assert metadata["word_effects"]["renderer_strategies"] == dict(strategies)
 
 
 def test_historical_japanese_observation_points_render_synthetic_equivalent(
