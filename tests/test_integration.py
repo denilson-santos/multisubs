@@ -82,10 +82,10 @@ def test_arcade_panel_centers_glyphs_and_separates_lines(
     with Image.open(output) as image:
         red, green, blue = image.convert("RGB").split()
         foreground = ImageChops.darker(ImageChops.darker(red, green), blue).point(
-            lambda value: 255 if value > 150 else 0
+            [255 if value > 150 else 0 for value in range(256)]
         )
         panel = ImageChops.lighter(ImageChops.lighter(red, green), blue).point(
-            lambda value: 255 if value < 60 else 0
+            [255 if value < 60 else 0 for value in range(256)]
         )
         glyph_bounds = foreground.getbbox()
         panel_bounds = panel.getbbox()
