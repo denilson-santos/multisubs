@@ -64,7 +64,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "12%",
+        "11.64%",
         None,
         None,
     ),
@@ -87,7 +87,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "9.9%",
+        "9.603%",
         None,
         None,
     ),
@@ -110,7 +110,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "9.7%",
+        "9.409%",
         WordAnimationMode.ACTIVE_WORD,
         "#FFD54F",
     ),
@@ -133,7 +133,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.3%",
+        "10.961%",
         WordAnimationMode.PROGRESSIVE,
         "#A7F3D0",
     ),
@@ -156,7 +156,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.8%",
+        "11.446%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
     ),
@@ -179,7 +179,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.3%",
+        "10.961%",
         None,
         None,
     ),
@@ -202,7 +202,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "9.9%",
+        "9.603%",
         None,
         None,
     ),
@@ -225,7 +225,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10.3%",
+        "9.991%",
         WordAnimationMode.ACTIVE_WORD,
         "#D9F99D",
     ),
@@ -248,7 +248,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "9.8%",
+        "9.506%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
     ),
@@ -271,7 +271,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.1%",
+        "10.767%",
         None,
         None,
     ),
@@ -294,7 +294,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.3%",
+        "10.961%",
         None,
         None,
     ),
@@ -317,7 +317,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "9.8%",
+        "9.506%",
         WordAnimationMode.ACTIVE_WORD,
         "#FBE003",
     ),
@@ -340,7 +340,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "10.7%",
+        "10.379%",
         WordAnimationMode.PROGRESSIVE,
         "#FBE003",
     ),
@@ -363,7 +363,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.1%",
+        "10.767%",
         WordAnimationMode.ACTIVE_WORD,
         "#111827",
     ),
@@ -386,7 +386,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "11.9%",
+        "11.543%",
         None,
         None,
     ),
@@ -409,7 +409,7 @@ EXPECTED_TEMPLATES = {
         "0%",
         "3%",
         "100%",
-        "9.4%",
+        "9.118%",
         None,
         None,
     ),
@@ -717,7 +717,13 @@ def test_packaged_catalog_has_sparse_deterministic_inventory():
     [(1280, 720), (1920, 1080), (1080, 1920), (1080, 1080), (3840, 2160)],
 )
 @pytest.mark.parametrize("name", TEMPLATE_CHOICES)
-def test_calibrated_templates_fit_two_lines_with_bundled_fonts(name, width, height):
+@pytest.mark.parametrize(
+    "position,margin",
+    [("bottom-center", "3%"), ("bottom-center", "35%"), ("top-center", "35%")],
+)
+def test_calibrated_templates_fit_two_lines_with_bundled_fonts(
+    name, width, height, position, margin
+):
     geometry = replace(
         GEOMETRY,
         coded_width=width,
@@ -726,7 +732,15 @@ def test_calibrated_templates_fit_two_lines_with_bundled_fonts(name, width, heig
         render_height=height,
         display_aspect_ratio=Fraction(width, height),
     )
-    metrics = resolve_wrapping_metrics(get_subtitle_template(name).config, geometry)
+    baseline = get_subtitle_template(name).config
+    margin_field = "margin_top" if position.startswith("top-") else "margin_bottom"
+    config = validate_subtitle_config(
+        None,
+        defaults=baseline,
+        position=position,
+        relative_values={margin_field: margin},
+    )
+    metrics = resolve_wrapping_metrics(config, geometry)
 
     assert metrics.text_measurer.info.font_source == "bundled"
     assert metrics.line_capacity == 2
@@ -1232,23 +1246,24 @@ def test_explicit_inactive_template_margin_is_rejected(tmp_path: Path):
     assert error.value.code == 2
 
 
-def test_template_envelope_does_not_satisfy_explicit_coordinate_requirements(
+def test_template_envelope_is_inherited_for_sparse_custom_coordinates(
     tmp_path: Path,
 ):
-    with pytest.raises(SystemExit) as error:
-        _build_request(
-            tmp_path,
-            "--template",
-            "bold-headline",
-            "--position-x",
-            "50%",
-            "--position-y",
-            "80%",
-            "--anchor",
-            "bottom-center",
-        )
-
-    assert error.value.code == 2
+    request = _build_request(
+        tmp_path,
+        "--template",
+        "bold-headline",
+        "--position-y",
+        "80%",
+    )
+    layout = request.subtitle_config.layout
+    baseline = get_subtitle_template("bold-headline").config.layout
+    assert layout.anchor is baseline.position
+    assert layout.position_x is None
+    assert layout.position_y == parse_relative_length("80%")
+    assert layout.max_width == baseline.max_width
+    assert layout.max_height == baseline.max_height
+    assert layout.max_width_inherited
 
 
 def test_progressive_template_effects_can_be_overridden_or_disabled(tmp_path: Path):

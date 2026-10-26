@@ -83,6 +83,13 @@ def build_subtitle_config(
     apply after validating overrides, with the same precedence as the CLI.
     Neither the caller's mapping nor template baselines are modified.
 
+    Any position_x, position_y, or anchor override enables custom placement.
+    Omitted coordinates use the effective anchor's native margin point; omitted
+    width preserves the template's native limit and height inherits its value.
+    Height percentages always use full render height, independent of margins.
+    Supplied custom dimensions use full canvas axes. Explicit position/margins
+    remain conflicts.
+
     Raise public ValidationError for unknown keys or invalid values/combinations,
     and TemplateError for invalid custom directories/files or packaged templates.
     No media, models, font faces, network, or asset materialization is involved.

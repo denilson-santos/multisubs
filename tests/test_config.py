@@ -533,8 +533,9 @@ def test_custom_coordinates_accept_explicit_anchor():
 @pytest.mark.parametrize(
     ("relative_values", "position", "anchor", "message"),
     [
-        ({"position_x": "50%"}, None, None, "position-x and position-y"),
-        ({"position_y": "86%"}, None, None, "position-x and position-y"),
+        ({"position_x": "50%"}, "top-left", None, "position cannot be combined"),
+        ({"position_y": "86%"}, "top-left", None, "position cannot be combined"),
+        ({}, "top-left", "center", "position cannot be combined"),
         (
             {
                 "position_x": "50%",
@@ -545,30 +546,6 @@ def test_custom_coordinates_accept_explicit_anchor():
             "top-left",
             None,
             "position cannot be combined",
-        ),
-        ({}, None, "top-left", "anchor requires"),
-        (
-            {
-                "position_x": "50%",
-                "position_y": "86%",
-                "max_width": "60%",
-                "max_height": "12%",
-            },
-            None,
-            None,
-            "explicit anchor",
-        ),
-        (
-            {"position_x": "50%", "position_y": "86%", "max_height": "12%"},
-            None,
-            "bottom-center",
-            "max-width",
-        ),
-        (
-            {"position_x": "50%", "position_y": "86%", "max_width": "60%"},
-            None,
-            "bottom-center",
-            "max-height",
         ),
     ],
 )
@@ -581,6 +558,21 @@ def test_custom_coordinate_conflicts_are_rejected(
             relative_values=relative_values,
             position=position,
             anchor=anchor,
+        )
+
+
+@pytest.mark.parametrize(
+    "field", ["margin_left", "margin_right", "margin_top", "margin_bottom"]
+)
+@pytest.mark.parametrize(
+    "coordinates", [{"position_x": "50%"}, {"position_y": "86%"}, {}]
+)
+def test_sparse_custom_coordinates_reject_explicit_margins(field, coordinates):
+    with pytest.raises(ValidationError, match="cannot be combined"):
+        validate_subtitle_config(
+            None,
+            relative_values={**coordinates, field: "0px"},
+            anchor="bottom-center" if not coordinates else None,
         )
 
 

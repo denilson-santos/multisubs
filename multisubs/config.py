@@ -323,7 +323,7 @@ DEFAULT_MARGIN_RIGHT = "18%"
 DEFAULT_MARGIN_TOP = "0%"
 DEFAULT_MARGIN_BOTTOM = "3%"
 DEFAULT_MAX_WIDTH = "100%"
-DEFAULT_MAX_HEIGHT = "12%"
+DEFAULT_MAX_HEIGHT = "11.64%"
 
 _ENTRANCE_ANIMATION_DURATIONS_MS = MappingProxyType(
     {
@@ -771,21 +771,11 @@ def _resolve_layout_options(
 
     has_position_x = "position_x" in parsed_values
     has_position_y = "position_y" in parsed_values
-    has_custom_coordinates = has_position_x or has_position_y
-    if has_position_x != has_position_y:
-        raise ValidationError("position-x and position-y must be supplied together")
+    has_custom_coordinates = has_position_x or has_position_y or anchor is not None
     if has_custom_coordinates and position is not None:
         raise ValidationError(
             "position cannot be combined with custom position-x and position-y"
         )
-    if anchor is not None and not has_custom_coordinates:
-        raise ValidationError("anchor requires both position-x and position-y")
-    if has_custom_coordinates and anchor is None:
-        raise ValidationError("custom coordinates require an explicit anchor")
-    if has_custom_coordinates and "max_width" not in parsed_values:
-        raise ValidationError("custom coordinates require an explicit max-width")
-    if has_custom_coordinates and "max_height" not in parsed_values:
-        raise ValidationError("custom coordinates require an explicit max-height")
 
     resolved_position = position or (
         default_layout.position if default_layout is not None else DEFAULT_POSITION
@@ -808,7 +798,7 @@ def _resolve_layout_options(
             else DEFAULT_LINE_HEIGHT,
         ),
         position=resolved_position,
-        anchor=anchor,
+        anchor=(anchor or resolved_position) if has_custom_coordinates else None,
         has_custom_coordinates=has_custom_coordinates,
     )
 
@@ -1005,6 +995,9 @@ def _build_subtitle_layout(
             defaults.max_height
             if defaults is not None
             else parse_relative_length(DEFAULT_MAX_HEIGHT),
+        ),
+        max_width_inherited=(
+            options.has_custom_coordinates and "max_width" not in lengths
         ),
     )
 
@@ -1360,17 +1353,19 @@ def _validate_typed_layout(layout: SubtitleLayout) -> None:
         raise ValidationError("layout anchor must use a supported position value")
     has_position_x = layout.position_x is not None
     has_position_y = layout.position_y is not None
-    if has_position_x != has_position_y:
-        raise ValidationError("position-x and position-y must be supplied together")
-    if layout.anchor is not None and not has_position_x:
-        raise ValidationError("anchor requires both position-x and position-y")
-    if has_position_x and layout.anchor is None:
-        raise ValidationError("custom coordinates require an anchor")
     is_explicit = layout.placement_mode is SubtitlePlacementMode.EXPLICIT
-    if is_explicit != has_position_x:
+    if is_explicit and layout.anchor is None:
+        raise ValidationError("explicit placement requires an anchor")
+    if not is_explicit and (
+        has_position_x or has_position_y or layout.anchor is not None
+    ):
         raise ValidationError(
-            "explicit placement requires position-x, position-y, and anchor"
+            "position-x, position-y, and anchor require explicit placement"
         )
+    if not isinstance(layout.max_width_inherited, bool):
+        raise ValidationError("layout max_width_inherited must be a boolean")
+    if layout.max_width_inherited and not is_explicit:
+        raise ValidationError("layout max_width_inherited requires explicit placement")
     if is_explicit and layout.max_width is None:
         raise ValidationError("explicit placement requires max-width")
     if is_explicit and layout.max_height is None:

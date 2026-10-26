@@ -585,14 +585,14 @@ The JSON artifact has this high-level shape:
           "bottom": 58
         },
         "max_width": 692,
-        "max_height": 186,
+        "max_height": 192,
         "line_capacity": 2
       },
       "wrapping": {
         "available_width": 692,
         "available_height": 1862,
         "max_width": 692,
-        "max_height": 186,
+        "max_height": 192,
         "width_budget": 672,
         "line_height": 76.0,
         "natural_line_height": 76.0,
@@ -611,7 +611,7 @@ The JSON artifact has this high-level shape:
         "letter_spacing": "resolved-font-size",
         "line_height": "natural-line-height",
         "max_width": "native-width-after-horizontal-margins",
-        "max_height": "native-height-after-active-margin",
+        "max_height": "render-height",
         "position_x": null,
         "position_y": null
       },
@@ -758,22 +758,50 @@ These additive objects do not replace or rewrite the original `words` array.
 RelativeLength margins use render width or height, font size uses render height,
 and letter spacing, line-height percentages, cue/word backdrop padding, and
 shadow sizes use the resolved font size or natural line metric documented below.
-Native percentage
-`max-width` uses the width after left/right margins. Native percentage
-`max-height` uses the height after the active top or bottom margin, while middle
-alignment uses the full render height. The public `--position` compiles to the
+Native percentage `max-width` uses the width after left/right margins.
+Percentage `max-height` always uses full render height, in native and explicit
+placement alike. Vertical margins change the native anchor and available region
+without rescaling the maximum-height envelope or line capacity. The full
+configured envelope must still fit the available native region; excessive
+vertical margins raise a validation error without reducing height or font size.
+Horizontal margins continue to change the width budget and wrapping while
+preserving the capacity determined by height and typography.
+The public `--position` compiles to the
 corresponding ASS style Alignment; actual `MarginL`, `MarginR`, and active
 `MarginV` values remain authoritative, and no event `\\pos` is emitted.
 
-Explicit `--position-x` and `--position-y` percentages use the full render axes;
-pixels are absolute PlayRes coordinates. Explicit maximum dimensions also use
-the full axes, explicitly supplied margins are rejected before probing, retained
-native margin defaults compile to zero, and each cue receives the private anchor
-plus `\\pos` event override. layout.py rejects an envelope whose maximum
-width or height would cross the canvas for the selected anchor; it does not
-clamp, move, or shrink it. Percentages use Decimal half-up rounding. All resolved
-lengths use PlayRes pixels, and resolved font, backdrop, and shadow values remain
-bounded.
+Supplying any of `--position-x`, `--position-y`, or `--anchor` selects explicit
+placement. The anchor defaults to the selected template's native position.
+Omitted coordinates remain `None` in the semantic layout until geometry
+resolution, then use that anchor's native point within the retained template
+margins. This also makes an anchor-only override usable for all nine anchors.
+Supplied coordinate percentages use the full render axes; pixels are absolute
+PlayRes coordinates.
+
+Omitted maximum dimensions retain the template's values. The independent
+`max_width_inherited` marker tells layout.py to resolve inherited width against
+the native region after resolving side margins to pixels. Thus the default
+inherited width is equivalent to `100% - 18% - 18% = 64%` of the canvas before
+pixel rounding. Height percentages always use full render height; the default
+is `11.64%`. Mixed units, asymmetric margins, and pixel-valued template dimensions
+preserve native behavior. Changing only the anchor changes coordinate defaults
+while retaining dimension bases. Explicit maximum-dimension overrides use the
+full canvas axes without a second margin deduction.
+
+Geometry resolution replaces all coordinate/dimension defaults with PlayRes
+pixels and clears the width inheritance marker, so resolving an already resolved
+configuration is idempotent. Retained JSON uses `null` for omitted requested
+coordinates, concrete resolved coordinates, and `native-anchor` for the omitted
+coordinate's base. Width percentage-base metadata distinguishes inherited native
+limits from full-canvas overrides; height always reports `render-height`.
+No new JSON schema version is needed.
+Explicitly supplied margins and `--position` are rejected before probing;
+retained native margins compile to zero ASS margins, and each cue receives the
+private anchor plus `\\pos` event override. layout.py rejects an envelope whose
+maximum width or height would cross the canvas for the selected anchor; it does
+not clamp, move, or shrink it. Percentages use Decimal half-up rounding. All
+resolved lengths use PlayRes pixels, and resolved font, backdrop, and shadow
+values remain bounded.
 
 ass.py first canonicalizes `#RRGGBB[AA]` colors and resolves one effective
 palette. For every component it computes
@@ -944,13 +972,18 @@ be smaller than the default; equal values are omitted. Calibration approximates
 perceived size, not equal glyph width, weight, or identical wrapping. Animation
 scale remains an intentional temporary change to the calibrated resting size.
 
-Maximum heights are rounded to tenths of a percent from 2.3 natural line heights
-plus cue decoration allowance, measured at a 1000px render height with the
-native 3% bottom margin. The extra 0.3 line provides rounding headroom above two
-lines while remaining below three. The default retains its central 12% value.
+Maximum heights were calibrated from 2.3 natural line heights plus cue decoration
+allowance at a 1000px render height. Their former native-region percentages are
+multiplied by 0.97 to express the same budgets against full render height,
+preserving up to three decimal places. The default is `11.64%` of full height
+(formerly `12%` of the area above the 3% bottom margin). The extra 0.3 line
+provides rounding headroom above two lines while remaining below three.
 All presets keep automatic line height. Calibration is checked at 720p, 1080p,
-portrait 1080x1920, square 1080x1080, and 4K; it is not a fixed line-count contract
-for arbitrary geometry, custom fonts, or explicit overrides.
+portrait 1080x1920, square 1080x1080, and 4K with different top and bottom margins;
+it is not a fixed line-count contract for arbitrary geometry, custom fonts, or
+explicit typography/height overrides. Margins preserve that capacity wherever
+the complete configured envelope fits; side margins can change text wrapping
+and the number of cues.
 
 The loader uses `importlib.resources`, rejects malformed UTF-8/JSON, duplicate
 or unknown fields, unsupported schema versions, unsafe or duplicate filenames,

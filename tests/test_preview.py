@@ -766,21 +766,24 @@ def test_explicit_original_text_case_preserves_default_preview_ass(tmp_path: Pat
     assert default_path.read_bytes() == explicit_path.read_bytes()
 
 
-@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("mode", ["native", "explicit", "sparse"])
 def test_preview_guides_serialize_native_or_explicit_geometry(
-    tmp_path: Path, explicit: bool
+    tmp_path: Path, mode: str
 ):
+    explicit = mode != "native"
     if explicit:
         config = validate_subtitle_config(
             None,
-            relative_values={
+            relative_values={"position_y": "80%", "letter_spacing": "2px"}
+            if mode == "sparse"
+            else {
                 "position_x": "50%",
                 "position_y": "80%",
                 "max_width": "60%",
                 "max_height": "20%",
                 "letter_spacing": "2px",
             },
-            anchor="bottom-center",
+            anchor=None if mode == "sparse" else "bottom-center",
         )
     else:
         config = validate_subtitle_config(
@@ -789,6 +792,11 @@ def test_preview_guides_serialize_native_or_explicit_geometry(
             relative_values={"letter_spacing": "2px"},
         )
     resolved = resolve_subtitle_config(config, GEOMETRY)
+    if mode == "sparse":
+        assert resolved.layout.position_x == 960
+        assert resolved.layout.position_y == 864
+        assert resolved.layout.max_width == 1228
+        assert resolved.layout.max_height == 126
     metrics = resolve_wrapping_metrics(resolved, GEOMETRY)
     events = build_preview_guide_events(
         resolved,

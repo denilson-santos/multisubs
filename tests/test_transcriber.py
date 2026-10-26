@@ -1153,7 +1153,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
                 "bottom": "3%",
             },
             "max_width": "100%",
-            "max_height": "12%",
+            "max_height": "11.64%",
         },
         "resolved": {
             "backdrop_type": "box",
@@ -1197,7 +1197,7 @@ def test_generate_transcriptions_uses_fake_whisper_runtime(tmp_path: Path, monke
             "letter_spacing": "resolved-font-size",
             "line_height": "natural-line-height",
             "max_width": "native-width-after-horizontal-margins",
-            "max_height": "native-height-after-active-margin",
+            "max_height": "render-height",
             "position_x": None,
             "position_y": None,
         },
@@ -1674,7 +1674,8 @@ def test_json_records_requested_font_weight_without_machine_path(tmp_path: Path)
     assert rendering["percentage_bases"]["letter_spacing"] == "resolved-font-size"
 
 
-def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
+@pytest.mark.parametrize("sparse", [False, True])
+def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path, sparse):
     source_path = tmp_path / "input.mp4"
     source_path.write_bytes(b"input")
     document = TranscriptDocument(
@@ -1691,13 +1692,15 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
         tmp_path / "output",
         validate_subtitle_config(
             None,
-            relative_values={
+            relative_values={"position_y": "86%"}
+            if sparse
+            else {
                 "position_x": "50%",
                 "position_y": "86%",
                 "max_width": "60%",
                 "max_height": "20%",
             },
-            anchor="bottom-center",
+            anchor=None if sparse else "bottom-center",
         ),
         geometry=GEOMETRY,
     )
@@ -1709,7 +1712,7 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
     assert rendering["requested_position"] is None
     assert rendering["resolved_position"] is None
     assert rendering["requested_coordinates"] == {
-        "x": "50%",
+        "x": None if sparse else "50%",
         "y": "86%",
         "anchor": "bottom-center",
         "coordinate_space": "playres",
@@ -1720,6 +1723,16 @@ def test_custom_coordinates_are_recorded_in_rendering_metadata(tmp_path: Path):
         "anchor": "bottom-center",
         "coordinate_space": "playres",
     }
+    assert rendering["resolved"]["max_width"] == (1228 if sparse else 1152)
+    assert rendering["resolved"]["max_height"] == (126 if sparse else 216)
+    assert rendering["percentage_bases"]["max_width"] == (
+        "native-width-after-horizontal-margins" if sparse else "render-width"
+    )
+    assert rendering["percentage_bases"]["max_height"] == "render-height"
+    assert rendering["percentage_bases"]["position_x"] == (
+        "native-anchor" if sparse else "render-width"
+    )
+    assert rendering["percentage_bases"]["position_y"] == "render-height"
 
 
 def test_centered_native_metadata_uses_the_full_canvas_height(tmp_path: Path):

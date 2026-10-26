@@ -402,6 +402,9 @@ class SubtitleLayout:
     anchor: SubtitlePosition | None = None
     max_width: int | RelativeLength | None = None
     max_height: int | RelativeLength | None = None
+    # Inherited explicit width keeps its native percentage base until geometry
+    # resolution; user-supplied width uses the full canvas.
+    max_width_inherited: bool = False
 
     @property
     def has_custom_coordinates(self) -> bool:
