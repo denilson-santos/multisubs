@@ -30,6 +30,11 @@ EXPECTED_FACES = {
     "Atkinson Hyperlegible Next": {
         (weight, italic) for weight in range(200, 900, 100) for italic in (False, True)
     },
+    "Anton": {(400, False)},
+    "Bangers": {(400, False)},
+    "Press Start 2P": {(400, False)},
+    "Quantico": {(weight, italic) for weight in (400, 700) for italic in (False, True)},
+    "Russo One": {(400, False)},
 }
 
 
@@ -41,7 +46,7 @@ def test_manifest_declares_the_complete_pinned_face_inventory():
     catalog = load_bundled_font_catalog()
 
     assert catalog.schema_version == 2
-    assert catalog.face_count == 82
+    assert catalog.face_count == 90
     assert {family.family for family in catalog.families} == set(EXPECTED_FACES)
     for family in catalog.families:
         assert {(face.weight, face.italic) for face in family.faces} == EXPECTED_FACES[
@@ -82,7 +87,7 @@ def test_manifest_hashes_sizes_and_pillow_metadata_match_packaged_files():
             with pytest.raises(OSError):
                 loaded.get_variation_axes()
 
-    assert verify_bundled_font_assets() == 82
+    assert verify_bundled_font_assets() == 90
 
 
 @pytest.mark.parametrize(
@@ -92,6 +97,8 @@ def test_manifest_hashes_sizes_and_pillow_metadata_match_packaged_files():
         "ROBOTO",
         "Atkinson-Hyperlegible-Next",
         "atkinson hyperlegible next",
+        "press-start-2p",
+        "RUSSO ONE",
     ),
 )
 def test_family_lookup_is_case_and_punctuation_insensitive(name: str):

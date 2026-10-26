@@ -1,0 +1,45 @@
+{
+  "schema_version": 5,
+  "name": "russo-punch",
+  "description": "Sporty block headlines with a vertical entrance and coral pops on the spoken word.",
+  "style": {
+    "typography": {
+      "font_family": "Russo One",
+      "text_case": "uppercase",
+      "highlight_color": "#FF6B4A"
+    },
+    "backdrop": {
+      "type": "outline",
+      "color": "#161B22",
+      "size": "7%"
+    }
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "slide-up",
+          "duration_ms": 160
+        },
+        "exit": {
+          "type": "slide-down",
+          "duration_ms": 140
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "entrance": {
+          "type": "pop",
+          "duration_ms": 100
+        },
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  },
+  "layout": {
+    "max_height": "10.03%"
+  }
+}

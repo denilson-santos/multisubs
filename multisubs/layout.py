@@ -518,7 +518,7 @@ def _visual_line_positioning(
 
     vertical_center_offset = (
         metrics.text_measurer.vertical_center_offset(
-            " ".join(line.text for line in visual_lines)
+            "\n".join(line.text for line in visual_lines)
         )
         if centers_box_content
         else 0.0

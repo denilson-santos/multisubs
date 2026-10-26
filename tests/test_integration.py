@@ -6,7 +6,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops
 
 from multisubs.ass import write_ass
 from multisubs.config import validate_subtitle_config
@@ -23,8 +23,88 @@ from multisubs.subtitler import (
     render_subtitle_preview,
     validate_ffmpeg_support,
 )
+from multisubs.templates import get_subtitle_template
 from multisubs.transcriber import layout_subtitle_cues
 from multisubs.wrapping import build_visual_lines
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("canvas", [(1280, 720), (1080, 1920)])
+@pytest.mark.parametrize("line_count", [1, 2])
+def test_arcade_panel_centers_glyphs_and_separates_lines(
+    tmp_path: Path, canvas: tuple[int, int], line_count: int
+):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("FFmpeg and ffprobe are required")
+    validate_ffmpeg_support()
+    width, height = canvas
+    input_path = tmp_path / "arcade-input.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=#604060:s={width}x{height}:d=0.2",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "mpeg4",
+            "-an",
+            str(input_path),
+        ],
+        check=True,
+    )
+    geometry = probe_video_geometry(input_path)
+    config = get_subtitle_template("press-start-arcade").config
+    metrics = resolve_wrapping_metrics(config, geometry)
+    text = "\n".join(["AÇÃO EM JOGO!"] * line_count)
+    subtitle_path = tmp_path / "arcade.ass"
+    write_ass(
+        subtitle_path,
+        [{"start": 0.0, "end": 0.2, "text": text}],
+        config,
+        geometry,
+        wrapping_metrics=metrics,
+        preserve_line_breaks=True,
+        suppress_animation=True,
+    )
+    output = render_subtitle_preview(
+        input_path,
+        subtitle_path,
+        tmp_path,
+        timestamp=0.0,
+        geometry=geometry,
+        fonts_dir=metrics.text_measurer.info.renderer_fonts_dir,
+    )
+    with Image.open(output) as image:
+        red, green, blue = image.convert("RGB").split()
+        foreground = ImageChops.darker(ImageChops.darker(red, green), blue).point(
+            lambda value: 255 if value > 150 else 0
+        )
+        panel = ImageChops.lighter(ImageChops.lighter(red, green), blue).point(
+            lambda value: 255 if value < 60 else 0
+        )
+        glyph_bounds = foreground.getbbox()
+        panel_bounds = panel.getbbox()
+        assert glyph_bounds is not None
+        assert panel_bounds is not None
+        top_padding = glyph_bounds[1] - panel_bounds[1]
+        bottom_padding = panel_bounds[3] - glyph_bounds[3]
+        assert abs(top_padding - bottom_padding) <= 2
+        assert min(top_padding, bottom_padding) >= metrics.backdrop_size - 2
+        if line_count == 2:
+            middle = (glyph_bounds[1] + glyph_bounds[3]) // 2
+            first_line = foreground.crop((0, glyph_bounds[1], width, middle))
+            second_line = foreground.crop((0, middle, width, glyph_bounds[3]))
+            first_bounds = first_line.getbbox()
+            second_bounds = second_line.getbbox()
+            assert first_bounds is not None
+            assert second_bounds is not None
+            gap = middle + second_bounds[1] - glyph_bounds[1] - first_bounds[3]
+            assert gap >= metrics.natural_line_height * 0.25
 
 
 @pytest.mark.integration

@@ -1,0 +1,54 @@
+{
+  "schema_version": 5,
+  "name": "press-start-arcade",
+  "description": "Retro arcade captions on a solid black panel with progressive lime accents and no glyph scaling.",
+  "style": {
+    "typography": {
+      "font_family": "Press Start 2P",
+      "font_size": "3.2%",
+      "line_height": "140%",
+      "text_case": "uppercase",
+      "color": "#F0FFE2",
+      "highlight_color": "#66FF33"
+    },
+    "backdrop": {
+      "color": "#000000",
+      "size": "30%"
+    }
+  },
+  "animation": {
+    "cue": {
+      "text": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 80
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 80
+        }
+      },
+      "backdrop": {
+        "entrance": {
+          "type": "fade",
+          "duration_ms": 80
+        },
+        "exit": {
+          "type": "fade",
+          "duration_ms": 80
+        }
+      }
+    },
+    "word": {
+      "text": {
+        "mode": "progressive",
+        "emphasis": {
+          "type": "highlight"
+        }
+      }
+    }
+  },
+  "layout": {
+    "max_height": "8.19%"
+  }
+}

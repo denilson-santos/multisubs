@@ -831,9 +831,14 @@ line height does not add a custom baseline distance. A nonempty box cue or an
 explicit line height on a multi-line ordinary cue emits one event per visual
 line with trusted `\\an`/`\\pos` coordinates. For a cue or timed-word box,
 each line uses a middle-row alignment, a shared visible-bounds vertical offset,
-and the requested baseline advance, while the complete block keeps the selected
-semantic anchor fixed. Single-line cue boxes center text horizontally within
-their measured surface; other positioned lines retain their semantic alignment.
+and the requested baseline advance. The offset uses the first line's visible
+top and the last line's visible bottom, correcting Pillow's metric center to
+the renderer's Win-metric center before positioning. This follows libass's
+[font metric selection](https://github.com/libass/libass/blob/master/libass/ass_font.c),
+including faces whose FreeType and Win descenders differ. The complete block
+keeps the selected semantic anchor fixed. Single-line cue boxes center text
+horizontally within their measured surface; other positioned lines retain their
+semantic alignment.
 Progressive word text may use
 synchronized interval events per visual line so word activation remains
 cue-relative. For `backdrop=box`, the text style is temporarily neutralized and
@@ -944,7 +949,7 @@ timing only; it cannot represent named or custom positioning.
 
 Built-in templates are package data under `multisubs/assets/templates`. One
 schema-version-5 `index.json` is the sole ordering authority and names each of
-the sixteen resources exactly once. Each indexed UTF-8 JSON file requires
+the twenty-one resources exactly once. Each indexed UTF-8 JSON file requires
 `schema_version`, `name`, and `description`; `style`, `layout`, and `animation`
 branches and their recognized nested fields are sparse. Omitted values inherit
 the authoritative semantic defaults from `config.py`. Style separates
@@ -954,8 +959,8 @@ cue and word branches, each split into independent text and backdrop tracks;
 word tracks also store their mode. A supplied phase object contains a type and,
 for motion effects, an optional validated `duration_ms`. Text and highlight
 colors belong to typography, while word decoration type, color, and size belong
-to `style.word_backdrop`. The catalog contains `default` and fifteen curated
-styles for social clips, podcasts, tutorials, and editorial work, including
+to `style.word_backdrop`. The catalog contains `default` and twenty curated
+styles for social clips, podcasts, tutorials, gaming, and editorial work, including
 restrained yellow, green, red, lime, cobalt, coral, cyan, and magenta palettes
 plus coordinated cue and word animations. Packaged presets share default placement and margins, with authored font-size
 and maximum-height overrides. Font calibration compares the average visible
@@ -972,13 +977,33 @@ be smaller than the default; equal values are omitted. Calibration approximates
 perceived size, not equal glyph width, weight, or identical wrapping. Animation
 scale remains an intentional temporary change to the calibrated resting size.
 
+Five display-font presets extend that calibration with optical adjustments:
+`anton-impact` uses Anton Regular at 4.5% with a cue pop and amber word accents;
+`bangers-comic` uses Bangers Regular at 4.6% with a yellow fill, ink outline,
+4% shadow, and word bounce; `press-start-arcade` uses Press Start 2P Regular at
+3.2% with 140% line height, 30% solid black panel padding, and progressive lime
+`#66FF33` highlighting; earlier words remain highlighted. `quantico-tech` uses
+Quantico Bold at 4.6% with a navy panel, synchronized lateral cue tracks, and
+active-word cyan highlighting over a fully visible white phrase; other words
+remain white. `russo-punch` uses Russo One Regular at 4% with a 160ms vertical
+cue entrance, 140ms exit, and 100ms coral word pops. The arcade preset avoids
+moving or scaling glyphs; relative font sizing remains unchanged, so pixel grid
+alignment is not promised at arbitrary video sizes. Regular is the actual
+published weight for Anton, Bangers, Press Start 2P, and Russo One, despite
+their visually heavy letterforms.
+
 Maximum heights were calibrated from 2.3 natural line heights plus cue decoration
 allowance at a 1000px render height. Their former native-region percentages are
 multiplied by 0.97 to express the same budgets against full render height,
 preserving up to three decimal places. The default is `11.64%` of full height
 (formerly `12%` of the area above the 3% bottom margin). The extra 0.3 line
 provides rounding headroom above two lines while remaining below three.
-All presets keep automatic line height. Calibration is checked at 720p, 1080p,
+The five display-font presets use the same 2.3-line calibration directly against
+full render height, with their own outline, panel padding, and shadow allowances.
+Presets keep automatic line height except `press-start-arcade`, whose explicit
+140% baseline advance separates pixel-letter rows. Its 8.19% full-height budget
+includes that extra advance and the larger 30% panel padding while retaining
+two-line capacity. Calibration is checked at 720p, 1080p,
 portrait 1080x1920, square 1080x1080, and 4K with different top and bottom margins;
 it is not a fixed line-count contract for arbitrary geometry, custom fonts, or
 explicit typography/height overrides. Margins preserve that capacity wherever
@@ -1175,14 +1200,18 @@ does not by itself claim complete shaping or libass identity, so the rendered
 ASS family is set to the same effective face and integration tests remain the
 render authority.
 
-The package contains 82 unmodified static TTF faces served by the official
+The package contains 90 unmodified static TTF faces served by the official
 Google Fonts API for Roboto, Inter, Montserrat, Oswald, Lora, and Atkinson
-Hyperlegible Next under `multisubs/assets/fonts`. These static instances cover
-every 100-step weight selectable by the CLI within each family's published
-weight range, with upright and italic files where supported. Width and optical
+Hyperlegible Next, plus Anton, Bangers, Press Start 2P, Quantico, and Russo One
+under `multisubs/assets/fonts`. The four single-face display families provide
+Regular only; Quantico provides Regular and Bold, upright and italic.
+The original six families cover every 100-step weight selectable by the CLI
+within each family's published weight range, with upright and italic files
+where supported. The five display families include their published weights
+without synthesizing intermediate faces. Width and optical
 size remain at the API defaults because those axes are not public CLI inputs.
-One directory per family contains the `OFL.txt` from the same pinned Google
-Fonts catalog revision; `manifest.json` records that revision, the family
+One directory per family contains the `OFL.txt` from its pinned Google
+Fonts catalog revision; `manifest.json` records that family's revision, the family
 stylesheet, and every face's exact versioned Google Fonts source URL, internal
 family, style, weight, italic state, byte size, and SHA-256. Setuptools includes
 the manifest, licenses, and binaries in both wheel and sdist. Integrity is
